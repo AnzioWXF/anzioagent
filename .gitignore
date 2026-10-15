@@ -1,0 +1,23 @@
+# 本仓只收天工自己的源码：先整体忽略，再逐个放开。
+# 数据目录（会话 / 凭证 / 日志）、官方引擎全树、临时垃圾一律不进仓。
+/*
+!/.gitignore
+!/README.md
+!/patches/
+!/tools/
+!/deepseek-harness-mine/
+/deepseek-harness-mine/*
+!/deepseek-harness-mine/shell/
+!/deepseek-harness-mine/plugin/
+
+# 依赖与打包产物、缓存、日志
+node_modules/
+release/
+dist/
+.local-appdata/
+.builder-cache/
+*.log
+
+# 探针跑完留下的截图不是源码
+tools/.probe-*.png
+tools/.direct-*.png

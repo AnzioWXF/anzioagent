@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'" />
+  <title>天工 - 无法连接</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1e1e1e; color: #d4d4d4;
+      font: 14px/1.7 "Segoe UI", "Microsoft YaHei", sans-serif;
+      display: flex; align-items: center; justify-content: center; min-height: 100vh;
+    }
+    .card { max-width: 520px; padding: 40px; text-align: center; }
+    .emoji { font-size: 52px; }
+    h1 { font-size: 20px; margin: 18px 0 10px; color: #ffffff; }
+    p { color: #9d9d9d; margin-bottom: 10px; }
+    code {
+      background: #2d2d2d; color: #6fdd8b; padding: 2px 8px;
+      border-radius: 4px; font: 12px Consolas, monospace;
+    }
+    .hint { margin-top: 18px; font-size: 12px; color: #6f6f6f; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="emoji">🔌</div>
+    <h1>无法连接到 DSH 服务</h1>
+    <p>目标地址：<code id="url"></code></p>
+    <p id="reason">请确认 DSH 服务已启动，然后选择菜单 <b>File → Reload DSH</b>（或按 Ctrl+R）重试。</p>
+    <p class="hint">也可尝试 <b>File → Restart Backend</b>（Ctrl+Shift+R）重新启动内置后端。</p>
+  </div>
+  <script>
+    var q = new URLSearchParams(location.search)
+    document.getElementById('url').textContent = q.get('url') || '未知'
+    var reason = q.get('reason')
+    var texts = {
+      'timeout': '内置 DSH 后端启动超时，请查看 <b>File → Open Backend Log</b> 诊断原因。',
+      'exited': '内置 DSH 后端进程已退出，请查看 <b>File → Open Backend Log</b> 诊断原因。',
+      'load-failed': '页面加载失败，可尝试 <b>File → Restart Backend</b> 重启后端。'
+    }
+    if (texts[reason]) document.getElementById('reason').innerHTML = texts[reason]
+  </script>
+</body>
+</html>

@@ -1,0 +1,124 @@
+# DSH IDE 应用配置层（应用侧独立维护，不受开发台影响）
+#
+# 注意：本文件是【应用自己的】配置 —— 开发台的 cordis.patch.yml 改动
+# 不会同步到这里（sync-from-dev.ps1 只同步 dsh-ide 插件源码）。
+# 要停用 IDE（恢复标准 Web 界面）就把下面 insert 段注释掉。
+
+# ── 平台外壳：整行走平台默认实现之外的处理（2026-09-20）─────────────
+# ui-layout 把「ctx.layout 服务 + panelInfo 席位 + AppFrame 注册」塞在**同一个 effect** 里，
+# 而 AppFrame 会声明 root 的四个子槽（sidebar/main/rightbar/shell.overlay）。天工自己是那个
+# 窗口，子槽必须由 dsh-ide 声明（否则平台会话树无处渲染 → 提问卡片/工具卡全都没有）。
+# 客户端插件在浏览器侧收不到行 config（boot 条目只有 {id,url,rev,inject}），所以没法只关 frame；
+# 只能整行 disabled，由 dsh-ide 补上那三样必需件（服务兼容壳 / panelInfo 席位 / 主题呈现）。
+- id: ui-layout
+  disabled: true
+
+# ── 去掉天工里"多余 / 点不动"的平台按钮（2026-09-20 用户要求）──────────
+# ① 会话日志导出：它在会话头画一个「更多操作 ⋯」下拉，里面只有「下载 Session 日志」。
+#    天工里没人会去下载会话 ZIP（要查日志我直接读 <DSH_HOME>\sessions 下的 jsonl.zstd），
+#    且它提供的 sessionLogDownload 服务没有别的消费者 → 整行关掉。
+# ② ui-open-in-app（连它的 host 半）：会话头那两个「在 <编辑器> 中打开工作目录」「选择打开方式」
+#    都是它贡献的 —— 对"取代 VSCode"的产品来说这是逃生门，用户明确不要 → 一起关。
+# ③ 「打开/收起右侧边栏」那个开关不能靠关插件（ui-sidebar-right 的 sidebarRight 服务被 ui-chat
+#    依赖，关掉会让整条对话链 pending）→ 由 dsh-ide 在自己面板范围内按可访问名藏掉（见 client.js）。
+- id: session-log-download
+  disabled: true
+
+- id: ui-open-in-app
+  disabled: true
+
+- id: open-in-app
+  disabled: true
+
+# ── 官方反馈出入口：整条拆掉（2026-10-13 用户钉死）────────────────────
+# 三行是一条链：助手消息下面那对赞/踩（client 半）/ 它背后的远端服务（host 半）/ `/feedback` 命令。
+# 赞/踩喂的是 DeepSeek 自己的反馈通道，天工没有任何消费者 —— 用户原话"这他妈是给 DS 反馈的，
+# 是他们的事情"，点不点对我们的产品没有意义。别再想当然地认为"关掉遥测它就没危害了"：
+# 关遥测只是让它不再外发（只落本地记录），界面上留着这两颗按钮本身就是对用户的暗示。
+- id: ui-message-feedback
+  disabled: true
+
+- id: message-feedback
+  disabled: true
+
+- id: command-feedback
+  disabled: true
+
+# ── DSH IDE（应用本体）────────────────────────────────────────────
+# 正式前端插件：打开页面直接就是 IDE 三栏布局（左：文件资源管理器 /
+# 中：文件详情页 / 右：Agent 助手 + 插件面板）。
+#   - Host 半（lib/index.js）：注册 /dsh-ide/* JSON API（文件、Agent、插件管理）
+#   - Client 半（lib/client.js）：注册 root 布局，替换默认 Web 界面
+# 包源码在 ./ide/dsh-ide（pnpm 符号链接安装）。
+- insert:
+    - id: dsh-ide
+      name: dsh-ide
+
+# ── 代码导航（LSP）：给 Agent 的"看得懂代码关系"能力（2026-09-22）────────
+# 引擎自带三件（服务 / 起语言服务器的 provider / 模型可见的 lsp 工具：转到定义 ·
+# 找引用 · 找实现 · 悬停），但**任何 bundle 都没挂过** —— 挂上这三行，Agent 才真正拿到它。
+# 它与编辑器里 monaco 自带的那套语言服务是两条路：这套是**后端起真语言服务器给 Agent 用**。
+#
+# 师傅（typescript-language-server + typescript）不放程序目录，放**数据目录**：
+#   <应用家目录>\tools\lsp\node_modules\...   安装记录见同目录 manifest.json
+# 取用方式：node tools\npm-fetch.mjs <pkg>@<ver> --into <家目录>\tools\lsp
+#   —— 从 npm 国内镜像取、**核 sha512** 后才解包（哈希对不上直接拒绝）。
+# command 写 PATH 上的 node：应用后端自己就是这个 node 起的，换 node 版本也不会失效。
+# extensionToLanguage 覆盖 ts/tsx/mts/cts/js/jsx/mjs/cjs（React 的 tsx 走 typescriptreact）。
+- insert:
+    - id: lsp
+      name: '@deepseek-ai/dsh-lsp'
+
+    - id: lsp-stdio
+      name: '@deepseek-ai/dsh-lsp-stdio'
+      config:
+        servers:
+          typescript:
+            command: node
+            args:
+              - 'D:\99DSH\app-home\tools\lsp\node_modules\typescript-language-server\lib\cli.mjs'
+              - '--stdio'
+            extensionToLanguage:
+              '.ts': typescript
+              '.tsx': typescriptreact
+              '.mts': typescript
+              '.cts': typescript
+              '.js': javascript
+              '.jsx': javascriptreact
+              '.mjs': javascript
+              '.cjs': javascript
+
+    - id: tool-lsp
+      name: '@deepseek-ai/dsh-tool-lsp'
+
+# ── 产品默认值（2026-10-12 与现役 app-home 对齐）────────────────────────
+# 这 4 行以前只存在于现役家目录、不在本模板里 ⇒ 两份文件漂移：改模板会把它们从现役抹掉，
+# 只改现役则装机/换机拿不到。现在两份完全相同，**以后只改这里**，由更新包带到家目录。
+- id: ui-settings-general
+  name: "@deepseek-ai/dsh-client-ui-settings-general"
+  config:
+    welcomeNoticeVersion: 2026-08-13.1
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: deepseek-official
+    model: deepseek-flash
+    reasoningEffort: high
+- id: permission
+  name: "@deepseek-ai/dsh-permission-presets"
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+    defaultPreset: danger-full-access
+- id: ui-theme
+  name: "@deepseek-ai/dsh-client-ui-theme"
+  config:
+    preference: dark

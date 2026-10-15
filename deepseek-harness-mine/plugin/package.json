@@ -1,0 +1,27 @@
+{
+  "name": "dsh-ide",
+  "version": "1.0.0",
+  "description": "DSH IDE 应用本体：三栏布局（文件资源管理器 / 文件详情页 / Agent 助手）+ 插件面板。Host 半提供文件与 Agent API。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ],
+      "platform": "web"
+    }
+  },
+  "license": "MIT"
+}
