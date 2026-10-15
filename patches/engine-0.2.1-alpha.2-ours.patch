@@ -64,6 +64,137 @@ index 07e4aa84c8..8efb0410fe 100644
          portal
          className={css.menuAnchor}
          anchor={(
+diff --git a/packages/client/ui-chat/src/client/chat/CompactionItem.tsx b/packages/client/ui-chat/src/client/chat/CompactionItem.tsx
+index 006b570557..3db78e8241 100644
+--- a/packages/client/ui-chat/src/client/chat/CompactionItem.tsx
++++ b/packages/client/ui-chat/src/client/chat/CompactionItem.tsx
+@@ -1,5 +1,10 @@
+ // A compaction marker does not replace shadowed transcript rows. It is
+ // expandable only when the current window includes its cited summary.
++//
++// The automatic pass also renders without any landed checkpoint, as a warning
++// band: an in-flight pass explains the silence, a failed one reports that the
++// context was not reduced, and a landed one tells the user what the model can no
++// longer see.
+ 
+ import { memo, useMemo, useState } from 'react'
+ import {
+@@ -19,6 +24,12 @@ interface CompactionItemProps {
+   title?: string
+   /** Command settlement text used when structured compaction counts are unavailable. */
+   fallbackSummary?: string | null
++  /**
++   * Warning band for the automatic pass: the whole message sits in the row and
++   * the expand disclosure stays visible, because nothing else on screen says
++   * that part of the conversation left the model's view.
++   */
++  tone?: 'warn'
+   /** The owning view's locale seat. */
+   t: ChatViewSlotProps['t']
+ }
+@@ -32,12 +43,14 @@ export const CompactionItem = memo(function CompactionItem({
+   node,
+   title,
+   fallbackSummary,
++  tone,
+   t,
+ }: CompactionItemProps) {
+   const [expanded, setExpanded] = useState(false)
+   const labels = useMemo(() => markdownLabels(t), [t])
+   const expandable = node.summary !== null
+   const open = expandable && expanded
++  const warn = tone === 'warn'
+   const summary = node.shadowedItemCount !== null && node.shadowedTokenCount !== null
+     ? t('message.compaction.completed', {
+       items: node.shadowedItemCount,
+@@ -45,8 +58,14 @@ export const CompactionItem = memo(function CompactionItem({
+     })
+     : fallbackSummary
+       ?? (expandable ? t('message.compaction.expand') : t('message.compaction.unavailable'))
++  const autoKey = node.status === 'running'
++    ? 'message.compaction.compacting'
++    : node.status === 'error'
++      ? 'message.compaction.failed'
++      : 'message.compaction'
++  const headline = warn ? t(autoKey) : title ?? t('message.compaction')
+   return (
+-    <div className={css.compactionRow}>
++    <div className={warn ? `${css.compactionRow} ${css.compactionWarn}` : css.compactionRow}>
+       <button
+         type="button"
+         className={css.compactionButton}
+@@ -65,9 +84,15 @@ export const CompactionItem = memo(function CompactionItem({
+             {open ? <IconChevronDownOutlineRegular /> : <IconChevronRightOutlineRegular />}
+           </span>
+         </span>
+-        <span className={css.compactionTitle}>{title ?? t('message.compaction')}</span>
+-        <span className={css.compactionSep} aria-hidden />
+-        <span className={css.compactionSummary}>{summary}</span>
++        <span className={css.compactionTitle}>{headline}</span>
++        {warn
++          ? null
++          : (
++            <>
++              <span className={css.compactionSep} aria-hidden />
++              <span className={css.compactionSummary}>{summary}</span>
++            </>
++          )}
+       </button>
+       {open && node.summary !== null
+         && <div className={css.compactionBody}><MarkdownText text={node.summary} labels={labels} /></div>}
+diff --git a/packages/client/ui-chat/src/client/chat/MessageItem.module.css b/packages/client/ui-chat/src/client/chat/MessageItem.module.css
+index 5d19483335..050f0e3995 100644
+--- a/packages/client/ui-chat/src/client/chat/MessageItem.module.css
++++ b/packages/client/ui-chat/src/client/chat/MessageItem.module.css
+@@ -187,6 +187,35 @@
+   white-space: nowrap;
+ }
+ 
++/* Automatic-compaction warning band. The whole message lives in the row, so the
++   row takes a warning surface instead of the inline marker's label tone, and the
++   disclosure stays visible at rest — nothing else hints that this row expands. */
++.compactionWarn .compactionButton {
++  padding: 0 10px;
++  border-radius: var(--dsw-radius-sm);
++  background: var(--dsw-alias-state-warn-tertiary);
++  color: var(--dsw-alias-state-warn-label);
++}
++
++.compactionWarn .compactionContextIcon {
++  opacity: 0;
++}
++
++.compactionWarn .compactionDisclosureIcon {
++  opacity: 1;
++}
++
++/* Pinned, the band is what masks the prose scrolling under it, so it keeps the
++   opaque warning fill; specificity outranks the base pinned rule above. */
++.compactionRow.compactionWarn:has(.compactionBody) .compactionButton {
++  background: var(--dsw-alias-state-warn-tertiary);
++  border-radius: 0;
++}
++
++.compactionWarn .compactionButton:not(:disabled):hover {
++  background: color-mix(in srgb, var(--dsw-alias-state-warn-label) 10%, var(--dsw-alias-state-warn-tertiary));
++}
++
+ .compactionBody {
+   /* Indent under the title, which starts at leading (16 + delta) + gap 6. */
+   padding: 4px 0 4px calc(22px + var(--dsh-content-font-delta, 0px));
+diff --git a/packages/client/ui-chat/src/client/chat/MessageItem.tsx b/packages/client/ui-chat/src/client/chat/MessageItem.tsx
+index 9005150af0..b458e43e1a 100644
+--- a/packages/client/ui-chat/src/client/chat/MessageItem.tsx
++++ b/packages/client/ui-chat/src/client/chat/MessageItem.tsx
+@@ -358,7 +358,7 @@ export const ContextMessageNodeView = memo(function ContextMessageNodeView({ nod
+ 
+ /** Automatic compaction keyed Chat renderer. */
+ export const CompactionNodeView = memo(function CompactionNodeView({ node, t }: ChatNodeViewProps<'compaction'>) {
+-  return <CompactionItem node={node.data} t={t} />
++  return <CompactionItem node={node.data} tone="warn" t={t} />
+ })
+ 
+ /** Correlated retry-chain keyed Chat renderer. */
 diff --git a/packages/client/ui-chat/src/client/contract/chat-nodes.ts b/packages/client/ui-chat/src/client/contract/chat-nodes.ts
 index cade646b1c..0ce50c0f00 100644
 --- a/packages/client/ui-chat/src/client/contract/chat-nodes.ts
@@ -120,6 +251,28 @@ index 0423e1ff20..ea74e6565d 100644
    const presentations = turnProcessPresentations(visible)
    return visible.sort((left, right) => {
      const leftPosition = presentationPosition(left, presentations)
+diff --git a/packages/client/ui-chat/src/client/conversation-nodes/command.ts b/packages/client/ui-chat/src/client/conversation-nodes/command.ts
+index a52b877552..2acd117cca 100644
+--- a/packages/client/ui-chat/src/client/conversation-nodes/command.ts
++++ b/packages/client/ui-chat/src/client/conversation-nodes/command.ts
+@@ -31,6 +31,8 @@ interface CommandState {
+ interface CompactionEvidence {
+   readonly summary?: ConversationMatch
+   readonly checkpoint?: ConversationMatch
++  readonly start?: ConversationMatch
++  readonly end?: ConversationMatch
+ }
+ 
+ function commandFromRun(match: ConversationMatch): CommandNode {
+@@ -166,6 +168,8 @@ export function updateCompactionState<State extends CompactionEvidence>(
+   match: ConversationMatch,
+ ): State {
+   if (match.event.type === 'compaction/summary') return { ...state, summary: match }
++  if (match.event.type === 'compaction/start') return { ...state, start: match }
++  if (match.event.type === 'compaction/end') return { ...state, end: match }
+   if (compactSource(match.event) !== undefined) return { ...state, checkpoint: match }
+   return state
+ }
 diff --git a/packages/client/ui-chat/src/client/conversation-nodes/common.ts b/packages/client/ui-chat/src/client/conversation-nodes/common.ts
 index 5d0b123163..d31d9a2aae 100644
 --- a/packages/client/ui-chat/src/client/conversation-nodes/common.ts
@@ -174,6 +327,72 @@ index 5d0b123163..d31d9a2aae 100644
      data,
    }
  }
+diff --git a/packages/client/ui-chat/src/client/conversation-nodes/compaction.ts b/packages/client/ui-chat/src/client/conversation-nodes/compaction.ts
+index 9612f08741..237ad1580d 100644
+--- a/packages/client/ui-chat/src/client/conversation-nodes/compaction.ts
++++ b/packages/client/ui-chat/src/client/conversation-nodes/compaction.ts
+@@ -16,14 +16,20 @@ declare module '../contract/chat-nodes.ts' {
+ interface CompactionState {
+   readonly summary?: ConversationMatch
+   readonly checkpoint?: ConversationMatch
++  readonly start?: ConversationMatch
++  readonly end?: ConversationMatch
+ }
+ 
+ function fallbackState(context: ConversationNodeContext<CompactionState>): CompactionState {
+   const summary = context.matches.find(match => match.event.type === 'compaction/summary')
+   const checkpoint = context.matches.find(match => compactSource(match.event) !== undefined)
++  const start = context.matches.find(match => match.event.type === 'compaction/start')
++  const end = context.matches.find(match => match.event.type === 'compaction/end')
+   return {
+     ...summary === undefined ? {} : { summary },
+     ...checkpoint === undefined ? {} : { checkpoint },
++    ...start === undefined ? {} : { start },
++    ...end === undefined ? {} : { end },
+   }
+ }
+ 
+@@ -46,13 +52,36 @@ export const compactionDefinition: ConversationNodeDefinition<CompactionState> =
+     }
+     return null
+   },
+-  start: () => ({}),
++  start: (_context, match) => ({ start: match }),
+   update: (context, match) => updateCompactionState(context.state, match),
+   buildViewNode: (context) => {
+     const state = context.state ?? fallbackState(context)
+-    if (state.checkpoint === undefined) return null
+-    const marker = compactSummary(state.summary, state.checkpoint)
+-    return chatNode(context, 'compaction', marker.seq, marker)
++    if (state.checkpoint !== undefined) {
++      const marker = compactSummary(state.summary, state.checkpoint)
++      return chatNode(context, 'compaction', marker.seq, marker)
++    }
++    // No checkpoint landed yet: the pass is either still running (no
++    // `compaction/end`) or it closed without one — cleanly, or failed. All three
++    // are worth a row: an in-flight pass explains the silence, a failed one left
++    // the context as long as it was.
++    const lifecycle = state.end ?? state.start
++    if (lifecycle === undefined) return null
++    const closed = state.end
++    const failure = closed !== undefined && closed.event.type === 'compaction/end'
++      ? closed.event.data.error
++      : undefined
++    const data: CompactionSummaryNode = {
++      kind: 'compaction',
++      seq: lifecycle.event.seq,
++      time: lifecycle.event.time,
++      summary: null,
++      summaryEventSeq: state.summary?.event.seq ?? null,
++      shadowedItemCount: null,
++      shadowedTokenCount: null,
++      status: closed === undefined ? 'running' : failure === undefined ? 'complete' : 'error',
++      ...failure === undefined ? {} : { error: failure },
++    }
++    return chatNode(context, 'compaction', data.seq, data)
+   },
+ }
+ 
 diff --git a/packages/client/ui-chat/src/client/conversation-nodes/message.ts b/packages/client/ui-chat/src/client/conversation-nodes/message.ts
 index ddfffb0cca..6f3e49831e 100644
 --- a/packages/client/ui-chat/src/client/conversation-nodes/message.ts
@@ -217,6 +436,201 @@ index ddfffb0cca..6f3e49831e 100644
      }
      return null
    },
+diff --git a/packages/client/ui-chat/src/client/locale.ts b/packages/client/ui-chat/src/client/locale.ts
+index 5d24261ad8..de2953f917 100644
+--- a/packages/client/ui-chat/src/client/locale.ts
++++ b/packages/client/ui-chat/src/client/locale.ts
+@@ -137,7 +137,9 @@ export const zh = {
+   'message.context.relay.from': '来自会话 {session}',
+   'message.context.recall.counts': '保留 {retained} 条 · 省略 {omitted} 条',
+   'message.context.recall.truncated': '已截断',
+-  'message.compaction': '上下文已压缩',
++  'message.compaction': '上下文已压缩，更早的对话已换成摘要；摘要可能漏掉关键细节，重要结论请让助手复述或写进文件。',
++  'message.compaction.compacting': '正在压缩上下文，更早的对话将被改写成摘要…',
++  'message.compaction.failed': '压缩没成功，这段对话仍然很长；关键结论建议先写进文件或开个新会话。',
+   'message.compaction.running': '正在压缩…',
+   'message.compaction.completed': '已压缩 {items} 条历史记录（约 {tokens} tokens）',
+   'message.compaction.expand': '点击查看压缩摘要',
+@@ -334,7 +336,9 @@ export const en = {
+   'message.context.relay.from': 'From session {session}',
+   'message.context.recall.counts': '{retained} kept · {omitted} omitted',
+   'message.context.recall.truncated': 'truncated',
+-  'message.compaction': 'Context compacted',
++  'message.compaction': 'Context compacted; the earlier conversation was replaced by a summary. The summary may drop critical detail — ask the assistant to restate key conclusions, or have it write them into a file.',
++  'message.compaction.compacting': 'Compacting context; the earlier conversation is being rewritten as a summary…',
++  'message.compaction.failed': 'Compaction failed, so this conversation is still long; consider writing key conclusions into a file or starting a new session.',
+   'message.compaction.running': 'Compacting context…',
+   'message.compaction.completed': 'Compacted {items} history items (~{tokens} tokens)',
+   'message.compaction.expand': 'View compaction summary',
+diff --git a/packages/client/ui-chat/tests/chat-branch-tails.client.spec.tsx b/packages/client/ui-chat/tests/chat-branch-tails.client.spec.tsx
+index 7954e2cb45..ed73ea9473 100644
+--- a/packages/client/ui-chat/tests/chat-branch-tails.client.spec.tsx
++++ b/packages/client/ui-chat/tests/chat-branch-tails.client.spec.tsx
+@@ -821,9 +821,14 @@ describe('MessageItem arms', () => {
+       }}
+       />,
+     )
++    // The automatic row carries the warning itself, so the warning copy takes
++    // the room the shadowed-item counts used to occupy.
+     const row = view.getByRole('button', { name: /上下文已压缩/ })
++    expect(view.getByText(
++      '上下文已压缩，更早的对话已换成摘要；摘要可能漏掉关键细节，重要结论请让助手复述或写进文件。',
++    )).toBeTruthy()
++    expect(view.queryByText('已压缩 16 条历史记录（约 11309 tokens）')).toBeNull()
+     expect(row.getAttribute('aria-expanded')).toBe('false')
+-    expect(view.getByText('已压缩 16 条历史记录（约 11309 tokens）')).toBeTruthy()
+     expect(view.queryByText(/保留的事实/)).toBeNull()
+     fireEvent.click(row)
+     expect(row.getAttribute('aria-expanded')).toBe('true')
+@@ -858,7 +863,10 @@ describe('MessageItem arms', () => {
+     const row = view.getByRole('button', { name: /上下文已压缩/ })
+     expect(row).toHaveProperty('disabled', true)
+     expect(row.getAttribute('aria-expanded')).toBeNull()
+-    expect(view.getByText('压缩摘要不可用')).toBeTruthy()
++    // The warning row states the loss on its own; with no cited summary in the
++    // window it simply has nothing to disclose.
++    expect(view.queryByText('压缩摘要不可用')).toBeNull()
++    expect(row.textContent).toContain('上下文已压缩')
+     fireEvent.click(row) // a disabled control stays collapsed
+     expect(row.getAttribute('aria-expanded')).toBeNull()
+   })
+diff --git a/packages/client/ui-chat/tests/chat-view.client.spec.tsx b/packages/client/ui-chat/tests/chat-view.client.spec.tsx
+index 2357acedc9..4867da2169 100644
+--- a/packages/client/ui-chat/tests/chat-view.client.spec.tsx
++++ b/packages/client/ui-chat/tests/chat-view.client.spec.tsx
+@@ -4273,6 +4273,31 @@ describe('ChatView', () => {
+     expect(view.getByRole('heading', { name: '压缩摘要' })).toBeTruthy()
+   })
+ 
++  it('renders the automatic compaction warning for each lifecycle state', () => {
++    const bare = { summary: null, summaryEventSeq: null, shadowedItemCount: null, shadowedTokenCount: null }
++
++    const running = makeHarness({ nodes: [compaction({ ...bare, status: 'running', seq: 9, time: 9_000 })] })
++    const runningView = render(<running.ChatView {...running.props} />)
++    expect(runningView.getByText('正在压缩上下文，更早的对话将被改写成摘要…')).toBeTruthy()
++
++    const failed = makeHarness({
++      nodes: [compaction({ ...bare, status: 'error', error: 'summarizer failed', seq: 9, time: 9_000 })],
++    })
++    const failedView = render(<failed.ChatView {...failed.props} />)
++    expect(failedView.getByText('压缩没成功，这段对话仍然很长；关键结论建议先写进文件或开个新会话。')).toBeTruthy()
++
++    const landed = makeHarness({ nodes: [compaction()] })
++    const landedView = render(<landed.ChatView {...landed.props} />)
++    expect(landedView.getByText(
++      '上下文已压缩，更早的对话已换成摘要；摘要可能漏掉关键细节，重要结论请让助手复述或写进文件。',
++    )).toBeTruthy()
++    expect(landedView.queryByText('已压缩 16 条历史记录（约 11309 tokens）')).toBeNull()
++    const row = landedView.getByRole('button', { name: /上下文已压缩/ })
++    expect(row.querySelector('[data-compaction-disclosure="collapsed"]')).not.toBeNull()
++    fireEvent.click(row)
++    expect(landedView.getByRole('heading', { name: '压缩摘要' })).toBeTruthy()
++  })
++
+   it('keeps /compact no-history and error settlements on the generic command row', () => {
+     const noHistory = makeHarness({
+       nodes: [command({
+diff --git a/packages/client/ui-chat/tests/conversation-node-definitions.client.spec.ts b/packages/client/ui-chat/tests/conversation-node-definitions.client.spec.ts
+index 3823a0dbd5..09c0529228 100644
+--- a/packages/client/ui-chat/tests/conversation-node-definitions.client.spec.ts
++++ b/packages/client/ui-chat/tests/conversation-node-definitions.client.spec.ts
+@@ -2492,6 +2492,42 @@ describe('built-in conversation node Definitions', () => {
+     expect(snapshot(compactions).nodes.values().filter(candidate => candidate.kind === 'compaction')).toHaveLength(1)
+   })
+ 
++  it('renders an automatic compaction that has not landed a checkpoint as its own state', () => {
++    const running = assembler([
++      at(20, 'compaction/start', { compactionId: 'automatic-2', turn: null }),
++    ])
++    expect(node(snapshot(running), 'compaction')?.data).toMatchObject({
++      seq: 20,
++      summary: null,
++      summaryEventSeq: null,
++      status: 'running',
++    })
++
++    const failed = assembler([
++      at(20, 'compaction/start', { compactionId: 'automatic-3', turn: null }),
++      at(21, 'compaction/end', { compactionId: 'automatic-3', turn: null, error: 'summarizer failed' }),
++    ])
++    expect(node(snapshot(failed), 'compaction')?.data).toMatchObject({
++      seq: 21,
++      status: 'error',
++      error: 'summarizer failed',
++    })
++
++    const settled = assembler([
++      at(20, 'compaction/start', { compactionId: 'automatic-4', turn: null }),
++      at(21, 'compaction/end', { compactionId: 'automatic-4', turn: null }),
++    ])
++    const settledData = node(snapshot(settled), 'compaction')?.data
++    expect(settledData).toMatchObject({ seq: 21, status: 'complete' })
++    expect(settledData).not.toHaveProperty('error')
++
++    const manual = assembler([
++      at(20, 'compaction/start', { compactionId: 'manual-2', sourceCommandId: 'command-2', turn: null }),
++    ])
++    expect(node(snapshot(manual), 'compaction')).toBeUndefined()
++    expect(node(snapshot(manual), 'manual-compaction')).toBeUndefined()
++  })
++
+   it('fills a landed compaction marker when an older page supplies its summary', () => {
+     const value = assembler([
+       at(13, 'user/message', {
+diff --git a/packages/client/ui-conversation/src/client/context-occupancy.ts b/packages/client/ui-conversation/src/client/context-occupancy.ts
+index 4ee330436f..438bd748fe 100644
+--- a/packages/client/ui-conversation/src/client/context-occupancy.ts
++++ b/packages/client/ui-conversation/src/client/context-occupancy.ts
+@@ -7,6 +7,30 @@ export interface ContextOccupancy {
+   contextWindow: number
+ }
+ 
++/** Occupancy at which the meter starts warning; below it the ring keeps its neutral tone. */
++export const CONTEXT_WARN_PERCENT = 70
++
++/** Occupancy at which the meter reads fully critical. */
++export const CONTEXT_CRITICAL_PERCENT = 80
++
++/**
++ * Resolve the meter's tint at one occupancy. Amber from the warning floor
++ * blending into red by the critical mark, so the ring reads as a ramp instead of
++ * flipping state at a threshold — the automatic compaction that follows would
++ * otherwise arrive with no warning at all.
++ * @param percent - bounded display occupancy.
++ * @returns a themed color, or undefined to keep the meter's own neutral color.
++ */
++export function contextTint(percent: number): string | undefined {
++  if (percent < CONTEXT_WARN_PERCENT) return undefined
++  const ramp = Math.min(
++    1,
++    (percent - CONTEXT_WARN_PERCENT) / (CONTEXT_CRITICAL_PERCENT - CONTEXT_WARN_PERCENT),
++  )
++  return `color-mix(in srgb, var(--dsw-alias-state-error-primary) ${ramp * 100}%, `
++    + 'var(--dsw-alias-state-warn-primary))'
++}
++
+ /**
+  * Resolve bounded display occupancy from independently updated pressure fields.
+  * @param pressure - latest token-meter projection.
+diff --git a/packages/client/ui-conversation/src/client/contract/records.ts b/packages/client/ui-conversation/src/client/contract/records.ts
+index 0cbb172f8c..5a8edfede9 100644
+--- a/packages/client/ui-conversation/src/client/contract/records.ts
++++ b/packages/client/ui-conversation/src/client/contract/records.ts
+@@ -199,6 +199,14 @@ export interface CompactionSummaryNode {
+   shadowedItemCount: number | null
+   /** Estimated token price of the replaced items, or null when the summary event is unavailable or malformed. */
+   shadowedTokenCount: number | null
++  /**
++   * Lifecycle of a compaction that has not landed a checkpoint yet: `running`
++   * while the closing `compaction/end` is missing, `complete` when it closed
++   * without a failure, `error` when it carried one. Absent on a landed marker.
++   */
++  status?: 'running' | 'complete' | 'error'
++  /** Failure text off the closing `compaction/end`; present only with `status: 'error'`. */
++  error?: string
+ }
+ 
+ /**
 diff --git a/packages/client/ui-conversation/src/client/contract/slots.ts b/packages/client/ui-conversation/src/client/contract/slots.ts
 index 5564aea9b6..b0a6057272 100644
 --- a/packages/client/ui-conversation/src/client/contract/slots.ts
@@ -285,6 +699,61 @@ index 0000000000..7bc76ebb61
 +  const declared = (globalThis as { __DSH_HOST_COMPOSER__?: HostComposerLayout }).__DSH_HOST_COMPOSER__
 +  return declared ?? {}
 +}
+diff --git a/packages/client/ui-conversation/src/client/skeleton/ContextMeter.module.css b/packages/client/ui-conversation/src/client/skeleton/ContextMeter.module.css
+index 7952f18006..7cb6347286 100644
+--- a/packages/client/ui-conversation/src/client/skeleton/ContextMeter.module.css
++++ b/packages/client/ui-conversation/src/client/skeleton/ContextMeter.module.css
+@@ -38,7 +38,8 @@
+ 
+ .fill {
+   fill: none;
+-  stroke: var(--dsw-alias-label-tertiary);
++  /* Occupancy tint set by the trigger (see context-occupancy.ts); neutral until the warning ramp starts. */
++  stroke: var(--dsh-context-meter-fill, var(--dsw-alias-label-tertiary));
+   stroke-width: 2;
+   stroke-linecap: round;
+ }
+diff --git a/packages/client/ui-conversation/src/client/skeleton/ContextMeter.tsx b/packages/client/ui-conversation/src/client/skeleton/ContextMeter.tsx
+index 4af5274b8a..2c561a8f43 100644
+--- a/packages/client/ui-conversation/src/client/skeleton/ContextMeter.tsx
++++ b/packages/client/ui-conversation/src/client/skeleton/ContextMeter.tsx
+@@ -5,13 +5,14 @@
+  * capacity. */
+ 
+ import { useEffect, useRef, useState } from 'react'
++import type { CSSProperties } from 'react'
+ import { createPortal } from 'react-dom'
+ import type { UseProjection } from '@deepseek-ai/dsh-api-session-controller/client'
+ // Type-only: the `contextPressure` / `contextBreakdown` projection key merges.
+ import type {} from '@deepseek-ai/dsh-token-meter/client'
+ import { Tooltip, useAnchoredPosition, useDismissOnOutsidePointer } from '@deepseek-ai/dsh-client-ui-primitives'
+ import type { ComposerBarProps } from '../contract/slots.ts'
+-import { contextOccupancy } from '../context-occupancy.ts'
++import { contextOccupancy, contextTint } from '../context-occupancy.ts'
+ import css from './ContextMeter.module.css'
+ 
+ /** Ring geometry: 14px viewBox, 2px stroke. */
+@@ -89,6 +90,12 @@ export function ContextMeter({ useProjection, t }: ContextMeterProps) {
+   if (context === null) return null
+   const percent = context.percent
+   const reading = `${percent}%`
++  // The ring leads the automatic compaction rather than reporting it: the pass
++  // runs at 80% occupancy, so the warning has to start before that.
++  const tint = contextTint(percent)
++  const triggerStyle = tint === undefined
++    ? undefined
++    : { color: tint, '--dsh-context-meter-fill': tint } as CSSProperties
+   const [headBefore = '', headAfter = ''] = t('context.aria', { percent: READING_SLOT })
+     .split(READING_SLOT)
+     .map(part => part.trim())
+@@ -111,6 +118,7 @@ export function ContextMeter({ useProjection, t }: ContextMeterProps) {
+         <button
+           type="button"
+           className={css.trigger}
++          style={triggerStyle}
+           aria-label={t('context.aria', { percent: reading })}
+           aria-haspopup="dialog"
+           aria-expanded={open}
 diff --git a/packages/client/ui-conversation/src/client/skeleton/ConversationContent.tsx b/packages/client/ui-conversation/src/client/skeleton/ConversationContent.tsx
 index 15bfdd8732..81ec6235cf 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/ConversationContent.tsx
@@ -357,6 +826,53 @@ index ef95796577..a718c90771 100644
                {sessionId === undefined ? null : renderSlot('conversation.input.plan', { locked })}
              </div>
              {input === undefined || sessionId === undefined
+diff --git a/packages/client/ui-conversation/tests/context-meter.client.spec.tsx b/packages/client/ui-conversation/tests/context-meter.client.spec.tsx
+index 9250c0b480..87d5b45d1c 100644
+--- a/packages/client/ui-conversation/tests/context-meter.client.spec.tsx
++++ b/packages/client/ui-conversation/tests/context-meter.client.spec.tsx
+@@ -1,11 +1,11 @@
+ // @vitest-environment jsdom
+ 
+ import { afterEach, describe, expect, it } from 'vitest'
+-import { cleanup, fireEvent, render } from '@testing-library/react'
++import { cleanup, fireEvent, render, within } from '@testing-library/react'
+ import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+ import { en as commonEn, zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/index.ts'
+ import { ContextMeter, type ContextMeterProps } from '../src/client/skeleton/ContextMeter.tsx'
+-import { contextOccupancy } from '../src/client/context-occupancy.ts'
++import { contextOccupancy, contextTint } from '../src/client/context-occupancy.ts'
+ import css from '../src/client/skeleton/ContextMeter.module.css'
+ import { en, zh } from '../src/client/locales.ts'
+ 
+@@ -109,6 +109,28 @@ describe('ContextMeter', () => {
+     expect(view.queryByRole('dialog')!.textContent).toContain('~3K / 128K')
+   })
+ 
++  it('ramps the ring from amber to red between the warning floor and the critical mark', () => {
++    const triggerStyle = (used: number) => {
++      const view = meter({ contextPressure: { pressureTokens: used, contextWindow: 100_000 } })
++      return within(view.container).getByRole('button').getAttribute('style') ?? ''
++    }
++
++    // The automatic compaction runs at 80% occupancy, so the ramp starts before
++    // it and reaches full red exactly there instead of flipping at one percent.
++    expect(contextTint(69)).toBeUndefined()
++    expect(contextTint(70))
++      .toBe('color-mix(in srgb, var(--dsw-alias-state-error-primary) 0%, var(--dsw-alias-state-warn-primary))')
++    expect(contextTint(75))
++      .toBe('color-mix(in srgb, var(--dsw-alias-state-error-primary) 50%, var(--dsw-alias-state-warn-primary))')
++    expect(contextTint(80))
++      .toBe('color-mix(in srgb, var(--dsw-alias-state-error-primary) 100%, var(--dsw-alias-state-warn-primary))')
++    expect(contextTint(92)).toBe(contextTint(80))
++
++    // Below the floor the trigger keeps the meter's own neutral tone.
++    expect(triggerStyle(50_000)).toBe('')
++    expect(triggerStyle(75_000)).toContain('--dsh-context-meter-fill')
++  })
++
+   it('omits the composition rows while the contextBreakdown projection is absent', () => {
+     const view = meter({ contextPressure: { pressureTokens: 32_000, contextWindow: 128_000 } })
+     fireEvent.click(view.getByRole('button', { name: '上下文已用 25%' }))
 diff --git a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css b/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
 index 0f695de58a..f653271136 100644
 --- a/packages/client/ui-settings-general/src/client/SettingsRoot.module.css
