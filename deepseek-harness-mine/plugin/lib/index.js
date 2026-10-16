@@ -1942,13 +1942,20 @@ export default {
     // 不含任何文件内容，内容在 cancel-<seq>\state.json 里），下次启动拿它把文件前滚回去再销账。
     // 选这条路而不是"退出时前滚"：不依赖退出时机，关得快 / 崩了 / 断电都救得回来。
     const rewindPendingMarkPath = () => path.join(REWIND_STORE, 'pending-cancel.json')
+    // 盘上那笔账的**内存镜像**：自动定局（见下面 session/event 的监听）要在事件回调里立刻问
+    // "这条会话还有没有没定局的回退"，不能每次都去读盘。这个进程是唯一写它的地方，两边同步维护。
+    let rewindPendingState = null
+    // 最近一次自动定局的结果：留给前端显示用（定局失败**绝不允许**只写日志、用户一头雾水）
+    let rewindCommitNote = ''
     async function rewindMarkPending(sessionId, afterSeq) {
+      rewindPendingState = { sessionId: String(sessionId), afterSeq: Number(afterSeq) }
       await mkdir(REWIND_STORE, { recursive: true })
       await writeFile(rewindPendingMarkPath(), JSON.stringify({
         sessionId: String(sessionId), afterSeq: Number(afterSeq), at: Date.now(),
       }))
     }
     async function rewindClearPending() {
+      rewindPendingState = null
       await rm(rewindPendingMarkPath(), { force: true }).catch(() => {})
     }
     /** 启动销账：上次没走完的回退（关软件/崩了）在这里把文件前滚回退之前。 */
@@ -1973,14 +1980,59 @@ export default {
       rewindRecoverOnBoot().catch((err) => trace({ level: 'warn', kind: 'rewind-recover-threw', error: errOf(err) }))
     }, 'dsh-ide: rewind boot recovery')
     // 定局：到这一刻才把分隔条写进会话（可以写在"轮次已经结束"的位置的只有用户消息，见上面那段注释）
-    async function rewindCommitCut(session, afterSeq) {
+    // opts.auto = 这次是"用户发了新消息"引发的自动定局（不是界面上那声喊话）。
+    //   两条路的差别只有两处：① 没内容可砍时，自动路径算"定局完成、销账走人"，手动路径回
+    //   "这里后面已经没有内容了"给用户看；② opts.cutBeforeSeq 给出遮蔽上界 —— 兜底那条路
+    //   是在用户消息**已经落盘**之后补刀，必须砍到它之前，否则会把用户刚说的话一起遮掉。
+    // 定局入口有多个（编辑器那声喊话 / 待办队列钩子 / 兜底），可能前后脚一起到。
+    // 同一会话内串行化：后到的那个直接当无事发生，免得同一次回退写出两条分隔条。
+    const rewindCommitBusy = new Set()
+    async function rewindCommitCut(session, afterSeq, opts) {
+      const key = String(session.id)
+      if (rewindCommitBusy.has(key)) return { ok: true, skipped: true, code: 'commit-in-flight', sessionId: key }
+      rewindCommitBusy.add(key)
+      try {
+        return await rewindCommitCutInner(session, afterSeq, opts)
+      } finally {
+        rewindCommitBusy.delete(key)
+      }
+    }
+    async function rewindCommitCutInner(session, afterSeq, opts) {
+      const auto = !!opts && opts.auto === true
+      const cutBeforeSeq = opts ? opts.cutBeforeSeq : undefined
       const nodes = session.surface.nodes.map((seq) => Number(seq))
       const at = nodes.indexOf(Number(afterSeq))
       if (at < 0) return { ok: false, code: 'anchor-not-on-surface', afterSeq }
-      if (at >= nodes.length - 1) return { ok: false, code: 'nothing-after-checkpoint', afterSeq }
+      // ⚠ 台面上的**位置顺序不等于序号大小**：我们自己写的遮蔽事件是"替换型"，它会被插在被替换的那一格上，
+      //   于是它的序号比左右邻居都大（真机实测：88 后面紧跟 115，而 112、113 反而排在 115 之后）。
+      //   所以遮蔽区间一律按**位置下标**算 —— 拿序号大小去 filter，只要这条会话被回退过一次，
+      //   引擎就会拒（报 `sourceEventSeqs must include every shadowed surface node`）。
+      let endAt = nodes.length - 1
+      if (cutBeforeSeq !== undefined && cutBeforeSeq !== null) {
+        const cutAt = nodes.indexOf(Number(cutBeforeSeq))
+        // 那条消息不在台面上（兜底路径才会走到，正常它一定在）⇒ 当作"砍到末尾"，宁可多砍不漏砍
+        endAt = cutAt < 0 ? nodes.length - 1 : cutAt - 1
+      }
+      // 回退点本身就是末尾（用户退到最后一轮末尾、直接发新消息就是这种）⇒ 没有要砍的东西。
+      // 手动路径照旧回"这里后面已经没有内容了"；自动路径同样算定局完成，销账、不写分隔条。
+      if (endAt <= at) {
+        if (!auto) return { ok: false, code: 'nothing-after-checkpoint', afterSeq }
+        await rm(path.join(rewindStoreDir(String(session.id)), 'cancel-' + afterSeq), { recursive: true, force: true }).catch(() => {})
+        await rewindClearPending()
+        rewindCommitNote = ''
+        trace({
+          level: 'info', kind: 'rewind-commit', msg: 'nothing to cut',
+          sessionId: String(session.id), afterSeq: Number(afterSeq),
+        })
+        return {
+          ok: true, empty: true, sessionId: String(session.id), checkpointSeq: Number(afterSeq),
+          shadowed: [], released: { removed: 0, bytes: 0 },
+        }
+      }
       const startSeq = nodes[at + 1]
-      const endSeq = nodes[nodes.length - 1]
-      const shadowed = nodes.filter((seq) => seq >= startSeq && seq <= endSeq)
+      const endSeq = nodes[endAt]
+      // 被遮蔽的就是这一**段位置**上的全部节点（不是"序号落在某个区间里"的那些）
+      const shadowed = nodes.slice(at + 1, endAt + 1)
       const eventsBefore = session.snapshotEvents()
       const detail = shadowed.map((seq) => {
         const e = eventsBefore.find((x) => Number(x.seq) === seq)
@@ -1997,6 +2049,10 @@ export default {
         surfaceOp: { op: 'replace', startSeq, endSeq },
         sourceEventSeqs: shadowed,
       })
+      // 内存里那笔账**同步**销掉：前端随时可能来问"定了没"，晚一步它就会以为还没定局、
+      // 把用户刚发的那条并进"该藏"的名单里。磁盘上那份交给下面的 rewindClearPending（异步，够用）。
+      rewindPendingState = null
+      rewindCommitNote = ''
       const after = rewindDigest(session)
       await rm(path.join(rewindStoreDir(String(session.id)), 'cancel-' + afterSeq), { recursive: true, force: true }).catch(() => {})
       await rewindClearPending()   // 定局 ⇒ 不再有"取消"这回事，销账
@@ -2012,6 +2068,91 @@ export default {
         expectedDrop: detail.filter((d) => d.reachesRequest).length, before, after, released,
       }
     }
+
+    // ── 定局的接线（2026-10-16 修，这就是"回退没法用"的病根）──────────────────
+    // 口径一个字没变：**用户发出新消息那一刻**才把分隔条落下、此后不可逆。两次报障修的都是
+    // "那一刻到底钉在引擎的哪一步上"。引擎推进一轮的真实顺序（亲读源码 + 真机日志坐实）：
+    //   ① 用户消息进 Agent 的待办队列 —— `agent/inbox/inserted`（此刻会话里还没有它）
+    //   ② 引擎把消息写进会话           —— `user/message`
+    //   ③ 组装这一轮的请求             —— `user/message(time-context)`、`request/header`
+    //   ④ 把请求发给模型
+    // 必须赶在 ③ 之前动手，唯一稳的落点是 ①：
+    //   · 不能在 ② 上动手：那时引擎正处在"正在写会话"的状态里，往里插会被直接拒掉
+    //     （实测报 `session append cannot reenter while another append is being published`）；
+    //   · 更不能"等一拍再插"：等过 ③ 就白砍了 —— 2026-10-16 真机现场就是这样，砍是砍了、
+    //     界面也对，可这一轮模型照样看见同一句话问了三遍，回一句"你重发了"。
+    // 判据抄官方 session-controller 的写法：source.kind === 'user'
+    //（我们自己的分隔条 kind 是 dsh-ide-rewind、官方压缩是 compact-checkpoint，都不会误中）。
+    function rewindCommitOnInbox(agent, message) {
+      const p = rewindPendingState
+      if (p === null) return
+      const source = message && message.source
+      if (!source || String(source.kind) !== 'user') return
+      const session = agent && agent.session
+      if (!session || String(session.id) !== String(p.sessionId)) return
+      // 此刻这条消息还没落进会话 ⇒ "砍到当前末尾"就等于"砍到这条新消息之前"，不需要额外上界。
+      rewindCommitCut(session, p.afterSeq, { auto: true }).then((out) => {
+        if (!out || out.ok !== true) {
+          // 失败留着账、也留着话：前端在"待回退"期间会把它读出来显示（不许静默）
+          rewindCommitNote = String((out && (out.code || out.error)) || 'unknown')
+          trace({
+            level: 'error', kind: 'rewind-auto-commit-failed', sessionId: String(session.id),
+            afterSeq: Number(p.afterSeq), error: rewindCommitNote,
+          })
+          return
+        }
+        trace({
+          level: 'warn', kind: 'rewind-auto-commit', msg: 'committed before the request was assembled',
+          sessionId: String(session.id), afterSeq: Number(p.afterSeq),
+          empty: out.empty === true, shadowed: (out.shadowed || []).length,
+        })
+      }).catch((err) => {
+        rewindCommitNote = errOf(err)
+        trace({ level: 'error', kind: 'rewind-auto-commit-threw', sessionId: String(session.id), error: rewindCommitNote })
+      })
+    }
+    ctx.effect(() => ctx.on('agent/inbox/inserted', ({ agent, message }) => {
+      try { rewindCommitOnInbox(agent, message) } catch (err) {
+        trace({ level: 'error', kind: 'rewind-auto-commit-crashed', error: errOf(err) })
+      }
+    }), 'dsh-ide: 回退定局（用户一发消息就把分隔条落下）')
+    // 兜底：万一某条用户消息不是从待办队列进来的（引擎里还有别的入口能直接写会话），
+    // 就在它落进会话之后补一刀。这条路**必然晚于**这一轮的请求，所以只当保险、不指望它解决问题；
+    // 这里让出一拍也不是"用等待凑时序"，纯粹是绕开引擎的"正在发布、不许插队"限制。
+    ctx.effect(() => ctx.on('session/event', (session, event) => {
+      try {
+        const p = rewindPendingState
+        if (p === null) return
+        if (String(session.id) !== String(p.sessionId)) return
+        if (!event || String(event.type) !== 'user/message') return
+        const source = event.data && event.data.source
+        if (!source || String(source.kind) !== 'user') return
+        const userSeq = Number(event.seq)
+        queueMicrotask(() => {
+          const now = rewindPendingState
+          if (now === null || String(now.sessionId) !== String(p.sessionId)) return
+          trace({
+            level: 'warn', kind: 'rewind-commit-late',
+            msg: 'user message did not pass the inbox hook; cutting one beat late',
+            sessionId: String(session.id), userSeq,
+          })
+          rewindCommitCut(session, now.afterSeq, { auto: true, cutBeforeSeq: userSeq }).then((out) => {
+            if (!out || out.ok !== true) {
+              rewindCommitNote = String((out && (out.code || out.error)) || 'unknown')
+              trace({
+                level: 'error', kind: 'rewind-auto-commit-failed', sessionId: String(session.id),
+                afterSeq: Number(now.afterSeq), error: rewindCommitNote,
+              })
+            }
+          }).catch((err) => {
+            rewindCommitNote = errOf(err)
+            trace({ level: 'error', kind: 'rewind-auto-commit-threw', sessionId: String(session.id), error: rewindCommitNote })
+          })
+        })
+      } catch (err) {
+        trace({ level: 'error', kind: 'rewind-auto-commit-crashed', error: errOf(err) })
+      }
+    }), 'dsh-ide: 回退定局兜底（非待办队列进来的用户消息）')
 
     const handler = async (req, res) => {
       const url = new URL(req.url ?? '/', 'http://dsh-ide')
@@ -3231,17 +3372,138 @@ export default {
             return json(res, 200, { ok: false, error: errOf(err) })
           }
         }
-        // ③ 定局：用户发出新消息时调它 —— 这时才把分隔条写进会话（此后永久不可逆）
+        // ③ 定局：编辑器入口发消息时由前端叫一声（用户平时打字的输入框走引擎侧自动定局，
+        //    见上面 session/event 那个监听）—— 两条路都落到 rewindCommitCut，谁先到谁算
         if (action === '/rewind-commit' && req.method === 'POST') {
           const body = await readBody(req)
           const session = body.sessionId ? sessionsService.get(String(body.sessionId)) : undefined
           if (session === undefined) return json(res, 200, { ok: false, error: 'session-not-found' })
           try {
-            return json(res, 200, await rewindCommitCut(session, Number(body.afterSeq)))
+            const out = await rewindCommitCut(session, Number(body.afterSeq))
+            if (!out || out.ok !== true) rewindCommitNote = String((out && (out.code || out.error)) || 'unknown')
+            return json(res, 200, out)
           } catch (err) {
-            trace({ level: 'error', kind: 'rewind-commit-failed', error: errOf(err) })
+            rewindCommitNote = errOf(err)
+            trace({ level: 'error', kind: 'rewind-commit-failed', error: rewindCommitNote })
+            return json(res, 200, { ok: false, error: rewindCommitNote })
+          }
+        }
+
+        // ③'' 免费复现"用户发出了一条消息"这一刻（自动定局的验收入口；**不触发模型**）──────
+        // 为什么需要它：真机上"发新消息"必然要真调模型（烧钱），而自动定局要认的恰恰是
+        // "一条真实用户消息落进会话"这件事。这里按同样的形状写一条（user/message、
+        // source.kind='user'、append 到台面），等价于官方输入框那一下，但不惊动模型。
+        if (action === '/rewind-probe-user' && req.method === 'POST') {
+          const body = await readBody(req)
+          const session = body.sessionId ? sessionsService.get(String(body.sessionId)) : undefined
+          if (session === undefined) return json(res, 200, { ok: false, error: 'session-not-found' })
+          try {
+            const event = session.append('user/message', {
+              id: 'rewind-probe-user-' + Date.now(), role: 'user',
+              content: [{ type: 'text', text: String(body.text || '（实测）退回之后重新发的一句话') }],
+              source: { kind: 'user' },
+            }, { surfaceOp: 'append' })
+            // ★ 时序判据：引擎紧接着会 append 它"准备这一轮"的事件（真机实测顺序
+            //   user/message → time-context → request/header）。这里**同步**补一条同形状的，
+            //   用序号先后证明我们的分隔条落在了它之前 —— 也就是落在模型请求组装之前。
+            //   这条链不需要模型，零花费；修之前（延后一拍）这里必然是反的。
+            const pendingRightAfter = rewindPendingState !== null
+            const cutEvent = session.snapshotEvents()
+              .filter((e) => String(e.type) === 'user/message'
+                && e.data && e.data.source && e.data.source.kind === REWIND_SOURCE_KIND)
+              .pop()
+            const marker = session.append('user/message', {
+              id: 'rewind-probe-time-' + Date.now(), role: 'user',
+              content: [{ type: 'text', text: 'Time sampled while preparing turn (probe)' }],
+              source: { kind: 'time-context' },
+            }, { surfaceOp: 'append' })
+            // 兜底：万一同步没成，这里再等一会儿（最多 1.5 秒）
+            const deadline = Date.now() + 1500
+            while (rewindPendingState !== null && Date.now() < deadline) {
+              await new Promise((resolve) => setTimeout(resolve, 25))
+            }
+            return json(res, 200, {
+              ok: true, sessionId: String(session.id), userSeq: Number(event.seq),
+              pendingRightAfter, pending: rewindPendingState !== null, note: rewindCommitNote,
+              cutSeq: cutEvent === undefined ? 0 : Number(cutEvent.seq),
+              markerSeq: Number(marker.seq),
+              digest: rewindDigest(session),
+              stillLogged: session.snapshotEvents().map((e) => ({ seq: Number(e.seq), type: String(e.type) })),
+            })
+          } catch (err) {
+            trace({ level: 'error', kind: 'rewind-probe-user-failed', error: errOf(err) })
             return json(res, 200, { ok: false, error: errOf(err) })
           }
+        }
+
+        // ⑤ 免费复现"用户消息进 Agent 待办队列"（定局主路径的验收入口）──────────────────
+        // 走 Agent 的真入口（和界面上发消息同一条路），所以引擎会真的往下跑到"组装这一轮请求"。
+        // 隔离环境里的模型凭证已换成假值 ⇒ 请求必然失败、**零花费**；我们要看的只是"分隔条落在
+        // 请求组装之前没有"。⚠ 只有被平台激活过（有 agent）的会话能用这个口子。
+        if (action === '/rewind-probe-inbox' && req.method === 'POST') {
+          const body = await readBody(req)
+          const id = String(body.sessionId || '')
+          const agent = agentsService.get(id)
+          if (!agent) return json(res, 200, { ok: false, error: 'agent-not-found', sessionId: id })
+          const message = {
+            id: 'rewind-probe-inbox-' + Date.now(), role: 'user',
+            content: [{ type: 'text', text: String(body.text || '（实测）走待办队列的一句话') }],
+            source: { kind: 'user' },
+          }
+          agent.followup(message)
+          return json(res, 200, { ok: true, sessionId: id, messageId: message.id })
+        }
+        // ⑤' 时序体检：分隔条 / 这一轮的请求头，谁的序号在前（前者必须在后者的前面）
+        if (action === '/rewind-probe-order' && req.method === 'POST') {
+          const body = await readBody(req)
+          const session = body.sessionId ? sessionsService.get(String(body.sessionId)) : undefined
+          if (session === undefined) return json(res, 200, { ok: false, error: 'session-not-found' })
+          try {
+            const events = session.snapshotEvents()
+            const lastSeqOf = (pred) => {
+              const hit = events.filter(pred).pop()
+              return hit === undefined ? 0 : Number(hit.seq)
+            }
+            const kindIs = (e, kind) => e.data && e.data.source && String(e.data.source.kind) === kind
+            const cutSeqNum = lastSeqOf((e) => String(e.type) === 'user/message' && kindIs(e, REWIND_SOURCE_KIND))
+            // ⚠ 入队那一刻要取"分隔条之前最近的那次"：引擎取走消息时也会记一次 inbox/spliced，
+            // 取"最后一次"就会拿成取走那次（那已经在分隔条之后了）。
+            const splicedBeforeCut = cutSeqNum > 0
+              ? events.filter((e) => String(e.type) === 'agent/inbox/spliced' && Number(e.seq) < cutSeqNum).pop()
+              : undefined
+            return json(res, 200, {
+              ok: true, sessionId: String(session.id),
+              cutSeq: cutSeqNum,
+              // 这一轮的基准点：用户消息入队 → 我们落分隔条 → 引擎开工（turn/start），
+              // 正序应当就是 spliced（入队那次）< cut < turn。请求头只在真调到模型那一步才写，
+              // 假凭证环境下可能永远不出现，所以不能拿它当唯一基准。
+              splicedSeq: splicedBeforeCut === undefined ? 0 : Number(splicedBeforeCut.seq),
+              splicedLastSeq: lastSeqOf((e) => String(e.type) === 'agent/inbox/spliced'),
+              turnSeq: lastSeqOf((e) => String(e.type) === 'turn/start'),
+              headSeq: lastSeqOf((e) => String(e.type) === 'request/header'),
+              pending: rewindPendingState !== null, note: rewindCommitNote,
+              digest: rewindDigest(session),
+            })
+          } catch (err) {
+            trace({ level: 'error', kind: 'rewind-probe-order-failed', error: errOf(err) })
+            return json(res, 200, { ok: false, error: errOf(err) })
+          }
+        }
+
+        // ③' 状态查询：前端在"待回退"期间靠它确认"后端有没有替我定局 / 定局失败没有"。
+        //     为什么非要问：自动定局发生在引擎侧，界面那半自己不知道账销没销；不问就会一直
+        //     停在"暂不显示"里（2026-10-16 那次整轮对话在界面上消失就是这么来的）。
+        if (action === '/rewind-state') {
+          const sid = String(q.get('sessionId') || '')
+          const p = rewindPendingState
+          const mine = p !== null && (sid === '' || String(p.sessionId) === sid)
+          return json(res, 200, {
+            ok: true,
+            pending: mine,
+            sessionId: mine ? String(p.sessionId) : null,
+            afterSeq: mine ? Number(p.afterSeq) : null,
+            note: mine ? rewindCommitNote : '',
+          })
         }
 
         // ── 对话回退：实测用的"让引擎真跑一次改文件工具"（2026-10-14）──────────

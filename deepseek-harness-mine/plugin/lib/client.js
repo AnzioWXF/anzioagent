@@ -9079,10 +9079,13 @@ window.__ModuleLoader__.load({
         setSessionFace(binding.session);
         // 对话来自事件窗口（eventSource），元数据（openState/running）来自会话快照 —— 两边都订阅
         var update = function () {
+          var win = binding.eventSource && binding.eventSource.getSnapshot();
           setConv(projectConversation(
-            binding.eventSource && binding.eventSource.getSnapshot(),
+            win,
             binding.session.getSnapshot(),
           ));
+          // 对话回退："用户已经发出新消息"这件事从**会话事件流**里认（唯一信号，不去猜 DOM）
+          rewindWatchWindow(win, current);
         };
         update();
         var offs = [];
@@ -10123,37 +10126,106 @@ window.__ModuleLoader__.load({
     }
 
     // ── 对话回退：待回退状态（**只在内存里**，关软件自然丢 = 口径里的"关软件默认取消"）────
-    // 口径（用户定的）：点确认**不等于**定局 —— 退完之后后面那段只是"暂不显示"，**还能取消**；
-    // **发出新消息那一刻**才往会话里写分隔条（永久定局）。这里管的就是"界面那半"：
-    //   ① 把检查点之后的对话行藏起来（日志一个字没改过，恢复只需撤掉隐藏）
-    //   ② 面板给一条「已恢复到检查点」+ 取消
-    //   ③ 发新消息时叫后端把分隔条落下（此后由"日志驱动的隐藏"接手）
+    // 结构照 VSCode 那套（本地源码 1.138 亲读 chatEditing*）：回退只动一个"游标"，对话数据一个字不改；
+    // "回退点之后看不见"是一层**视图过滤**；真正永久砍掉发生在**发出新消息那一刻**。
+    // 界面这半只有两条规则：
+    //   ① 待回退期间：轮次排在回退点之后的对话行藏起来（日志没改过，撤掉隐藏就恢复）
+    //   ② 会话里一冒出新东西（用户发出了新消息），后端此刻已在"发请求之前"把分隔条落下 ⇒ 收摊：
+    //      解除隐藏、撤掉「已恢复到检查点」
+    // ⚠ 判据只有一个（轮次）、信号只有一个（会话事件流）。上一版在这里堆了"名单 / 收手 / 回头问
+    //   后端"三层，两次翻车都出在那套接缝上 —— 别再加回去。
     var rewindPending = null
     var rewindListeners = []
     var rewindHidden = []
     var rewindObserver = null
+    // 事件窗口里见过的最大序号（没在待回退状态时一直跟着更新）：它就是"进入待回退那一刻"的基线，
+    // 之后只要冒出更大的序号，就说明会话有新内容了（用户发了消息）。
+    var rewindSeenSeq = 0
+    // 定局失败的原因（后端给的）：挂在「已恢复到检查点」那条上显示，绝不静默
+    var rewindFailNote = ''
+    function rewindNotify() {
+      for (var i = 0; i < rewindListeners.length; i++) { try { rewindListeners[i]() } catch (e) { /* 忽略 */ } }
+    }
     function rewindSubscribe(fn) {
       rewindListeners.push(fn)
       return function () { rewindListeners = rewindListeners.filter(function (f) { return f !== fn }) }
+    }
+    // 藏行的判据只有一条：这一行的轮次排在回退点之后。
+    // ⚠ 用户新发的那条消息也满足它，所以"收摊"必须够快 —— 靠下面的会话事件流（真信号），
+    //   不靠任何 DOM 猜测。
+    function rewindShouldHide(el) {
+      if (rewindPending === null) return false
+      return Number(el.getAttribute('data-chat-turn')) > rewindPending.turn
     }
     function rewindHideRows() {
       var out = []
       var rows = document.querySelectorAll('[data-chat-node-key][data-chat-turn]')
       for (var i = 0; i < rows.length; i++) {
-        var t = Number(rows[i].getAttribute('data-chat-turn'))
-        if (rewindPending !== null && t > rewindPending.turn && rows[i].style.display !== 'none') {
+        if (rewindShouldHide(rows[i]) && rows[i].style.display !== 'none') {
           rows[i].style.display = 'none'
           out.push(rows[i])
         }
       }
       return out
     }
+    function rewindReleaseHidden() {
+      for (var i = 0; i < rewindHidden.length; i++) { try { rewindHidden[i].style.display = '' } catch (e) { /* 节点没了 */ } }
+      rewindHidden = []
+    }
+    function rewindStopObserver() {
+      if (rewindObserver !== null) { try { rewindObserver.disconnect() } catch (e) { /* 忽略 */ } rewindObserver = null }
+    }
+    function rewindMaxSeq(entries) {
+      var max = 0
+      for (var i = 0; i < entries.length; i++) {
+        var ev = entries[i] && entries[i].event
+        if (ev && Number(ev.seq) > max) max = Number(ev.seq)
+      }
+      return max
+    }
+    /** 会话事件窗口每更新一次就过一眼。这是"收摊"的**唯一信号**：
+     *  · 没在待回退状态时：把窗口最大序号记成基线（进入待回退那一刻的基线就是它）；
+     *  · 在待回退状态时：冒出"比基线更晚的真实用户消息"或"我们自己的分隔条" = 用户已经发出去了。
+     *    后端在那一刻（消息进待办队列、还没落进会话、更没组装请求）就把分隔条落下了，
+     *    所以界面这时收摊：解除隐藏、撤掉「已恢复到检查点」。
+     *  顺手问一次后端拿失败原因（就这一次，不是轮询）。 */
+    function rewindWatchWindow(win, sessionId) {
+      var entries = (win && win.entries) || []
+      if (rewindPending === null) {
+        rewindSeenSeq = rewindMaxSeq(entries)
+        return
+      }
+      if (String(rewindPending.sessionId) !== String(sessionId || '')) return
+      var hit = false
+      for (var i = 0; i < entries.length; i++) {
+        var ev = entries[i] && entries[i].event
+        if (!ev || String(ev.type) !== 'user/message') continue
+        if (Number(ev.seq) <= Number(rewindSeenSeq)) continue
+        var kind = String(((ev.data && ev.data.source) || {}).kind || '')
+        // 只认这两类：真实用户消息（用户发出了新消息）· 我们自己的分隔条（定局落下）。
+        // 别的系统注入（runtime-context / system-reminder 之类）不算数。
+        if (kind === 'user' || kind === 'dsh-ide-rewind') { hit = true; break }
+      }
+      if (!hit) return
+      var sid = String(rewindPending.sessionId)
+      rewindFailNote = ''
+      setRewindPending(null)
+      setStatusText('已从检查点重新开始：后面那段已经永久丢弃')
+      trace('ui', 'info', 'rewind-auto-committed', { sessionId: sid })
+      apiGet('/rewind-state', { sessionId: sid }).then(function (r) {
+        var note = String((r && r.note) || '')
+        if (note === '') return
+        rewindFailNote = note
+        setStatusText('回退没能定局：' + note)
+        trace('ui', 'error', 'rewind-auto-commit-failed', { error: note, sessionId: sid })
+        rewindNotify()
+      })
+    }
     // 虚拟滚动会反复重造行 ⇒ 待回退期间挂个观察者一直藏；取消/定局后把藏过的放出来
     function rewindApplyHide() {
       if (rewindPending === null) {
-        for (var i = 0; i < rewindHidden.length; i++) { try { rewindHidden[i].style.display = '' } catch (e) { /* 节点没了 */ } }
-        rewindHidden = []
-        if (rewindObserver !== null) { try { rewindObserver.disconnect() } catch (e) { /* 忽略 */ } rewindObserver = null }
+        rewindReleaseHidden()
+        rewindStopObserver()
         return
       }
       var els = rewindHideRows()
@@ -10171,17 +10243,31 @@ window.__ModuleLoader__.load({
     }
     function setRewindPending(next) {
       rewindPending = next
+      if (next !== null) rewindFailNote = ''   // 新的一次回退：上一轮的失败提示不带到这一轮
       rewindApplyHide()
-      for (var i = 0; i < rewindListeners.length; i++) { try { rewindListeners[i]() } catch (e) { /* 忽略 */ } }
+      rewindNotify()
     }
-    // 定局：发新消息时调它（不传会话 id —— 待回退状态自己记着是哪条；切走会话也照样落在那条上）
+    // 定局：编辑器里「问 Agent」那条路发消息时由前端叫一声。
+    // ⚠ 用户平时打字的输入框是平台原生的，根本不经过这里 —— 那条路由后端监听会话事件自动定局
+    //   （见 host 半的注释）。两条路都落到同一个后端接口，谁先到谁算，重复的会被串行闸挡掉。
     function rewindCommitIfPending() {
       var p = rewindPending
       if (p === null) return
-      setRewindPending(null)
       apiPost('/rewind-commit', { sessionId: String(p.sessionId), afterSeq: p.afterSeq })
         .then(function (r) {
-          if (!r || r.ok !== true) trace('ui', 'warn', 'rewind-commit-failed', { error: String((r && (r.error || r.code)) || '') })
+          if (r && r.ok === true) { rewindFailNote = ''; setRewindPending(null); return }
+          if (r && r.code === 'nothing-after-checkpoint') { setRewindPending(null); return }
+          // 失败：账和后端都还留着，把原因摆到用户眼前（以前这里只写一行日志，用户什么都看不到）
+          rewindFailNote = String((r && (r.error || r.code)) || '未知')
+          setStatusText('回退没能定局：' + rewindFailNote)
+          trace('ui', 'error', 'rewind-commit-failed', { error: rewindFailNote })
+          rewindNotify()
+        })
+        .catch(function () {
+          rewindFailNote = '网络'
+          setStatusText('回退没能定局：网络')
+          trace('ui', 'error', 'rewind-commit-failed', { error: 'network' })
+          rewindNotify()
         })
     }
 
@@ -10330,7 +10416,8 @@ window.__ModuleLoader__.load({
           .then(function (r) {
             setBusy(false);
             setRewindPending(null);
-            if (!r || r.ok !== true) setNote('撤销没成：' + String((r && r.error) || '未知'));
+            if (!r || r.ok !== true) { setNote('撤销没成：' + String((r && r.error) || '未知')); return; }
+            rewindFailNote = '';   // 自己取消了 ⇒ 上一轮的定局失败提示一并撤掉
           })
           .catch(function () { setBusy(false); setRewindPending(null); setNote('撤销没成：网络'); });
       }
@@ -10343,7 +10430,8 @@ window.__ModuleLoader__.load({
             title: '把文件和对话都还原到刚才的样子',
             onClick: cancel,
           }, busy ? '正在撤销…' : '取消这次回退'),
-          note ? h('span', { className: 'dside-rewind-note' }, note) : null,
+          // 后端定局失败的原因也挂在这一条上（以前只写日志，界面上什么都看不到）
+          (note || rewindFailNote) ? h('span', { className: 'dside-rewind-note' }, note || rewindFailNote) : null,
         );
       }
       return h('div', { className: 'dside-rewind' + (armed ? ' armed' : ''), 'data-rewind-turn': String(turn), 'data-rewind-seq': String(props.seq) },

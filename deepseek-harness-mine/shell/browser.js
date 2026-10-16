@@ -22,6 +22,10 @@ const BROWSER_PRELOAD = path.join(__dirname, 'browser-preload.js')
 // VSCode 同款白底：视图还没渲染出内容时先铺白，配合"藏起来前先截图"避免闪黑
 const BLANK_COLOR = '#FFFFFF'
 
+// 页面 id 的协议头。壳里的页面 id 同时是编辑器标签的**伪路径**（设计定稿 §3）：
+// `browser://agent-<时间戳>-<序号>`（Agent 开的，见 bridge.js）或 `browser://browser-<序号>-<时间戳>`（人开的）。
+const VIEW_ID_SCHEME = 'browser://'
+
 // 地址栏输入 → 可加载的 URL。刻意不做搜索（设计定稿 §7：第一版只做输入 URL + 回车）。
 // 没有协议头时一律补 https://，本机地址例外（localhost:3000 这种补 https 会连不上）。
 function normalizeUrl(raw) {
@@ -156,6 +160,20 @@ function installBrowserHost(win) {
     try { win.contentView.removeChildView(entry.view) } catch { /* 窗口已关 */ }
     try { entry.view.webContents.close() } catch { /* 忽略 */ }
     return { ok: true }
+  }
+
+  // ── 页面 id 归一（2026-10-16）──────────────────────────────────────────────
+  // 页面 id 长得像网址（`browser://…`），调用方（尤其模型）常只写后半截 ⇒ 下游按原样查不到，
+  // 报出来的却是"找不到页面 / 可能已关闭"，把排查引去视图生命周期（真事故：同一个错连撞 12 次）。
+  // 归一放在这一层：entries 就是权威名单、同步可查，而且**所有**吃 id 的入口都能用上 —— 尤其是
+  // 不经驱动层的 page.close（去掉了这一处，短名会静默假装关成功、页面其实还活着）。
+  // ⚠ 只补协议头这一种写法，不做模糊 / 后缀匹配 —— 对不上宁可报错，也不能落到别的页面上去。
+  // ⚠ 不认识的一律原样返回：报错交给下游（驱动层会把当前可用的 id 一并列出来）。
+  function canonicalId(id) {
+    const raw = String(id || '')
+    if (entries.has(raw)) return raw
+    if (raw !== '' && raw.indexOf(VIEW_ID_SCHEME) !== 0 && entries.has(VIEW_ID_SCHEME + raw)) return VIEW_ID_SCHEME + raw
+    return raw
   }
 
   // 藏起来之前先截图：原生视图一消失，页面那块会露出下面的 DOM（往往是空白的编辑器区），
@@ -343,7 +361,7 @@ function installBrowserHost(win) {
     try { win.webContents.send('anzio-browser:key', Object.assign({ id: entry.id }, payload)) } catch { /* 窗口关闭中 */ }
   })
 
-  return { create, destroy, setBounds, setVisible, entries, sendToView: sendToView, sendAction: sendAction, phantom: () => ({ on: phantom.on, speed: phantom.speed }) }
+  return { create, destroy, canonicalId, setBounds, setVisible, entries, sendToView: sendToView, sendAction: sendAction, phantom: () => ({ on: phantom.on, speed: phantom.speed }) }
 }
 
 module.exports = { installBrowserHost, normalizeUrl, PARTITION }

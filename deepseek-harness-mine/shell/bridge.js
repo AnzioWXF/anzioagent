@@ -94,6 +94,11 @@ function startBridge(deps) {
       try { payload = JSON.parse(body || '{}') } catch { fail(400, 'bad json'); return }
       const method = String((payload && payload.method) || '')
       const args = (payload && payload.args) || {}
+      // 页面 id 归一只在这一处做（补 `browser://` 前缀，见 browser.js 的 canonicalId）：页面 id 长得
+      // 像网址，调用方（尤其模型）常只写后半截 ⇒ 下游按原样查不到，报出来的却是"找不到页面"。
+      // ⚠ 规则写在一处才叫规则：所有 page.* 都从这儿过，别在每个 handler 里各抄一遍
+      //（2026-10-16 先抄成了 18 处，当天收回）。
+      if (args.id !== undefined) args.id = host.canonicalId(args.id)
       const fn = handlers[method]
       if (!fn) { fail(404, 'unknown method: ' + method); return }
       const started = Date.now()

@@ -3,6 +3,8 @@
 const { app, BrowserWindow, Menu, ipcMain, dialog, nativeTheme, shell, globalShortcut } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const http = require('http')
+const { execSync } = require('child_process')
 const { BackendManager } = require('./backend.js')
 const { Updater } = require('./updater.js')
 const { installBrowserHost } = require('./browser.js')
@@ -48,10 +50,71 @@ const LOADING_HTML = path.join(__dirname, 'loading.html')
 // 自己带过 --remote-debugging-port 的（调试/自动化）不重复加，并以传进来的端口为准 ——
 // 否则两个端口并存，驱动层会连错。
 const ARGV_DEBUG = process.argv.find((a) => String(a).startsWith('--remote-debugging-port'))
-const BROWSER_DEBUG_PORT = ARGV_DEBUG
+const WANT_PORT = ARGV_DEBUG
   ? Number(String(ARGV_DEBUG).split('=')[1])
   : Number(process.env.ANZIO_BROWSER_DEBUG_PORT || 9333)
+
+// ── 端口被占就自动换一个（2026-10-16）─────────────────────────────────────────
+// 病根：端口是 Chromium **启动那一刻**绑的，壳只交开关、从不看结果 ⇒ 一旦被占，Chromium 静默
+// 放弃，天工看起来一切正常、只有浏览器驱动是死的。占它的往往**不是活着的天工进程**：上一个
+// 实例退出时把监听 socket 的句柄留住了（2026-10-16 实测：LISTENING 记的 PID 在进程表里已经
+// 查不到），所以重启天工甩不掉它 —— 只能自己先探、被占就换。
+// 探法用 netstat（同步、零依赖、Windows 自带）：只认 LISTENING，别的状态（TIME_WAIT 等）
+// 不影响绑定，不算占用。⚠ 探测本身绝不能拦住启动：查不出来就当没占用（退回改动前的行为）。
+const PORT_SPAN = 20                                  // 被占时往后找多少个端口
+function usedTcpPorts() {
+  const used = new Set()
+  try {
+    const out = execSync('netstat -ano -p TCP', { encoding: 'utf8', windowsHide: true, timeout: 8000 })
+    for (const line of String(out).split(/\r?\n/)) {
+      const cols = line.trim().split(/\s+/)
+      if (cols.length < 4 || cols[0] !== 'TCP' || cols[3] !== 'LISTENING') continue
+      const port = Number(cols[1].slice(cols[1].lastIndexOf(':') + 1))
+      if (port > 0) used.add(port)
+    }
+  } catch { /* 查不到就当作没有占用 */ }
+  return used
+}
+const PORT_PICK = (() => {
+  if (ARGV_DEBUG) return { port: WANT_PORT, reason: '命令行指定，壳不改' }
+  const used = usedTcpPorts()
+  if (!used.has(WANT_PORT)) return { port: WANT_PORT, reason: null }
+  for (let p = WANT_PORT + 1; p <= WANT_PORT + PORT_SPAN; p++) {
+    if (!used.has(p)) return { port: p, reason: '首选 ' + WANT_PORT + ' 被占（多是被上一个实例留下的无主监听端口占着）' }
+  }
+  return { port: WANT_PORT, reason: WANT_PORT + ' 起连续 ' + PORT_SPAN + ' 个端口都被占，只能用首选' }
+})()
+const BROWSER_DEBUG_PORT = PORT_PICK.port
 if (!ARGV_DEBUG) app.commandLine.appendSwitch('remote-debugging-port', String(BROWSER_DEBUG_PORT))
+
+// 壳的启动痕迹落盘：app-home\logs\shell-boot.log。
+// 为什么不用 console.log：装好之后天工是双击快捷方式起的，stdout 没人接，控制台里那些话全丢。
+function noteBoot(line) {
+  try {
+    const dir = path.join(DSH_HOME, 'logs')
+    fs.mkdirSync(dir, { recursive: true })
+    fs.appendFileSync(path.join(dir, 'shell-boot.log'),
+      '[' + new Date().toISOString() + '] pid=' + process.pid + ' ' + line + '\n')
+  } catch { /* 写不进去也不能拦住启动 */ }
+}
+// 日志只在出事时写（2026-10-16 精简）：正常启动写两行只是把自己的日志刷成噪音，真出事时反倒难找。
+if (PORT_PICK.reason !== null) noteBoot('浏览器调试端口 = ' + BROWSER_DEBUG_PORT + '（' + PORT_PICK.reason + '）')
+
+// 起后自检（同一天加的）：把"静默失败"变成日志里有痕 —— 端口上有监听却没人应答（就是上面说的
+// 无主端口）时，Chromium 不会报任何错，只有驱动连不上。自检失败不影响启动，纯留证。
+setTimeout(() => {
+  const req = http.get({ host: '127.0.0.1', port: BROWSER_DEBUG_PORT, path: '/json/version', timeout: 3000 }, (res) => {
+    try { res.resume() } catch { /* 忽略 */ }
+    if (res.statusCode !== 200) noteBoot('⚠ CDP 自检异常：HTTP ' + res.statusCode + '（端口 ' + BROWSER_DEBUG_PORT + '）—— 浏览器驱动会不可用')
+  })
+  req.on('timeout', () => {
+    try { req.destroy() } catch { /* 忽略 */ }
+    noteBoot('⚠ CDP 自检超时：端口 ' + BROWSER_DEBUG_PORT + ' 有监听但没人应答 —— 浏览器驱动会不可用')
+  })
+  req.on('error', (e) => {
+    noteBoot('⚠ CDP 自检失败：' + ((e && e.message) || e) + '（端口 ' + BROWSER_DEBUG_PORT + '）—— 浏览器驱动会不可用')
+  })
+}, 3000)
 
 let mainWindow = null
 let backend = null

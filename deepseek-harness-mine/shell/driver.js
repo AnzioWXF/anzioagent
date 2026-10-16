@@ -128,7 +128,14 @@ function createDriver(opts) {
     await new Promise((r) => setTimeout(r, 300))     // 刚建的标签可能缓存里还没有，再刷一次
     m = await refreshMap()
     if (m.has(want)) { touchIdle(); return m.get(want) }
-    throw new Error('找不到这个浏览器页面（可能已关闭，或视图还没建好）：' + want)
+    // 报错必须说清"你传的是什么、现在有哪些可用的"（2026-10-16 改）：
+    // 旧文案只猜"可能已关闭，或视图还没建好"，把调用方引去查视图生命周期，而真因是它自己传错了名字；
+    // 名单摆出来，错在哪一眼可见，也能直接拿正确的 id 接着干活。
+    const available = Array.from(m.keys())
+    const list = available.length
+      ? '\n当前打开的页面 id：\n' + available.map((k) => '  · ' + k).join('\n')
+      : '\n当前一个内置浏览器页面都没开，先用 browser_open_page 开一个。'
+    throw new Error('找不到这个浏览器页面：你传的是「' + want + '」' + list)
   }
 
   async function safeTitle(page) {
