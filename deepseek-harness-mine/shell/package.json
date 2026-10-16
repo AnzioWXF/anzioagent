@@ -1,69 +1,69 @@
 {
-    "name":  "dsh-ide-desktop",
-    "version":  "1.5.51",
-    "description":  "天工 (Tiangong) - independent DSH desktop app with embedded backend",
-    "main":  "main.js",
-    "author":  "DSH",
-    "license":  "MIT",
-    "scripts":  {
-                    "start":  "electron .",
-                    "test":  "node test-backend.js",
-                    "dist":  "electron-builder --win"
-                },
-    "build":  {
-                  "appId":  "ai.deepseek.dsh-ide",
-                  "productName":  "天工",
-                  "directories":  {
-                                      "output":  "release"
-                                  },
-                  "asar":  false,
-                  "files":  [
-                                "main.js",
-                                "backend.js",
-                                "updater.js",
-                                "preload.js",
-                                "browser.js",
-                                "browser-preload.js",
-                                "driver.js",
-                                "bridge.js",
-                                "error.html",
-                                "loading.html",
-                                "assets/**"
-                            ],
-                  "win":  {
-                              "icon":  "assets/icon.ico",
-                              "target":  [
-                                             {
-                                                 "target":  "nsis",
-                                                 "arch":  [
-                                                              "x64"
-                                                          ]
-                                             },
-                                             {
-                                                 "target":  "portable",
-                                                 "arch":  [
-                                                              "x64"
-                                                          ]
-                                             }
-                                         ]
-                          },
-                  "nsis":  {
-                               "oneClick":  false,
-                               "allowToChangeInstallationDirectory":  true,
-                               "createDesktopShortcut":  true,
-                               "shortcutName":  "天工"
-                           }
-              },
-    "devDependencies":  {
-                            "electron":  "^43.4.1",
-                            "electron-builder":  "^26.15.3"
-                        },
-    "pnpm":  {
-                 "overrides":  {
-                                   "@electron/get":  "5.1.0"
-                               }
-             },
-    "dependencies":  {
-                         "playwright-core":  "^1.64.0"
-                     }
+  "name": "dsh-ide-desktop",
+  "version": "1.5.53",
+  "description": "天工 (Tiangong) - independent DSH desktop app with embedded backend",
+  "main": "main.js",
+  "author": "DSH",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test-backend.js",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "ai.deepseek.dsh-ide",
+    "productName": "天工",
+    "directories": {
+      "output": "release"
+    },
+    "asar": false,
+    "files": [
+      "main.js",
+      "backend.js",
+      "updater.js",
+      "preload.js",
+      "browser.js",
+      "browser-preload.js",
+      "driver.js",
+      "bridge.js",
+      "error.html",
+      "loading.html",
+      "assets/**"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "天工"
+    }
+  },
+  "devDependencies": {
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "@electron/get": "5.1.0"
+    }
+  },
+  "dependencies": {
+    "playwright-core": "^1.64.0"
+  }
 }

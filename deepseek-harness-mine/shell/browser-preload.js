@@ -68,7 +68,7 @@ window.addEventListener('keydown', (event) => {
   let raf = 0
   let fadeTimer = null
   let dragging = false
-  const state = { visible: false, moves: 0, presses: 0, ripples: 0, lastCommand: '' }
+  const state = { visible: false, moves: 0, presses: 0, ripples: 0, lastCommand: '', lastPress: null }
 
   function ensure() {
     if (root && root.isConnected) return true
@@ -82,10 +82,9 @@ window.addEventListener('keydown', (event) => {
       cursor.id = 'anzio-phantom-cursor'
       cursor.setAttribute('style', 'position:absolute;left:0;top:0;transform:translate3d(-60px,-60px,0);'
         + 'filter:drop-shadow(0 0 3px rgba(59,130,246,.85));transition:transform .09s ease;')
-      // 箭头本体（白色填充 + 品牌色描边）+ 一圈光环 —— 目的是**和真人鼠标区分开**：
-      // 真人指针恰好停在这块区域时，屏幕上会同时有两个指针，必须一眼能认出哪个是幻影。
+      // 箭头本体（白色填充 + 品牌色描边）。区分幻影与真人鼠标靠描边色 + 点击波纹 + 拖拽虚线就够；
+      // 曾经在箭头外面再套一圈常驻光环，用户反馈"一直粘在光标上"、浅色页面上也基本看不见，已去掉（2026-10-15）
       cursor.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">'
-        + '<circle cx="12" cy="12" r="10" fill="none" stroke="' + BRAND + '" stroke-opacity=".28" stroke-width="1.5"/>'
         + '<path d="M6 4 L6 19 L10.2 15.2 L12.9 21 L15.4 19.9 L12.5 14.1 L18.2 13.4 Z" '
         + 'fill="#fff" stroke="' + BRAND + '" stroke-width="1.4" stroke-linejoin="round"/></svg>'
       trail = document.createElement('div')
@@ -146,7 +145,9 @@ window.addEventListener('keydown', (event) => {
     }
     raf = requestAnimationFrame(step)
   }
+  // ⚠ 非法坐标一律不进指针位置：位置一旦变成 NaN，后面所有动作都画不出来（2026-10-16 事故的根）
   function place(x, y) {
+    if (!isFinite(x) || !isFinite(y)) return
     pos = { x: x, y: y }
     try { cursor.style.transform = 'translate3d(' + x + 'px,' + y + 'px,0)' + (dragging ? ' scale(.92)' : '') } catch { /* 忽略 */ }
   }
@@ -164,13 +165,22 @@ window.addEventListener('keydown', (event) => {
 
   function ripple(x, y, strong) {
     if (!ensure() || !on) return
+    // 坐标必须是有限数：NaN 会让 left/top 整条失效、圈静默掉到左上角（2026-10-15 真机就是这样）——
+    // 与其画错地方，不如不画
+    if (!isFinite(x) || !isFinite(y)) return
     try {
-      const ring = document.createElement('div')
       const size = strong ? 46 : 34
-      ring.setAttribute('style', 'position:absolute;left:' + (x - size / 2) + 'px;top:' + (y - size / 2) + 'px;'
-        + 'width:' + size + 'px;height:' + size + 'px;border-radius:50%;border:2px solid ' + BRAND + ';'
+      // 两层：外层只管位置（和指针用同一套 transform 定位，坐标系必然一致），内层只管扩散动画。
+      // 挤在一层里的话，扩散的 scale 会把定位的 translate 覆盖掉（transform 是同一个属性）
+      const at = document.createElement('div')
+      at.setAttribute('style', 'position:absolute;left:0;top:0;transform:translate3d(' + x + 'px,' + y + 'px,0);')
+      const ring = document.createElement('div')
+      ring.setAttribute('style', 'width:' + size + 'px;height:' + size + 'px;'
+        + 'margin:' + (-size / 2) + 'px 0 0 ' + (-size / 2) + 'px;box-sizing:border-box;'
+        + 'border-radius:50%;border:2px solid ' + BRAND + ';'
         + 'opacity:.55;transform:scale(.35);transition:transform .42s cubic-bezier(.2,.7,.3,1),opacity .42s ease;')
-      root.appendChild(ring)
+      at.appendChild(ring)
+      root.appendChild(at)
       state.ripples += 1
       requestAnimationFrame(function () {
         try {
@@ -178,13 +188,19 @@ window.addEventListener('keydown', (event) => {
           ring.style.opacity = '0'
         } catch { /* 忽略 */ }
       })
-      setTimeout(function () { try { ring.remove() } catch { /* 忽略 */ } }, 520)
+      setTimeout(function () { try { at.remove() } catch { /* 忽略 */ } }, 520)
     } catch { /* 忽略 */ }
   }
 
   function press(x, y, button) {
     if (!on) return
-    if (typeof x === 'number' && typeof y === 'number') moveTo(x, y, 0)
+    // ⚠ 坐标缺失时**绝不能**拿去挪指针：NaN 会把指针位置本身写坏，之后整场动作都画不出来
+    //   （2026-10-16 真机事故：老版表现为"点击波纹跑到左上角"，新版表现为"波纹彻底消失"，同一个病根）
+    const has = isFinite(x) && isFinite(y)
+    if (has) moveTo(x, y, 0)
+    // 留痕（写在 DOM 上，方便从页面外面读）：这次按压到底带没带坐标、带的是多少
+    try { cursor.dataset.lastPress = has ? (Math.round(x) + ',' + Math.round(y)) : 'no-point' } catch { /* 忽略 */ }
+    state.lastPress = has ? { x: Math.round(x), y: Math.round(y) } : null
     try { cursor.style.transform = 'translate3d(' + pos.x + 'px,' + pos.y + 'px,0) scale(.82)' } catch { /* 忽略 */ }
     ripple(pos.x, pos.y, button === 'right')
     state.presses += 1
@@ -252,7 +268,7 @@ window.addEventListener('keydown', (event) => {
   try {
     window.__anzioPhantom = {
       version: 1,
-      state: function () { return { on: on, speed: speed, x: Math.round(pos.x), y: Math.round(pos.y), visible: state.visible, moves: state.moves, presses: state.presses, ripples: state.ripples, lastCommand: state.lastCommand } },
+      state: function () { return { on: on, speed: speed, x: Math.round(pos.x), y: Math.round(pos.y), visible: state.visible, moves: state.moves, presses: state.presses, ripples: state.ripples, lastCommand: state.lastCommand, lastPress: state.lastPress } },
       command: command,
     }
   } catch { /* 非浏览器环境 */ }

@@ -163,15 +163,18 @@ function createDriver(opts) {
       for (const ch of s) recordKey(ch, 'press')
     } catch { /* 忽略 */ }
   }
+  // 把指针挪到某个元素上，**返回该点的视口坐标**（幻影关着 / 取不到位置 → null，调用方据此跳过演的部分）。
+  // 坐标要返回出去：按压指令得把坐标一起带上（见 press 的用法），否则页面只能靠自己记的指针位置画波纹
   async function pointAt(id, page, selector) {
-    if (!phantom || !phantom.enabled()) return false
+    if (!phantom || !phantom.enabled()) return null
     try {
       const box = await page.locator(String(selector)).first().boundingBox({ timeout: 4000 })
-      if (!box) return false
-      const ms = phantom.send(String(id), { type: 'move', x: box.x + box.width / 2, y: box.y + box.height / 2 })
+      if (!box) return null
+      const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+      const ms = phantom.send(String(id), { type: 'move', x: at.x, y: at.y })
       if (ms > 0) await sleep(ms)
-      return true
-    } catch { return false }        // 取不到位置就算了，绝不影响真实动作
+      return at
+    } catch { return null }        // 取不到位置就算了，绝不影响真实动作
   }
 
   // ── 动作实现（全部走 Playwright 的"类人"接口：自动等待、自动滚动、真实输入事件）──
@@ -238,14 +241,15 @@ function createDriver(opts) {
     async click(id, sel, options) {
       const page = await pageFor(id)
       const o = options || {}
-      const shown = await pointAt(id, page, sel)                 // 幻影：先把指针挪过去（没人看时立即返回 false）
-      if (shown) phantom.send(String(id), { type: 'press', button: o.button || 'left' })
-      if (shown) await sleep(90)                                 // 按下→松开之间留一瞬，人手就是这样
+      const at = await pointAt(id, page, sel)                    // 幻影：先把指针挪过去（没人看时是 null）
+      // 按压**带上坐标**：点击波纹画在哪儿由驱动层实测的坐标说了算，不指望页面自己记的指针位置
+      if (at) phantom.send(String(id), { type: 'press', button: o.button || 'left', x: at.x, y: at.y })
+      if (at) await sleep(90)                                    // 按下→松开之间留一瞬，人手就是这样
       await page.locator(String(sel)).first().click({
         timeout: o.timeout || T_ACT, button: o.button || 'left',
         clickCount: o.clickCount || 1, force: !!o.force,
       })
-      if (shown) phantom.send(String(id), { type: 'release' })
+      if (at) phantom.send(String(id), { type: 'release' })
       await settle(page)
       return { id: String(id), clicked: String(sel) }
     },
@@ -293,10 +297,10 @@ function createDriver(opts) {
       const o = options || {}
       if (o.selector) {
         // 先点一下聚焦（幻影还开着就让指针先走过去，人看得见"它点进了哪个输入框"）
-        const shown = await pointAt(id, page, o.selector)
-        if (shown) phantom.send(String(id), { type: 'press' })
+        const at = await pointAt(id, page, o.selector)
+        if (at) phantom.send(String(id), { type: 'press', x: at.x, y: at.y })
         await page.locator(String(o.selector)).first().click({ timeout: T_ACT })
-        if (shown) phantom.send(String(id), { type: 'release' })
+        if (at) phantom.send(String(id), { type: 'release' })
       }
       const s = String(text == null ? '' : text)
       // 键盘敲得出来的（ASCII）**逐键派发**：键帽真的依次按下、页面补全/按键响应也真的触发；
