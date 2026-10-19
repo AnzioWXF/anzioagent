@@ -70,7 +70,9 @@ contextBridge.exposeInMainWorld('anzioShell', {
     onBrowserAction: (cb) => {
       const handler = (_e, rec) => { try { cb(rec) } catch { /* 忽略 */ } }
       ipcRenderer.on('anzio-browser:agent-action', handler)
-      return () => { try { ipcRenderer.removeListener('anzio-browser:action', handler) } catch { /* 忽略 */ } }
+      // ⚠ 取消订阅的通道名必须与上面 on 的一致：以前写成 `anzio-browser:action`（导航通道），
+      //   取消函数等于空转，每挂一次就多一个监听（2026-10-19 核对）
+      return () => { try { ipcRenderer.removeListener('anzio-browser:agent-action', handler) } catch { /* 忽略 */ } }
     },
     // 浏览器页面里按下的组合键（页面 preload 上报，见 browser-preload.js）→ 交给天工自己的键位路由
     onBrowserKey: (cb) => {

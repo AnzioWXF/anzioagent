@@ -570,7 +570,44 @@ export default {
         const ON = (d) => ({ type: 'number', description: d })
         const OB = (d) => ({ type: 'boolean', description: d })
         const ID = S('页面 id（先用 browser_list_pages 列出来，或 browser_open_page 开一个新的）')
-        const SEL = S('元素选择器：CSS（#id / .cls / [name=x]）或文本（text=登录）。别用坐标')
+        const SEL = S('元素选择器：CSS（#id / .cls / [name=x]）、文本（text=登录）、role=（role=button[name="确定"]）。'
+          + 'text= 默认**精确相等**，精确不到时会列出子串候选、不替你执行。别用坐标')
+        const MATCH = OS('匹配方式：exact（默认）/ contains（子串，要显式写才降级）')
+        const INDEX = ON('命中多个时用第几个（候选清单里的编号，只对本次返回有效）')
+        // 动作结果里必须带上"命中几个、用了哪个" —— 这是"点了 A2 却以为点了 A"唯一的事后线索，
+        // 所以每个动作工具都走同一个格式化函数，别各写一套
+        const fmtCandidate = (c) => '  ' + c.index + ') ' + c.tag + (c.id ? '#' + c.id : '')
+          + (c.name ? '「' + c.name + '」' : '') + (c.visible ? '' : '（不可见：' + (c.hiddenBy || '原因不明') + '）')
+        const fmtCandidates = (r) => (r.candidates || []).map(fmtCandidate).join('\n')
+        // 凭证指纹变了就明说：内置浏览器所有标签共用一个登录态，在 A 标签换账号时 B 标签的界面看不出来
+        const idWarn = (r) => (r && r.identity && r.identity.changed)
+          ? '\n⚠ 动手之前登录态变过（凭证指纹 ' + r.identity.hash + '）—— 可能是刚登录、退出或被轮换；'
+            + '别的标签上之前读到、判过的结论不一定还算数。'
+          : ''
+        // 动作后的可见变化：以前模型得再读一遍页面、自己比对才知道"点了没反应"，
+        // 大页面上看漏一行就判成"已生效"。这里直接把差异算出来。
+        const fmtChange = (c) => {
+          if (c === null || c === undefined) return ''
+          const n = c.counts || { added: 0, removed: 0, changed: 0 }
+          if (n.added === 0 && n.removed === 0 && n.changed === 0) {
+            return '\n本次动作后页面没有可见变化 —— 可能是校验没过、被拦下，或者改动不在当前快照范围内'
+              + '（表格默认只比前 40 行）。别当成已生效。'
+          }
+          const clip = (s) => (String(s).length > 90 ? String(s).slice(0, 90) + '…' : String(s))
+          const out = ['\n本次动作后的变化：新增 ' + n.added + ' 行、修改 ' + n.changed + ' 行、删除 ' + n.removed + ' 行']
+          for (const a of c.added || []) out.push('  + ' + clip(a))
+          for (const ch of c.changed || []) out.push('  ~ ' + clip(ch.before) + '  →  ' + clip(ch.after))
+          for (const d of c.removed || []) out.push('  - ' + clip(d))
+          if (c.truncated) out.push('  …（还有更多，只列了前几条）')
+          return out.join('\n')
+        }
+        const picked = (verb, r) => {
+          const what = r.clicked || r.hovered || r.target || ''
+          const more = (typeof r.matched === 'number' && r.matched > 1)
+            ? '（匹配 ' + r.matched + ' 个、可见 ' + r.visibleCount + ' 个，用了第 ' + r.index + ' 个）'
+            : ''
+          return verb + ' ' + what + more + (r.forced ? ' —— ⚠ 不可见元素，是 force 强制点的' : '') + idWarn(r) + fmtChange(r.change)
+        }
         // 所有"固定动作"工具的结果都是一句给人看也够用的文字 —— 结构化数据留给 browser_read_page
         const list = []
         const textTool = (spec) => {
@@ -588,12 +625,18 @@ export default {
 
         textTool({
           name: 'browser_list_pages',
-          description: '列出内置浏览器里当前打开的页面（含页面 id、标题、地址）。要操作浏览器前先调它拿 id。',
+          description: '列出内置浏览器里当前打开的页面（含页面 id、标题、地址，以及所有标签**共用**的登录态指纹）。'
+            + '要操作浏览器前先调它拿 id。',
           parameters: {},
           async run() {
             const pages = await browserCall('pages.list', {})
             if (!pages.length) return '现在一个浏览器页面都没开。用 browser_open_page 开一个。'
-            return pages.map((p) => '· ' + p.id + ' —— ' + (p.title || '(无标题)') + ' —— ' + p.url).join('\n')
+            const shared = pages[0].identity
+            const head = shared
+              ? '所有标签共用一个登录态（凭证指纹 ' + shared + '）—— 在某一个标签里换账号，其它标签的界面不会跟着变。\n'
+              : ''
+            return head + pages.map((p) => '· ' + p.id + ' —— ' + (p.title || '(无标题)') + ' —— ' + p.url
+              + (p.loadedAt ? '（' + p.loadedAt.slice(11, 19) + ' UTC 加载）' : '')).join('\n')
           },
         })
         textTool({
@@ -638,29 +681,31 @@ export default {
         })
         textTool({
           name: 'browser_click',
-          description: '点击页面上的元素（自动等待元素可点、自动滚动到它）。selector 别用坐标。',
+          description: '点击页面上的元素（自动等待元素可点、自动滚动到它）。selector 别用坐标。'
+            + '命中多个可见元素时**不会替你挑**：会报错并列出候选，用 index 指定；只有一个可见候选时直接点。',
           parameters: {
-            id: ID, selector: SEL,
+            id: ID, selector: SEL, match: MATCH, index: INDEX,
             button: OS('鼠标键：left（默认）/ right / middle'),
             clickCount: ON('连击次数：2 = 双击'),
-            force: OB('true = 跳过可操作性检查强行点（一般别用，容易被遮住的元素才需要）'),
+            force: OB('true = 允许点不可见的元素（弹窗残留副本那种才用）'),
           },
           async run(args) {
             const r = await browserCall('page.click', {
-              id: args.id, selector: args.selector, button: args.button, clickCount: args.clickCount, force: args.force,
+              id: args.id, selector: args.selector, match: args.match, index: args.index,
+              button: args.button, clickCount: args.clickCount, force: args.force,
             })
-            return '已点击 ' + r.clicked
+            return picked('已点击', r)
           },
         })
         textTool({
-          name: 'browser_hover', description: '把鼠标移到元素上（触发悬停才出现的菜单/提示）。',
-          parameters: { id: ID, selector: SEL },
-          async run(args) { const r = await browserCall('page.hover', { id: args.id, selector: args.selector }); return '已悬停 ' + r.hovered },
+          name: 'browser_hover', description: '把鼠标移到元素上（触发悬停才出现的菜单/提示）。命中规则同 browser_click。',
+          parameters: { id: ID, selector: SEL, match: MATCH, index: INDEX },
+          async run(args) { const r = await browserCall('page.hover', { id: args.id, selector: args.selector, match: args.match, index: args.index }); return picked('已悬停', r) },
         })
         textTool({
-          name: 'browser_drag', description: '把一个元素拖到另一个元素上。',
-          parameters: { id: ID, from: S('被拖的元素选择器'), to: S('拖到的目标元素选择器') },
-          async run(args) { const r = await browserCall('page.drag', { id: args.id, from: args.from, to: args.to }); return '已拖拽 ' + r.dragged },
+          name: 'browser_drag', description: '把一个元素拖到另一个元素上。两端都按命中规则解析（各有一个可见候选才执行）。',
+          parameters: { id: ID, from: S('被拖的元素选择器'), to: S('拖到的目标元素选择器'), match: MATCH },
+          async run(args) { const r = await browserCall('page.drag', { id: args.id, from: args.from, to: args.to, match: args.match }); return '已拖拽 ' + r.dragged + idWarn(r) + fmtChange(r.change) },
         })
         textTool({
           name: 'browser_scroll',
@@ -674,30 +719,118 @@ export default {
         textTool({
           name: 'browser_press_key',
           description: '按键（Enter / Escape / Tab / ArrowDown / Control+A / Shift+Enter…）。带 selector 时先聚焦那个元素再按。',
-          parameters: { id: ID, key: S('键名，Playwright 写法：Enter、Escape、Control+A、Shift+Enter'), selector: OS('先聚焦的元素（省略 = 当前焦点）') },
-          async run(args) { const r = await browserCall('page.press', { id: args.id, key: args.key, selector: args.selector }); return '已按 ' + r.pressed },
+          parameters: {
+            id: ID, key: S('键名，Playwright 写法：Enter、Escape、Control+A、Shift+Enter'),
+            selector: OS('先聚焦的元素（省略 = 当前焦点）'), match: MATCH, index: INDEX,
+          },
+          async run(args) {
+            const r = await browserCall('page.press', { id: args.id, key: args.key, selector: args.selector, match: args.match, index: args.index })
+            return '已按 ' + r.pressed + (r.target ? '（目标 ' + r.target + '）' : '') + idWarn(r) + fmtChange(r.change)
+          },
         })
         textTool({
           name: 'browser_type',
-          description: '往页面里输入文本：给了 selector 会先点它再输入。英文/数字/符号是逐键输入（页面的自动补全、按键响应都会真实触发），'
-            + '中文这类敲不出来的字符整段写入。要提交表单可以再调 browser_press_key(Enter)。',
-          parameters: { id: ID, text: S('要输入的文本'), selector: OS('输入目标元素（省略 = 当前焦点）'), submit: OB('true = 输完按回车') },
+          description: '往页面里输入文本：给了 selector 会先点它再输入。'
+            + '**默认覆盖**（先清空原有内容，再写），要追加必须显式传 mode=append。'
+            + '写完会回读该字段的实际值（密码/验证码只回字符数），所以不用再截图核对有没有写错。'
+            + '英文/数字/符号逐键输入（自动补全、按键响应会真实触发）；中文这类整段插入 —— 只发一次 input，'
+            + '依赖逐键或输入法联想的组件不会响应，需要时传 perChar=true（仍没有输入法组合过程）。',
+          parameters: {
+            id: ID, text: S('要输入的文本'), selector: OS('输入目标元素（省略 = 当前焦点）'),
+            mode: OS('overwrite（默认，清空后写入）/ append（追加在原值后面）'),
+            perChar: OB('true = 非 ASCII 也逐字插入（每字一次 input，会放大防抖请求，默认关）'),
+            interval: ON('逐键/逐字间隔毫秒（默认 0；perChar 时默认 60）'),
+            submit: OB('true = 输完按回车'), match: MATCH, index: INDEX,
+          },
           async run(args) {
-            const r = await browserCall('page.type', { id: args.id, text: args.text, selector: args.selector, submit: args.submit })
-            return '已输入 ' + r.typed + ' 个字符（' + (r.mode === 'per-key' ? '逐键' : '整段写入') + '）'
+            const r = await browserCall('page.type', {
+              id: args.id, text: args.text, selector: args.selector, mode: args.mode,
+              perChar: args.perChar, interval: args.interval, submit: args.submit, match: args.match, index: args.index,
+            })
+            const bits = ['已输入 ' + r.typed + ' 个字符']
+            bits.push(r.mode === 'per-key' ? '逐键' : (r.mode === 'insert-per-char' ? '逐字插入' : '整段插入'))
+            if (r.overwrite === false) bits.push('追加（没清空原内容）')
+            if (r.target) bits.push('目标 ' + r.target)
+            let tail = ''
+            if (r.valueLength === null || r.valueLength === undefined) tail = '；读不到写入后的值（没有可读的输入元素）'
+            else if (r.sensitive) tail = '；写入后该字段有 ' + r.valueLength + ' 个字符（密码/验证码，内容不回显）'
+            else if (r.valueLength === 0) tail = '；⚠ 写入后该字段仍为空 —— 页面可能拒绝了这次输入'
+            else tail = '；写入后的值：' + JSON.stringify(r.value)
+            const note = r.mode === 'insert'
+              ? '。注：整段插入只发一次 input、且没有输入法组合过程，依赖逐键/拼音联想的联动不会触发（要逐字传 perChar=true）'
+              : (r.mode === 'insert-per-char' ? '。注：逐字插入每字一次 input，但同样没有输入法组合过程' : '')
+            return bits.join('，') + tail + note + idWarn(r) + fmtChange(r.change)
           },
         })
         textTool({
           name: 'browser_read_page',
-          description: '读页面：标题、地址、最近的控制台错误/失败请求，以及**无障碍树快照**（页面上有什么、能不能点，看这个最准，比读 HTML 干净）。'
-            + '看不到想要的内容时，先用它确认页面到底渲染成了什么样。',
-          parameters: { id: ID, selector: OS('只读某个子树（省略 = 整页）') },
+          description: '读页面：标题、地址、加载时间/etag、地址有没有在上次动作之后变过、登录态指纹变没变、'
+            + '最近的控制台错误/失败请求、**最近的提示消息**（页面上早已消失的那种），以及**页面快照**。'
+            + '快照的表格按"一行一条"给（单元格文字照留），连续重复的内容折成 ×N；表格超过 40 行会明说还剩多少、'
+            + '用 rowStart 接着读。快照若仍被截断，截断规模会明写。'
+            + '读之前会先等 DOM 安定（连续 150ms 无变更，最多等 1.2s）：**安定只保证读到的是同一帧的一致快照，'
+            + '不保证它反映最新代码** —— 热更新失败时 DOM 也会安定在旧版本上，要判断"改动生效没有"看加载时间与 etag，别拿"稳定"当"最新"。',
+          parameters: {
+            id: ID, selector: OS('只读某个子树（省略 = 整页）'),
+            raw: OB('true = 给原始无障碍树（只在怀疑压缩丢东西时用）'),
+            rowStart: ON('表格从第几行开始给（默认 0，翻页接着读用）'),
+            rowCount: ON('表格一次给多少行（默认 40）'),
+          },
           async run(args) {
-            const r = await browserCall('page.read', { id: args.id, selector: args.selector })
+            const r = await browserCall('page.read', {
+              id: args.id, selector: args.selector, raw: args.raw, rowStart: args.rowStart, rowCount: args.rowCount,
+            })
             const errs = (r.errors || []).map((e) => '  · [' + e.kind + '] ' + e.text).join('\n')
+            const full = String(r.aria || '')
+            const CAP = 6000
+            // ⚠ 截断必须说出来：静默切一半，模型会以为表格只有半张，进而得出"数据完整"的结论
+            const body = full.length > CAP ? full.slice(0, CAP) : full
+            const cut = full.length > CAP
+              ? '\n…（这里只给了前 ' + CAP + ' 字符，**已截断**。没看到的部分不代表不存在：用 rowStart 翻行，或用 selector 收窄。）'
+              : ''
+            const snap = r.snapshot || null
+            const snapHead = snap === null ? ''
+              : snap.mode === 'raw'
+                ? '（原始无障碍树，' + (snap.sourceLines || 0) + ' 行）'
+                : '（原始 ' + (snap.sourceLines || 0) + ' 行 → 压缩后 ' + (snap.totalLines || 0) + ' 行'
+                  + (snap.rows ? '，表格 ' + snap.rows + ' 行' : '')
+                  + (snap.omittedRows ? '，本次没给 ' + snap.omittedRows + ' 行' : '') + '）'
+            const scope = (r.scope && r.scope.total > 1)
+              ? '\n（该 selector 命中 ' + r.scope.total + ' 个，读的是第 ' + r.scope.index + ' 个）'
+              : ''
+            const ariaText = r.aria === null || r.aria === undefined
+              ? ('(取不到：' + (r.ariaError || '未知原因') + ')')
+              : (body || '(空 —— 这个范围里没有任何可访问节点)')
+            // 页面"是什么时候、带着什么头加载的"：这是判断"我在旧页面上验新代码"唯一可靠的事实
+            const meta = []
+            if (r.loadedAgoMs !== null && r.loadedAgoMs !== undefined) {
+              meta.push('本页 ' + Math.round(r.loadedAgoMs / 1000) + ' 秒前加载')
+            }
+            if (r.httpStatus !== null && r.httpStatus !== undefined) meta.push('HTTP ' + r.httpStatus)
+            if (r.etag) meta.push('etag ' + r.etag)
+            const drift = r.urlChangedSinceAction
+              ? '\n地址在上次动作之后变了：' + r.urlChangedSinceAction.from + ' → ' + r.urlChangedSinceAction.to
+                + '\n（页面自己跳的，或被守卫挡去了别的页 —— 先看这条地址是不是你预期的那个）'
+              : ''
+            const idChange = r.identityChanged
+              ? '\n⚠ 这个标签的登录态变了（凭证指纹 ' + r.identity + '）—— 可能刚登录/退出/被轮换，'
+                + '之前读到的身份、数据不一定还算数。'
+              : ''
+            const stableText = r.stability
+              ? (r.stability.stable
+                ? 'DOM 在 ' + r.stability.waited + 'ms 内没再变（本次读到的是同一帧）'
+                : '⚠ 页面仍在变化（等了 ' + r.stability.waited + 'ms 也没静默）—— 现在读到的可能只是中间态')
+              : ''
+            const toasts = (r.toasts || []).map((t) => '  · ' + new Date(t.t).toTimeString().slice(0, 8)
+              + ' [' + (t.kind === 'live' ? (t.role || 'live') : '一闪而过 ' + Math.round((t.livedMs || 0) / 100) / 10 + 's') + '] ' + t.text).join('\n')
             return '标题：' + (r.title || '(无)') + '\n地址：' + r.url
+              + (meta.length ? '\n（' + meta.join('，') + '）' : '')
+              + drift + idChange
+              + (stableText ? '\n' + stableText : '')
               + (errs ? '\n最近的问题：\n' + errs : '\n最近没有控制台错误/失败请求')
-              + '\n无障碍树快照：\n' + String(r.aria || (r.ariaError ? ('(取不到：' + r.ariaError + ')') : '(空)')).slice(0, 6000)
+              + (toasts ? '\n最近的提示消息（页面上可能已经消失）：\n' + toasts : '')
+              + scope
+              + '\n页面快照' + snapHead + '：\n' + ariaText + cut
           },
         })
         textTool({
@@ -705,16 +838,85 @@ export default {
           description: '等一件事发生：等元素出现/消失（selector + state）、等网址变成某个样子（url）、等页面加载完（loadState）、等网络安静（networkIdle）。'
             + '页面加载慢或要等异步结果时用它，别反复点击碰运气。',
           parameters: {
-            id: ID, selector: OS('要等的元素'), state: OS('元素状态：visible（默认）/ attached / hidden / detached'),
+            id: ID, selector: OS('要等的元素（定位规则与 browser_click 一致）'), match: MATCH,
+            state: OS('元素状态：visible（默认）/ attached / hidden / detached'),
             url: OS('等网址变成（支持通配符 *）'), loadState: OS('load / domcontentloaded / networkidle'),
             networkIdle: OB('true = 等网络安静'), timeout: ON('超时毫秒（默认 10000）'),
           },
           async run(args) {
             const r = await browserCall('page.wait', {
-              id: args.id, selector: args.selector, state: args.state, url: args.url,
+              id: args.id, selector: args.selector, match: args.match, state: args.state, url: args.url,
               loadState: args.loadState, networkIdle: args.networkIdle, timeout: args.timeout,
             })
             return '等待完成（' + r.waited + '）'
+          },
+        })
+        textTool({
+          name: 'browser_expect',
+          description: '断言页面某处"应该是这样"，返回四态之一：**成立 / 不成立（附实际值）/ 找不到（等满超时也没出现）/ 有歧义（命中多个）**。'
+            + '这是验证"操作到底生效没有"唯一可靠的办法 —— 靠读快照再用眼睛比对，大表格里看漏一行就会得出错误结论。'
+            + '它会一直等到条件成立或超时（默认 5000ms），所以也能当"等它变成这个值"用。',
+          parameters: {
+            id: ID,
+            assert: OS('断言什么：text（默认，元素文字）/ value（输入值）/ visible / hidden / enabled / disabled / count（命中数量）/ attr（属性）/ url（地址）/ title（标题）'),
+            selector: OS('断言目标（url / title 断言可省略）'),
+            equals: OS('期望值：text 精确相等、value、attr、count 的数量；url/title 支持 * 通配'),
+            contains: OS('期望包含这段文字（text / value / attr 用）'),
+            attr: OS('assert=attr 时的属性名'),
+            match: MATCH,
+            timeout: ON('等多久毫秒（默认 5000）'),
+          },
+          async run(args) {
+            const r = await browserCall('page.expect', {
+              id: args.id, assert: args.assert, selector: args.selector, equals: args.equals,
+              contains: args.contains, attr: args.attr, match: args.match, timeout: args.timeout,
+            })
+            const show = (v) => (v === null || v === undefined ? '(无)' : JSON.stringify(v))
+            const head = r.state === 'pass' ? '成立'
+              : r.state === 'mismatch' ? '不成立'
+                : r.state === 'not-found' ? '找不到（等满超时也没出现）'
+                  : '有歧义（命中多个）'
+            const lines = ['断言' + head + '（等了 ' + r.waitedMs + 'ms）：' + r.kind]
+            if (r.state === 'pass') lines.push('  实际：' + show(r.actual))
+            if (r.state === 'mismatch') lines.push('  期望：' + show(r.expected) + '\n  实际：' + show(r.actual))
+            if (r.state === 'not-found') {
+              lines.push('  期望：' + show(r.expected)
+                + '\n  一个都没匹配到，当前地址：' + r.url
+                + '\n  这可能是"还没到这一步"，也可能是选择器不对 —— 先用 browser_read_page 看一眼再判断')
+            }
+            if (r.state === 'ambiguous') {
+              lines.push('  命中 ' + r.total + ' 个，没法判定是哪一处。候选：\n' + fmtCandidates(r))
+            }
+            return lines.join('\n')
+          },
+        })
+        textTool({
+          name: 'browser_measure',
+          description: '量布局：只报**客观事实**——内容比可见区宽/高（溢出多少）、是否越出父容器、文字是否被省略号截断、元素占几行。'
+            + '"列宽够不够""按钮有没有换行"这类判断用它，不用靠看截图。省略 selector = 量整页并列出所有出问题的元素。',
+          parameters: { id: ID, selector: OS('只量的元素（省略 = 整页 body）') },
+          async run(args) {
+            const r = await browserCall('page.measure', { id: args.id, selector: args.selector })
+            const describeM = (m) => {
+              const bits = []
+              if (m.overflowX > 1) bits.push('内容宽 ' + m.scrollW + ' > 可见 ' + m.clientW + '（溢出 ' + m.overflowX + 'px）')
+              if (m.overflowY > 1) bits.push('内容高 ' + m.scrollH + ' > 可见 ' + m.clientH + '（溢出 ' + m.overflowY + 'px）')
+              if (m.outsideParent) bits.push('越出父容器')
+              if (m.ellipsis) bits.push('文字被省略号截断')
+              if (m.lines > 1) bits.push('占 ' + m.lines + ' 行')
+              return bits.join('；')
+            }
+            const lines = ['视口 ' + r.viewport.w + '×' + r.viewport.h + '，扫描了 ' + r.scanned + ' 个元素']
+            if (r.root) {
+              lines.push('目标 ' + r.root.node + '：' + r.root.m.w + '×' + r.root.m.h
+                + '，占 ' + r.root.m.lines + ' 行（行高 ' + r.root.m.lineHeight + 'px）'
+                + (describeM(r.root.m) ? '；' + describeM(r.root.m) : ''))
+            }
+            const probs = r.problems || []
+            lines.push(probs.length
+              ? ('发现 ' + probs.length + ' 处问题：\n' + probs.map((p) => '  · ' + p.node + '：' + describeM(p.m)).join('\n'))
+              : '没有发现溢出、越界或省略号截断')
+            return lines.join('\n')
           },
         })
         textTool({

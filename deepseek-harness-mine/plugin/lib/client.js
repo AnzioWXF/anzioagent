@@ -7208,7 +7208,11 @@ window.__ModuleLoader__.load({
         if (!rec) return;
         if (rec.kind === 'text') {
           // 中文这类敲不出来的字符是"整段写入"，没有键帽可亮 → 只在流里记一笔
-          setKb(function (prev) { return { held: prev.held, recent: kbPush(prev.recent, '文本「' + String(rec.text || '').slice(0, 12) + '」'), flash: prev.flash }; });
+          // ⚠ 敏感字段（密码/验证码）壳那边只会给 masked，别在这里把内容补出来
+          var kbDesc = rec.masked
+            ? ('文本「已打码 · ' + String(rec.length || 0) + ' 个字符」')
+            : ('文本「' + String(rec.text || '').slice(0, 12) + '」');
+          setKb(function (prev) { return { held: prev.held, recent: kbPush(prev.recent, kbDesc), flash: prev.flash }; });
           kbNeedFlash();
           return;
         }

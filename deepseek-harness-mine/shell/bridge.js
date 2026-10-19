@@ -59,16 +59,18 @@ function startBridge(deps) {
     'page.click': async (a) => driver.click(String(a.id), String(a.selector), a || {}),
     'page.dblclick': async (a) => driver.click(String(a.id), String(a.selector), Object.assign({}, a, { clickCount: 2 })),
     'page.rightclick': async (a) => driver.click(String(a.id), String(a.selector), Object.assign({}, a, { button: 'right' })),
-    'page.hover': async (a) => driver.hover(String(a.id), String(a.selector)),
-    'page.drag': async (a) => driver.drag(String(a.id), String(a.from), String(a.to)),
+    'page.hover': async (a) => driver.hover(String(a.id), String(a.selector), a || {}),
+    'page.drag': async (a) => driver.drag(String(a.id), String(a.from), String(a.to), a || {}),
     'page.scroll': async (a) => driver.scroll(String(a.id), a || {}),
-    'page.press': async (a) => driver.press(String(a.id), String(a.key), a && a.selector ? String(a.selector) : null),
+    'page.press': async (a) => driver.press(String(a.id), String(a.key), a && a.selector ? String(a.selector) : null, a || {}),
     'page.type': async (a) => driver.type(String(a.id), a && a.text != null ? a.text : '', a || {}),
 
-    // ── 读取 / 等待 / 兜底 ────────────────────────────────────────────────
+    // ── 读取 / 等待 / 判定 / 兜底 ─────────────────────────────────────────
     'page.read': async (a) => driver.read(String(a.id), a || {}),
     'page.screenshot': async (a) => driver.screenshot(String(a.id), a || {}),
     'page.wait': async (a) => driver.waitFor(String(a.id), a || {}),
+    'page.expect': async (a) => driver.expect(String(a.id), a || {}),
+    'page.measure': async (a) => driver.measure(String(a.id), a || {}),
     'page.code': async (a) => driver.code(String(a.id), String(a && a.code ? a.code : '')),
   }
 
