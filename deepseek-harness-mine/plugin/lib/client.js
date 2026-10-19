@@ -736,24 +736,51 @@ window.__ModuleLoader__.load({
     var traceStat = (typeof window !== 'undefined')
       ? (window.__dshTraceStat = window.__dshTraceStat || { queued: 0, sent: 0, failed: 0, lastAt: 0 })
       : { queued: 0, sent: 0, failed: 0, lastAt: 0 };
+    // 采集端就盖时间戳：800ms 攒批上报，等到落盘时一批条目会被压成同一毫秒，
+    // 事后没法跟引擎日志按时间对齐（2026-10-19 修）。
     function trace(kind, level, msg, meta) {
       try {
         tracePending.push({
+          ts: Date.now(),          // 数值型：host 半认这个，落盘时转 ISO
+          src: 'client',
           level: level || 'info',
           kind: kind || 'client',
           msg: String(msg || '').slice(0, 2000),
           meta: meta || undefined,
         });
-        if (tracePending.length > 100) tracePending.shift();
+        // 上限与服务端收口对齐（服务端一批收 200）：原来 100 条 + 服务端只收 50 会静默丢一半
+        if (tracePending.length > 300) tracePending.shift();
         traceStat.queued += 1;
         if (!traceTimer) traceTimer = setTimeout(flushTrace, 800);
       } catch (e) { /* 记录失败不干扰业务 */ }
     }
+    // 高频同类条目合并（窗口内只落第一条，带 suppressed 计数）——
+    // 自动刷新/会话落盘这类每几秒来一次的记录，重复一万遍也提供不了任何新信息。
+    var traceGates = {};
+    function traceEvery(key, windowMs, kind, level, msg, meta) {
+      try {
+        var now = Date.now();
+        var g = traceGates[key];
+        if (g && now - g.at < windowMs) { g.n += 1; return; }
+        var m = meta ? Object.assign({}, meta) : {};
+        if (g && g.n) m.suppressed = g.n;
+        traceGates[key] = { at: now, n: 0 };
+        trace(kind, level, msg, m);
+      } catch (e) { /* 忽略 */ }
+    }
     function flushTrace() {
       traceTimer = null;
-      var batch = tracePending.splice(0, 100);
+      var batch = tracePending.splice(0, 200);
       if (!batch.length) return;
-      traceStat.sent += batch.length;
+      // 补上"在哪"：当前工作空间根与会话 id 由页面在状态变化时写进 __dshTraceCtx，
+      // 这样"用户点了什么"能和引擎会话对上号（原来 20 万条里只有 290 条带会话 id）。
+      var ctx = (typeof window !== 'undefined' && window.__dshTraceCtx) || null;
+      if (ctx) {
+        for (var i = 0; i < batch.length; i++) {
+          if (ctx.root && batch[i].root === undefined) batch[i].root = ctx.root;
+          if (ctx.sessionId && batch[i].sessionId === undefined) batch[i].sessionId = ctx.sessionId;
+        }
+      }
       traceStat.lastAt = Date.now();
       try {
         fetch('/dsh-ide/trace', {
@@ -762,9 +789,19 @@ window.__ModuleLoader__.load({
           body: JSON.stringify({ entries: batch }),
           keepalive: true,
         }).then(function (r) {
-          if (!r || !r.ok) traceStat.failed += batch.length;
-        }).catch(function () { traceStat.failed += batch.length; /* 后端不可用时不重试 */ });
-      } catch (e) { traceStat.failed += batch.length; }
+          if (r && r.ok) traceStat.sent += batch.length;
+          else retryTrace(batch);
+        }).catch(function () { retryTrace(batch); });
+      } catch (e) { retryTrace(batch); }
+    }
+    // 失败重试一次：后端重启的那几秒原来会把痕迹全丢掉（页面还活着，只是没接上）
+    function retryTrace(batch) {
+      traceStat.failed += batch.length;
+      if (batch.retried) return;
+      batch.retried = true;
+      if (tracePending.length > 300) return;
+      tracePending = batch.concat(tracePending);
+      if (!traceTimer) traceTimer = setTimeout(flushTrace, 2000);
     }
 
     // ── Monaco 加载器（host 半静态托管 min/vs，绕开 bundle 纯度门禁）──
@@ -5230,7 +5267,8 @@ window.__ModuleLoader__.load({
           if (token && token.isCancellationRequested) return { items: [] };
           if (!r || r.error || !r.text) {
             if (props.status) props.status('内联建议：' + ((r && (r.detail || r.error)) || '没有可用建议'));
-            trace('ui', 'info', 'inline-suggest-empty', { ms: Date.now() - started, err: String((r && r.error) || '') });
+            // 未配置模型时每敲一次都会走这里：60s 一条足够定位，重复的算进 suppressed
+            traceEvery('inline-suggest-empty', 60000, 'ui', 'info', 'inline-suggest-empty', { ms: Date.now() - started, err: String((r && r.error) || '') });
             return { items: [] };
           }
           trace('ui', 'info', 'inline-suggest-ok', { ms: Date.now() - started, chars: r.text.length, model: r.model || '' });
@@ -7546,7 +7584,8 @@ window.__ModuleLoader__.load({
         }
         rememberSession(root, tabs, activePath, drafts);
         // 落盘埋点：出"标签丢了"这类问题时，靠它一眼看出是哪一次写、写进去几个
-        trace('ui', 'info', 'session-persist', {
+        // 30s 合并：正常编辑时它每几秒就写一次，逐条记没有额外信息
+        traceEvery('session-persist', 30000, 'ui', 'info', 'session-persist', {
           tabs: tabs.length, drafts: Object.keys(drafts).length,
           names: tabs.slice(0, 8).map(function (t) { return String(t && t.name || '') }).join(','),
         });
@@ -7949,7 +7988,14 @@ window.__ModuleLoader__.load({
         var idx = -1;
         for (var i = 0; i < tabs.length; i++) if (tabs[i].path === activePath) { idx = i; break; }
         var next = idx < 0 ? 0 : (idx + dir + tabs.length) % tabs.length;
-        if (next !== idx) setActivePath(tabs[next].path);
+        if (next !== idx) activatePath(tabs[next].path, 'keyboard');
+      }
+      // 标签激活（2026-10-19 补）：以前只有开/关/拖，切到哪个标签完全没痕，
+      // "点了没反应/打开了但没显示"这类报障无法还原现场。
+      function activatePath(path, via) {
+        if (!path || path === activePath) return;
+        trace('ui', 'info', 'tab-activate', { path: String(path), via: via || 'click' });
+        setActivePath(path);
       }
       function toggleExplorer() {
         setShowExplorer(function (v) { return !v; });
@@ -9095,6 +9141,11 @@ window.__ModuleLoader__.load({
         setConv(null);
         setSessionFace(null);
         if (!sessions || !current) return;
+        // 轨迹关联：日志带上"当前会话"，否则用户操作与引擎里的 Agent 回合永远对不上号
+        try {
+          window.__dshTraceCtx = window.__dshTraceCtx || {};
+          window.__dshTraceCtx.sessionId = String(current);
+        } catch (e) { /* 忽略 */ }
         var binding = sessions.binding(current);
         if (!binding) return;
         setSessionFace(binding.session);
@@ -9143,6 +9194,7 @@ window.__ModuleLoader__.load({
           return;
         }
         if (cwd === lastRootRef.current) return;
+        try { window.__dshTraceCtx = window.__dshTraceCtx || {}; window.__dshTraceCtx.root = cwd; } catch (e) { /* 忽略 */ }
         lastRootRef.current = cwd; // 乐观记值，失败回退重试
         writeLastRoot(cwd);
         apiPost('/active-root', { path: cwd }).catch(function () { lastRootRef.current = null; });
@@ -9243,7 +9295,8 @@ window.__ModuleLoader__.load({
             if (r.rev !== lastRev) {
               lastRev = r.rev;
               setFsRev(function (v) { return v + 1; });
-              trace('ui', 'info', 'fs-change-refresh', { rev: r.rev });
+              // 磁盘一动就刷一条（曾占全量日志 4 万条）：60s 一条 + 被压掉的次数即可
+              traceEvery('fs-change-refresh', 60000, 'ui', 'info', 'fs-change-refresh', { rev: r.rev });
             }
           }).catch(function () { /* 后端没起来就下一轮再试 */ });
         }
@@ -9931,7 +9984,7 @@ window.__ModuleLoader__.load({
                   // 设置标签里的快捷键页改绑之后，编辑器要重新应用键位
                   onKeysChanged: function () { setKeysRev(function (n) { return n + 1; }); },
                   file: activeFile, tabs: tabs, activePath: activePath,
-                  onActivate: setActivePath, onCloseTab: closeTab, onDirtyChange: onDirtyChange,
+                  onActivate: function (p) { activatePath(p, 'click'); }, onCloseTab: closeTab, onDirtyChange: onDirtyChange,
                   onPromote: promoteTab, onTabContext: tabContext, onTogglePin: togglePinTab,
                   onToggleMdPreview: toggleMdPreview,   // Markdown 预览开关（编辑器标题栏那颗按钮 / Ctrl+Shift+V）
                   pinnedCompact: !!tabPrefs.pinnedCompact,

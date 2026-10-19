@@ -100,6 +100,60 @@ function noteBoot(line) {
 // 日志只在出事时写（2026-10-16 精简）：正常启动写两行只是把自己的日志刷成噪音，真出事时反倒难找。
 if (PORT_PICK.reason !== null) noteBoot('浏览器调试端口 = ' + BROWSER_DEBUG_PORT + '（' + PORT_PICK.reason + '）')
 
+// ── 壳侧结构化日志：app-home\logs\shell.log（JSONL，2026-10-19）─────────────
+// 为什么不并进插件的 ide-trace.log：那份由后端进程写、自己管切分，两个进程抢 rename 会互相咬。
+// 为什么必须落盘：装好后是双击快捷方式起的，主进程 console 没人接 —— 后端掉线、更新失败、
+// 渲染进程崩溃这些最容易报"软件自己坏了"的事，以前一行证据都不留。格式与插件那份同时间轴，按 ts 对齐。
+const SHELL_LOG_MAX_BYTES = 8 * 1024 * 1024
+const SHELL_LOG_KEEP = 3
+let shellLogBytes = null
+function noteLog(level, kind, msg, meta) {
+  try {
+    const dir = path.join(DSH_HOME, 'logs')
+    const file = path.join(dir, 'shell.log')
+    fs.mkdirSync(dir, { recursive: true })
+    if (shellLogBytes === null) { try { shellLogBytes = fs.statSync(file).size } catch { shellLogBytes = 0 } }
+    const head = { ts: new Date().toISOString(), src: 'shell', level: level || 'info', kind: kind || 'shell', msg: String(msg || '').slice(0, 2000) }
+    const line = JSON.stringify(meta ? Object.assign(head, { meta: meta }) : head) + '\n'
+    if (shellLogBytes + Buffer.byteLength(line) > SHELL_LOG_MAX_BYTES) {
+      for (let i = SHELL_LOG_KEEP; i >= 1; i--) {
+        const from = i === 1 ? file : file + '.' + (i - 1)
+        const to = file + '.' + i
+        try { fs.rmSync(to, { force: true }) } catch { /* 目标不存在 */ }
+        try { fs.renameSync(from, to) } catch { /* 这一份不存在 */ }
+      }
+      shellLogBytes = 0
+    }
+    fs.appendFileSync(file, line)
+    shellLogBytes += Buffer.byteLength(line)
+  } catch { /* 日志失败不拦业务 */ }
+}
+// 同一句话反复出现时合并（渲染层报错常常每次重渲染都刷一遍）
+const shellLogGates = new Map()
+function noteLogThrottled(key, windowMs, level, kind, msg, meta) {
+  const now = Date.now()
+  const prev = shellLogGates.get(key)
+  if (prev && now - prev.at < windowMs) { prev.n += 1; return }
+  const m = Object.assign({}, meta || {})
+  if (prev && prev.n) m.suppressed = prev.n
+  if (shellLogGates.size > 300) shellLogGates.clear()
+  shellLogGates.set(key, { at: now, n: 0 })
+  noteLog(level, kind, msg, m)
+}
+// 主进程自己崩了也要留证（Electron 默认弹窗 + 退出，日志里什么都没有）
+// uncaughtException 仍然按 Node 的默认语义**致命处理**：只加记录，不改变"崩了就是崩了"，
+// 否则会变成"看起来还活着、实际半死"——比直接退出更难查。
+process.on('uncaughtException', (e) => {
+  noteLog('error', 'main-crash', 'uncaughtException（进程即将退出）', { error: (e && e.stack) || String(e) })
+  console.error('[anzio] uncaughtException:', e)
+  process.exit(1)
+})
+// 未处理的 Promise 拒绝不致命（多数是网络/时序问题），只留证不退出
+process.on('unhandledRejection', (e) => {
+  noteLog('warn', 'main-crash', 'unhandledRejection', { error: (e && e.stack) || String(e) })
+  console.error('[anzio] unhandledRejection:', e)
+})
+
 // 起后自检（同一天加的）：把"静默失败"变成日志里有痕 —— 端口上有监听却没人应答（就是上面说的
 // 无主端口）时，Chromium 不会报任何错，只有驱动连不上。自检失败不影响启动，纯留证。
 setTimeout(() => {
@@ -173,11 +227,36 @@ function createWindow() {
     failCount += 1
     if (failCount <= 2) {
       console.error('[dsh-ide] load failed:', errorCode, errorDesc)
+      noteLog('error', 'page-load-failed', '主窗口加载失败', { errorCode: errorCode, errorDesc: errorDesc, url: DSH_URL })
       mainWindow.loadFile(ERROR_HTML, { query: { url: DSH_URL, reason: 'load-failed' } })
     }
   })
   mainWindow.webContents.on('did-finish-load', () => {
     failCount = 0
+  })
+
+  // ── 渲染层事故留证（2026-10-19）：以前这些全被"没有控制台"吃掉 ──────────
+  // 页面 console.error：只收 error 档（info/warn 太吵），同一句话 60s 合并一次
+  mainWindow.webContents.on('console-message', (...args) => {
+    // 新旧 Electron 签名兼容：新版 (event, details)，旧版 (event, level, message, line, sourceId)
+    const details = args[1] && typeof args[1] === 'object' ? args[1] : null
+    const level = details ? details.level : args[1]
+    const message = details ? details.message : args[2]
+    const source = details ? details.sourceId : args[4]
+    const line = details ? details.lineNumber : args[3]
+    if (level !== 'error' && level !== 3) return
+    if (!message) return
+    noteLogThrottled('renderer-console|' + String(message).slice(0, 200), 60000, 'error', 'renderer-console',
+      String(message).slice(0, 1000), { source: source, line: line })
+  })
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    noteLog('error', 'render-gone', '渲染进程退出（界面会白屏/关闭）', details)
+  })
+  mainWindow.webContents.on('unresponsive', () => {
+    noteLog('warn', 'render-unresponsive', '界面无响应（超过系统判定阈值）')
+  })
+  mainWindow.webContents.on('responsive', () => {
+    noteLog('info', 'render-responsive', '界面恢复响应')
   })
 
   // 启动画面：后端就绪前先显示本地页面（带明确的启动反馈）
@@ -199,6 +278,9 @@ async function boot() {
     bridge: browserBridge ? { url: browserBridge.url, token: browserBridge.token } : null,
     onExit: (code, signal, intentional, wasOwned) => {
       console.error('[dsh-ide] backend exited:', code, signal, intentional ? '(主动停止)' : '(掉线)')
+      noteLog(intentional ? 'info' : 'error', 'backend-exit',
+        intentional ? '后端被主动停止' : '后端掉线',
+        { code: code, signal: signal, owned: !!wasOwned })
       // 主动停止（关软件 / Ctrl+Shift+R 重启后端）不拉起；**掉线**才拉（见 reviveBackend）。
       if (intentional) return
       if (!wasOwned) return          // 复用的外部后端掉了：不是我们该管的事（别去抢别人的端口）
@@ -209,6 +291,7 @@ async function boot() {
   const result = await backend.ensure()
   if (!result.started && result.reason) {
     console.error('[dsh-ide] backend start failed:', result.reason)
+    noteLog('error', 'backend-start-failed', '后端启动失败', { reason: result.reason, dir: DSH_DIR, home: DSH_HOME })
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.loadFile(ERROR_HTML, { query: { url: DSH_URL, reason: result.reason } })
     }
@@ -312,10 +395,10 @@ function onUpdaterState(state) {
 //   ③ **不重复踩坑**：某版本下载失败会被记住（6 小时内不再自动重试，见 updater.markFailed），
 //      手动"检查更新"不受影响。
 async function autoUpdatePhase() {
-  if (SKIP_UPDATE) { console.log('[anzio] 自动更新已跳过（--no-update / ANZIO_NO_UPDATE）'); return }
+  if (SKIP_UPDATE) { console.log('[anzio] 自动更新已跳过（--no-update / ANZIO_NO_UPDATE）'); noteLog('info', 'update', '自动更新已跳过（启动参数/环境变量）'); return }
   if (!updater) return
   const cfg = updater.config()
-  if (cfg.autoApply === false) { console.log('[anzio] 自动更新已关闭（updater.json: autoApply=false）'); return }
+  if (cfg.autoApply === false) { console.log('[anzio] 自动更新已关闭（updater.json: autoApply=false）'); noteLog('info', 'update', '自动更新已关闭（配置项 autoApply=false）'); return }
   const started = Date.now()
   const deadline = started + (cfg.autoApplyTimeoutMs || 120000)
   let esc = false
@@ -330,21 +413,25 @@ async function autoUpdatePhase() {
     const chk = await updater.check()
     if (!chk.ok) {
       console.log('[anzio] 更新检查失败，照常启动：' + chk.error)
+      noteLog('warn', 'update', '检查更新失败，照常启动', { error: chk.error })
       splashSet({ title: APP_TITLE + ' 正在启动…', sub: '检查更新失败（离线也能用），正在启动', indeterminate: true })
       return
     }
     if (!chk.available) {
       console.log('[anzio] 已是最新版本 v' + chk.installed)
+      noteLog('info', 'update', '已是最新版本', { version: chk.installed })
       splashSet({ title: APP_TITLE + ' 正在启动…', sub: '已是最新版本 v' + chk.installed, indeterminate: true })
       return
     }
     const target = String((chk.latest && chk.latest.version) || '')
     if (updater.failedRecently(target)) {
       console.log('[anzio] v' + target + ' 之前更新失败过，本次不自动重试（标题栏可手动更新）')
+      noteLog('warn', 'update', '该版本此前更新失败，本次不自动重试', { version: target })
       splashSet({ title: APP_TITLE + ' 正在启动…', sub: 'v' + target + ' 上次更新失败，已跳过（标题栏可手动更新）', indeterminate: true })
       return
     }
     console.log('[anzio] 发现新版本 v' + target + '（当前 v' + chk.installed + '），开始自动更新')
+    noteLog('info', 'update', '发现新版本，开始自动更新', { from: chk.installed, to: target })
     splashSet({
       title: '正在更新到 v' + target + '…',
       sub: '下载并校验更新包，完成后会自动重启到新版本',
@@ -355,6 +442,7 @@ async function autoUpdatePhase() {
     if (!res.ok) {
       updater.markFailed(target, res.error)
       console.error('[anzio] 自动更新下载失败，照常启动：' + res.error)
+      noteLog('error', 'update', '自动更新下载/校验失败，照常启动', { version: target, error: res.error })
       splashSet({ title: APP_TITLE + ' 正在启动…', sub: '更新失败，先照常启动（标题栏可重试）', indeterminate: true })
       return
     }
@@ -365,20 +453,24 @@ async function autoUpdatePhase() {
     // 到这里：包已下好、校验通过、pending 标记已写 —— 剩下的只是"什么时候重启装上"
     if (esc) {
       console.log('[anzio] 用户按 Esc 跳过本次安装（更新包已就绪，可稍后重启安装）')
+      noteLog('info', 'update', '用户按 Esc 跳过本次安装（包已就绪）', { version: target })
       splashSet({ title: APP_TITLE + ' 正在启动…', sub: '已跳过本次更新（包已就绪，标题栏可重启安装）', indeterminate: true })
       return
     }
     if (Date.now() > deadline) {
       console.log('[anzio] 自动更新超时，先照常启动（包已就绪）')
+      noteLog('warn', 'update', '自动更新超时，先照常启动（包已就绪）', { version: target, ms: Date.now() - started })
       splashSet({ title: APP_TITLE + ' 正在启动…', sub: '更新耗时过长，先照常启动（包已就绪）', indeterminate: true })
       return
     }
     splashSet({ title: '正在安装 v' + target + '…', sub: '马上自动重启到新版本', steps: '安装中…', progress: 100 })
     await sleep(700)   // 让用户看到这一帧，别一闪而过
     console.log('[anzio] 自动更新就绪，重启安装 v' + target)
+    noteLog('info', 'update', '更新包就绪，重启安装', { version: target })
     updater.applyAndRestart()
   } catch (e) {
     console.error('[anzio] 自动更新异常（照常启动）：' + ((e && e.message) || e))
+    noteLog('error', 'update', '自动更新流程异常，照常启动', { error: (e && e.stack) || String(e) })
   } finally {
     splashProgressOn = false
     try { if (mainWindow && mainWindow.webContents) mainWindow.webContents.removeListener('before-input-event', onInput) } catch { /* 忽略 */ }
@@ -584,6 +676,7 @@ async function reviveBackend() {
   if (!backend) return
   if (!reviveAllowed()) {
     console.error('[dsh-ide] backend revive skipped: too many restarts in a minute')
+    noteLog('error', 'backend-revive', '后端 1 分钟内退出 3 次，已停止自动重启')
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.loadFile(ERROR_HTML, {
         query: { url: DSH_URL, reason: '后端反复退出（1 分钟内 3 次），已停止自动重启。请检查是否有东西在杀 node 进程。' },
@@ -594,6 +687,7 @@ async function reviveBackend() {
   reviving = true
   try {
     console.error('[dsh-ide] backend lost, reviving…')
+    noteLog('warn', 'backend-revive', '后端掉线，开始自动重拉')
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadFile(LOADING_HTML)
     await new Promise((r) => setTimeout(r, 1200))     // 等端口彻底松开再拉，避免"地址已被占用"
     const result = await backend.ensure()
@@ -606,8 +700,10 @@ async function reviveBackend() {
     const target = await resolveAppUrl()
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(target)
     console.error('[dsh-ide] backend revived')
+    noteLog('info', 'backend-revive', '后端已重新拉起')
   } catch (err) {
     console.error('[dsh-ide] backend revive failed:', err)
+    noteLog('error', 'backend-revive', '重拉失败', { error: (err && err.stack) || String(err) })
   } finally {
     reviving = false
   }
@@ -643,8 +739,8 @@ function installHotkeyForwarding(win) {
     try {
       if (globalShortcut.isRegistered(acc)) return
       if (globalShortcut.register(acc, () => fire(chord))) registered.add(acc)
-      else console.warn('[anzio] 快捷键被系统占用，注册失败：' + acc)
-    } catch (e) { console.warn('[anzio] 快捷键注册异常 ' + acc + ': ' + ((e && e.message) || e)) }
+      else { console.warn('[anzio] 快捷键被系统占用，注册失败：' + acc); noteLog('warn', 'hotkey', '全局快捷键注册失败（被系统/其它程序占用）', { acc: acc }) }
+    } catch (e) { console.warn('[anzio] 快捷键注册异常 ' + acc + ': ' + ((e && e.message) || e)); noteLog('error', 'hotkey', '全局快捷键注册异常', { acc: acc, error: (e && e.message) || String(e) }) }
   }
   const registerAll = () => {
     registerOne(DEFAULT_ACC, DEFAULT_CHORD)
@@ -712,6 +808,11 @@ if (!gotLock) {
     // 是白的，跟深色界面不搭）。nativeTheme 是 Electron 官方开关（Windows 走 DWM 深色标题栏），
     // 同时会把页面里的 prefers-color-scheme 变成 dark。
     try { nativeTheme.themeSource = 'dark' } catch (e) { /* 老版本 Electron 忽略 */ }
+    // 每次启动留一条锚点：版本/家目录/端口 —— 排障先确认"出事的是哪个版本、数据在哪"
+    noteLog('info', 'boot', '壳启动', {
+      version: appVersion(), pid: process.pid, home: DSH_HOME,
+      install: INSTALL_DIR, cdpPort: BROWSER_DEBUG_PORT, packaged: app.isPackaged === true,
+    })
     // 更新器实例要在启动早期就建好：下面两步（应用待装更新 / 启动前自动更新）都要用它
     try {
       updater = new Updater({
@@ -719,6 +820,7 @@ if (!gotLock) {
       })
     } catch (e) {
       console.error('[anzio] updater init failed:', (e && e.message) || e)
+      noteLog('error', 'updater', '更新器初始化失败', { error: (e && e.message) || String(e) })
     }
     // ── ① 上次下载好、待安装的更新：在窗口/后端之前先替换文件（此时没有旧实例占用），再自重启一次 ──
     try {
@@ -726,16 +828,19 @@ if (!gotLock) {
         const res = updater.applyPending()
         if (res && res.applied) {
           console.log('[anzio] update v' + res.version + ' applied, relaunching')
+          noteLog('info', 'update', '待装更新已应用，准备自重启', { version: res.version })
           app.relaunch({ args: process.argv.slice(1) })
           app.exit(0)
           return
         }
         if (res && res.failures && res.failures.length) {
           console.error('[anzio] update apply failed:', res.failures.join(' | '))
+          noteLog('error', 'update', '待装更新应用失败', { failures: res.failures })
         }
       }
     } catch (e) {
       console.error('[anzio] applyPending failed:', (e && e.message) || e)
+      noteLog('error', 'update', '应用待装更新时异常', { error: (e && e.stack) || String(e) })
     }
     // 移除顶部菜单栏（快捷键由 installShortcuts 注册，见上）
     Menu.setApplicationMenu(null)
@@ -744,13 +849,16 @@ if (!gotLock) {
     installShortcuts(mainWindow)
     installHotkeyForwarding(mainWindow)
     // 内置浏览器内核：必须在 boot() 之前装，页面加载后马上会来要视图
-    try { browserHost = installBrowserHost(mainWindow) } catch (e) { console.error('[anzio] browser host failed:', (e && e.message) || e) }
+    try { browserHost = installBrowserHost(mainWindow) } catch (e) { console.error('[anzio] browser host failed:', (e && e.message) || e); noteLog('error', 'browser-host', '内置浏览器宿主安装失败', { error: (e && e.message) || String(e) }) }
     // 内置浏览器第二期：Playwright 驱动层 + 壳桥。也必须在 boot() 之前起好 —— 后端子进程要用
     // 壳桥的地址与口令（经环境变量交下去），起了后端才起桥的话，第一个会话就指挥不动浏览器。
     try {
       browserDriver = createDriver({
         port: BROWSER_DEBUG_PORT,
-        onLog: (msg, meta) => console.log('[anzio][driver] ' + msg + (meta ? ' ' + JSON.stringify(meta) : '')),
+        onLog: (msg, meta) => {
+          console.log('[anzio][driver] ' + msg + (meta ? ' ' + JSON.stringify(meta) : ''))
+          noteLog(/fail|error|disconnect/i.test(msg) ? 'warn' : 'info', 'browser-driver', msg, meta)
+        },
         // 「Agent幻影」（第三期）：驱动层只管"指针该去哪"，时长由壳算（browser.js 的 pointerMs），
         // 指令再转给对应视图的页面去演 —— 幻影与真实动作是两条独立通道，幻影坏了不影响操作。
         phantom: {
@@ -762,13 +870,20 @@ if (!gotLock) {
       })
       browserBridge = await startBridge({
         driver: browserDriver, host: browserHost, win: mainWindow,
-        log: (msg, meta) => { if (msg !== 'bridge-call') console.log('[anzio][bridge] ' + msg + (meta ? ' ' + JSON.stringify(meta) : '')) },
+        // 成功的 bridge-call 不打控制台（太吵），但**必须落盘**：这是 Agent 指挥浏览器的唯一咽喉，
+        // 以前这里被过滤掉 ⇒ 生产包里"Agent 到底点了什么"零证据（2026-10-19 修）
+        log: (msg, meta) => {
+          if (msg !== 'bridge-call') console.log('[anzio][bridge] ' + msg + (meta ? ' ' + JSON.stringify(meta) : ''))
+          noteLog(msg === 'bridge-call-failed' ? 'error' : 'info', 'browser-action', msg, meta)
+        },
       })
       console.log('[anzio][bridge] listening ' + browserBridge.url)
+      noteLog('info', 'browser-bridge', '壳桥已监听', { url: browserBridge.url })
     } catch (e) {
       console.error('[anzio] browser bridge failed:', (e && e.message) || e)
+      noteLog('error', 'browser-bridge', '壳桥启动失败（Agent 将无法操作内置浏览器）', { error: (e && e.stack) || String(e) })
     }
-    try { setupUpdater() } catch (e) { console.error('[anzio] updater setup failed:', e && e.message) }
+    try { setupUpdater() } catch (e) { console.error('[anzio] updater setup failed:', e && e.message); noteLog('error', 'updater', '更新器初始化失败', { error: (e && e.message) || String(e) }) }
     // ── ② 启动前自动更新（2026-09-20 用户要求："先更新，再打开软件"）──
     // 跑在 boot() 之前：有新版就下载+重启装上，用户看到的是"启动 → 更新 → 新版本打开"。
     // 任何失败/超时/Esc 都只是照常启动（见 autoUpdatePhase 里的三条硬规矩）。

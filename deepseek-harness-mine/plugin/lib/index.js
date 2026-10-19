@@ -353,19 +353,77 @@ async function walkTree(root, ignoreDirs, maxFiles, excludeRoots) {
 // ── 使用轨迹 / 错误日志（JSONL，供开发台 Agent 直接读取）──────────
 // 位置 <DSH_HOME>\logs\ide-trace.log（应用侧 = D:\99DSH\app-home\logs）。
 // 用 node:fs 直写：日志属于插件自身存储，不受 ctx.fs 沙箱围栏影响。
+// 2026-10-19 落盘纪律（当天统计：20.6 万条 / 33MB，其中 92.8% 是重复噪声）：
+//   · 8MB 一份、留 5 份（ide-trace.log + .1~.4）—— 之前从没切过，人已经翻不动了
+//   · 单行超长先丢 meta 再截 msg，不再整条静默丢（丢了等于"那一下没发生"）
+//   · 优先用采集端时间戳：client 是 800ms 攒批上报，落盘时刻会把一批压成同一毫秒
 const TRACE_DIR = path.join(process.env.DSH_HOME || process.cwd(), 'logs')
 const TRACE_LOG = path.join(TRACE_DIR, 'ide-trace.log')
+const TRACE_MAX_BYTES = 8 * 1024 * 1024
+const TRACE_KEEP = 4                  // 轮转保留 .1 ~ .4
+const TRACE_LINE_MAX = 8192
 let traceQueue = Promise.resolve()
+let traceBytes = null                 // null = 还没量过当前文件大小
+const traceGates = new Map()          // 高频同类条目合并用（见 traceThrottled）
+
+// 单行兜底：超长先砍 meta，再截 msg；仍然超长（极端路径）才放弃
+function fitTraceLine(obj) {
+  let line = JSON.stringify(obj)
+  if (line.length <= TRACE_LINE_MAX) return line
+  const slim = Object.assign({}, obj, { msg: '', dropped: 'too-long' })
+  delete slim.meta
+  const room = TRACE_LINE_MAX - JSON.stringify(slim).length - 2
+  slim.msg = String(obj.msg || '').slice(0, Math.max(0, room))
+  line = JSON.stringify(slim)
+  return line.length <= TRACE_LINE_MAX ? line : null
+}
+
+async function rotateTrace() {
+  // Windows 的 rename 目标已存在会失败：先删目标再挪（必须 await，同步写法会变成竞态）
+  for (let i = TRACE_KEEP; i >= 1; i--) {
+    const from = i === 1 ? TRACE_LOG : TRACE_LOG + '.' + (i - 1)
+    const to = TRACE_LOG + '.' + i
+    try { await rm(to, { force: true }) } catch { /* 目标不存在 */ }
+    try { await rename(from, to) } catch { /* 这一份不存在 */ }
+  }
+  traceBytes = 0
+}
+
 function trace(entry) {
   try {
     if (!entry || typeof entry !== 'object') return
-    const line = JSON.stringify({ ts: new Date().toISOString(), ...entry })
-    if (line.length > 8192) return
-    traceQueue = traceQueue.then(() =>
-      mkdir(TRACE_DIR, { recursive: true })
-        .then(() => appendFile(TRACE_LOG, line + '\n'))
-        .catch(() => {}))
+    const at = Number(entry.ts)
+    const ts = at > 0 && at <= Date.now() + 60000 ? new Date(at).toISOString() : new Date().toISOString()
+    const { ts: _drop, ...rest } = entry
+    const line = fitTraceLine(Object.assign({}, rest, { ts, src: rest.src || 'host' }))
+    if (!line) return
+    traceQueue = traceQueue.then(async () => {
+      try {
+        if (traceBytes === null) {
+          try { traceBytes = (await stat(TRACE_LOG)).size } catch { traceBytes = 0 }
+        }
+        const bytes = Buffer.byteLength(line) + 1
+        if (traceBytes + bytes > TRACE_MAX_BYTES) await rotateTrace()
+        await mkdir(TRACE_DIR, { recursive: true })
+        await appendFile(TRACE_LOG, line + '\n')
+        traceBytes += bytes
+      } catch { /* 日志失败不干扰业务 */ }
+    })
   } catch { /* 日志失败不干扰业务 */ }
+}
+
+// 高频同类条目合并：窗口内只落第一条，下一次落时把被压掉的条数带上。
+// 用在"同一个错误每秒重复一遍"这类地方（例如盘符根上读不到系统目录），
+// 否则真问题会被埋掉 —— 判据是这条记录重复一万遍也不会多出任何信息。
+function traceThrottled(key, windowMs, entry) {
+  const now = Date.now()
+  const prev = traceGates.get(key)
+  if (prev && now - prev.at < windowMs) { prev.suppressed += 1; return }
+  const meta = Object.assign({}, entry.meta || {})
+  if (prev && prev.suppressed > 0) meta.suppressed = prev.suppressed
+  trace(Object.assign({}, entry, { meta }))
+  if (traceGates.size > 500) traceGates.clear()
+  traceGates.set(key, { at: now, suppressed: 0 })
 }
 
 export default {
@@ -1001,6 +1059,13 @@ export default {
 
     const termAppend = (t, data) => {
       if (!data) return
+      // 口令提示识别：`Password:` / `密码：` 之后敲的那一行是口令，不能当命令记（打码只盖命令行参数，
+      // 盖不住交互式追问 —— 2026-10-19 加）。只看输出尾部 200 字，够认提示、又不留整屏内容。
+      try {
+        const clean = String(data).replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+        t.tail = ((t.tail || '') + clean).slice(-200)
+        if (/(?:password|passphrase|口令|密码)[^\r\n]{0,24}[:：]\s*$/i.test(t.tail)) t.secretPrompt = true
+      } catch { /* 识别失败只是少打一层码，不影响终端 */ }
       t.seq += 1
       t.chunks.push({ seq: t.seq, data })
       t.bytes += data.length
@@ -1014,6 +1079,55 @@ export default {
     const termKill = (t, reason) => {
       try { t.pty.kill() } catch { /* 已经退了 */ }
       trace({ level: 'info', kind: 'terminal', msg: 'close', meta: { id: t.id, reason } })
+    }
+
+    // ── 终端命令留痕（2026-10-19 拍板：记命令原文，常见口令参数打码）──
+    // 只在**回车那一刻**落一行完整命令，不逐键记；光标移动/方向键产生的转义序列全部跳过。
+    // 打码只覆盖常见写法，不保证 100%（用户已知情）：目的是"能查我敲了什么"，不是当保险箱。
+    const TERM_SECRET_PROGS = new Set(['mysql', 'mysqldump', 'mysqladmin', 'psql', 'pg_dump', 'redis-cli', 'sqlcmd', 'sshpass', 'curl', 'wget'])
+    function maskTermLine(line) {
+      let out = String(line)
+      // 长参数（--password / -Password / --token / --secret / --api-key …）：值一律 ***
+      out = out.replace(/((?:--?|[/\\])(?:password|passwd|pwd|token|secret|api[-_]?key|access[-_]?key)[ \t:=]+)("[^"]*"|'[^']*'|\S+)/gi, '$1***')
+      // 短参数 -p：只在确实吃口令的程序后面打码，避免误伤 mkdir -p / tar -p
+      const prog = (out.match(/^\s*([a-z0-9_.\-]+)/i) || [])[1] || ''
+      if (TERM_SECRET_PROGS.has(prog.toLowerCase())) {
+        out = out.replace(/\s-p\s+("[^"]*"|'[^']*'|\S+)/gi, ' -p ***')
+        out = out.replace(/\s-p(\S+)/gi, ' -p***')
+      }
+      return out
+    }
+    function termFlushCommand(t) {
+      const line = String(t.cmdBuf || '').trim()
+      t.cmdBuf = ''
+      if (!line) { t.secretPrompt = false; return }
+      // 上一屏输出停在"请输入密码" → 这一行就是口令，只记长度
+      if (t.secretPrompt) {
+        t.secretPrompt = false
+        trace({
+          level: 'info', kind: 'terminal', msg: 'command',
+          meta: { id: t.id, cwd: t.cwd, line: '***', secret: true, chars: line.length },
+        })
+        return
+      }
+      trace({
+        level: 'info', kind: 'terminal', msg: 'command',
+        meta: { id: t.id, cwd: t.cwd, line: maskTermLine(line), chars: line.length },
+      })
+    }
+    function termTrackInput(t, data) {
+      const s = String(data || '')
+      for (let i = 0; i < s.length; i++) {
+        const ch = s[i]
+        if (ch === '\x1b') { t.cmdEsc = true; continue }
+        // 转义序列：等到终结字节（字母、@ \ ] ^ _ ` { | } ~）再恢复收字
+        if (t.cmdEsc) { if (/[@-Z\\-_a-z{}|~]/.test(ch)) t.cmdEsc = false; continue }
+        if (ch === '\r' || ch === '\n') { termFlushCommand(t); continue }
+        if (ch === '\x7f' || ch === '\b') { t.cmdBuf = String(t.cmdBuf || '').slice(0, -1); continue }
+        if (ch === '\x03') { t.cmdBuf = ''; t.secretPrompt = false; continue }   // Ctrl+C：半行作废（连口令提示一起清）
+        if (ch === '\t') { if ((t.cmdBuf || '').length < 2000) t.cmdBuf = (t.cmdBuf || '') + '\t'; continue }
+        if (ch >= ' ') { if ((t.cmdBuf || '').length < 2000) t.cmdBuf = (t.cmdBuf || '') + ch }
+      }
     }
     // 兜底回收：页面崩了/没发 close 的会话别一直挂着
     ctx.effect(() => {
@@ -2383,7 +2497,9 @@ export default {
             // 不给退路就等于"文件树打不开这个工作区"（2026-09-20 用户实测）。
             const tol = await listDirTolerant(fsService.processPath(target) || String(path))
             if (tol === null) return json(res, 500, { error: errOf(e) })
-            trace({ level: 'warn', kind: 'list-dir-tolerant', path: String(path), entries: tol.length, error: errOf(e) })
+            // 同一目录同一错误 60s 内只落一条（盘符根每次刷新都会踩同一个系统目录，之前 1 秒一条刷了 15 万条）
+            traceThrottled('list-dir-tolerant|' + String(path) + '|' + errOf(e), 60000,
+              { level: 'warn', kind: 'list-dir-tolerant', path: String(path), entries: tol.length, error: errOf(e) })
             return json(res, 200, { entries: tol, degraded: true })
           }
         }
@@ -2708,11 +2824,13 @@ export default {
             return json(res, 500, { error: errOf(lastErr) || 'spawn-failed' })
           }
           const id = 'term-' + (++termSeq) + '-' + Date.now().toString(36)
-          const t = { id, pty, chunks: [], seq: 0, bytes: 0, droppedUntil: 0, exited: false, exitCode: null, startedAt: Date.now(), lastRead: Date.now(), cols, rows }
+          const t = { id, pty, cwd, chunks: [], seq: 0, bytes: 0, droppedUntil: 0, exited: false, exitCode: null, startedAt: Date.now(), lastRead: Date.now(), cols, rows, cmdBuf: '', cmdEsc: false }
           pty.onData((d) => termAppend(t, d))
           pty.onExit((e) => {
             t.exited = true
             t.exitCode = e && e.exitCode !== undefined ? e.exitCode : null
+            termFlushCommand(t)   // 退出前最后一行没回车的命令也别丢
+            trace({ level: 'info', kind: 'terminal', msg: 'exit', meta: { id: t.id, code: t.exitCode, bytes: t.bytes } })
             termAppend(t, '\r\n\x1b[90m[进程已退出' + (t.exitCode !== null ? '，退出码 ' + t.exitCode : '') + ']\x1b[0m\r\n')
           })
           terminals.set(id, t)
@@ -2740,7 +2858,9 @@ export default {
           const t = terminals.get(String(body.id || ''))
           if (!t) return json(res, 404, { error: 'no-session' })
           if (t.exited) return json(res, 200, { ok: true, exited: true })
-          try { t.pty.write(String(body.data === undefined ? '' : body.data)) } catch (e) { return json(res, 500, { error: errOf(e) }) }
+          const input = String(body.data === undefined ? '' : body.data)
+          try { termTrackInput(t, input) } catch { /* 记账失败不影响输入 */ }
+          try { t.pty.write(input) } catch (e) { return json(res, 500, { error: errOf(e) }) }
           return json(res, 200, { ok: true })
         }
 
@@ -3733,14 +3853,19 @@ export default {
 
         if (action === '/trace' && req.method === 'POST') {
           const body = await readBody(req)
-          const items = Array.isArray(body.entries) ? body.entries.slice(0, 50) : [body]
+          // client 一批最多攒 100 条：这里必须收得下（旧值 50 会把后半批静默丢掉）
+          const items = Array.isArray(body.entries) ? body.entries.slice(0, 200) : [body]
           let recorded = 0
           for (const it of items) {
             if (!it || typeof it !== 'object') continue
             trace({
+              ts: it.ts,
+              src: 'client',
               level: it.level === 'warn' ? 'warn' : (it.level === 'error' ? 'error' : 'info'),
               kind: String(it.kind || 'client').slice(0, 64),
               msg: String(it.msg || '').slice(0, 2000),
+              root: it.root === undefined ? undefined : String(it.root).slice(0, 400),
+              sessionId: it.sessionId === undefined ? undefined : String(it.sessionId).slice(0, 120),
               meta: it.meta !== undefined && it.meta !== null ? it.meta : undefined,
             })
             recorded += 1

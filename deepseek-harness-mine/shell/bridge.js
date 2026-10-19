@@ -74,6 +74,28 @@ function startBridge(deps) {
     'page.code': async (a) => driver.code(String(a.id), String(a && a.code ? a.code : '')),
   }
 
+  // 日志只记"指挥了什么"，不落原文：填写的文字/代码只留长度（2026-10-19 拍板），
+  // 排查要的是"往哪填了 N 个字"。这是 Agent 指挥浏览器的唯一咽喉，逐次落盘才算有轨迹。
+  function summarizeArgs(args) {
+    const out = Object.assign({}, args || {})
+    if (out.text !== undefined) out.text = { chars: String(out.text).length }
+    if (out.code !== undefined) out.code = { chars: String(out.code).length }
+    if (out.value !== undefined) out.value = { chars: String(out.value).length }
+    return out
+  }
+  // 结果只留能判定"成没成、动的是哪个"的字段；快照正文/截图不进日志（太大且已在返回值里）
+  function summarizeResult(method, result) {
+    if (result === undefined || result === null) return undefined
+    if (Array.isArray(result)) return { count: result.length }
+    if (typeof result !== 'object') return { value: String(result).slice(0, 120) }
+    const out = {}
+    for (const k of ['ok', 'id', 'url', 'match', 'count', 'changed', 'elapsedMs']) {
+      if (result[k] !== undefined) out[k] = result[k]
+    }
+    if (Object.keys(out).length === 0) out.chars = JSON.stringify(result).length
+    return out
+  }
+
   const server = http.createServer((req, res) => {
     const fail = (code, msg) => {
       try { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: String(msg) })) } catch { /* 忽略 */ }
@@ -106,12 +128,12 @@ function startBridge(deps) {
       const started = Date.now()
       try {
         const result = await fn(args)
-        log('bridge-call', { method: method, ms: Date.now() - started })
+        log('bridge-call', { method: method, ms: Date.now() - started, args: summarizeArgs(args), result: summarizeResult(method, result) })
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ ok: true, result: result }))
       } catch (e) {
         const message = String((e && e.message) || e)
-        log('bridge-call-failed', { method: method, ms: Date.now() - started, error: message })
+        log('bridge-call-failed', { method: method, ms: Date.now() - started, args: summarizeArgs(args), error: message })
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ ok: false, error: message }))
       }
