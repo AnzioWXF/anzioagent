@@ -461,8 +461,6 @@ export default {
     // 兜底代码的动作演不出幻影（第三期），走多了那一期就废了。
     const BROWSER_BRIDGE = process.env.ANZIO_BROWSER_BRIDGE || ''
     const BROWSER_TOKEN = process.env.ANZIO_BROWSER_TOKEN || ''
-    // 审批记忆：会话 id → 已经点头过的站点（"Agent 首次访问某个网站前先问用户一声"，设计定稿 §4.2）
-    const browserAllowedSites = new Map()
 
     async function browserCall(method, args) {
       if (!BROWSER_BRIDGE || !BROWSER_TOKEN) {
@@ -480,62 +478,6 @@ export default {
       return body.result
     }
 
-    function sessionKeyOf(exec) {
-      try { return String(exec.agent.session.header.id) } catch { return 'unknown' }
-    }
-    function hostOf(url) {
-      try {
-        const u = new URL(String(url))
-        return /^https?:$/i.test(u.protocol) ? u.host : ''
-      } catch { return '' }
-    }
-    /**
-     * "首次访问某个网站先问用户一声" —— ⚠ **不能用审批机制做**（2026-10-08 实测踩到）：
-     * 天工的权限预设是 `danger-full-access`，那一档的定义就是 `approval: 'never'`（"全放开、不弹审批"）。
-     * 平台的审批服务在 `never` 策略下会把**任何** `{kind:'ask'}` 直接判成"用户拒绝"
-     * （模型看到的就是 `the user rejected tool "browser_open_page"`），**框根本不会弹**。
-     * ⇒ 改用 `ctx.userQuestions`：它是"问用户"的服务（界面弹问题卡片），不受审批策略影响。
-     * 拿不到这个服务、或问不出来（例如调用方是被转派出去的子代理）时**一律拒绝、让人去问人**，
-     * 不允许"问了但没答就当同意"。
-     */
-    async function ensureSiteAllowed(exec, url) {
-      const host = hostOf(url)
-      if (host === '') return                 // 空白页 / data: / about: 没什么可批准的
-      const key = sessionKeyOf(exec)
-      const allowed = browserAllowedSites.get(key)
-      if (allowed !== undefined && allowed.has(host)) return
-      const svc = ctx.get('userQuestions')
-      if (svc === undefined) {
-        throw new Error('这个部署里没有"问用户"的服务，没法征求同意 —— 请直接告诉用户你要访问 ' + host + '，等他同意后再调这个工具。')
-      }
-      let answer = null
-      try {
-        answer = await svc.ask({
-          agent: exec.agent,
-          signal: exec.signal,
-          questions: [{
-            id: 'browser-site',
-            header: '内置浏览器',
-            question: 'Agent 要用内置浏览器打开 ' + host + '，允许吗？',
-            detail: '同意之后，本次会话里再访问这个站点就不再问了。',
-            options: [{ label: '允许' }, { label: '拒绝' }],
-          }],
-        })
-      } catch (e) {
-        throw new Error('征求用户同意失败（' + String((e && e.message) || e) + '）—— 请自己用提问工具问用户是否允许访问 ' + host + '，拿到同意再说。')
-      }
-      const picked = ((answer && answer.answers) || []).find((a) => a.id === 'browser-site')
-      const selected = (picked && picked.selected) || []
-      if (selected.indexOf('允许') < 0) {
-        // 把用户的原始回答带上：他可能是手打了一句别的（"等下""换成 xx"），交给模型自己判断怎么接话
-        const raw = [selected.join('、'), (picked && picked.custom) || ''].filter((x) => x !== '').join(' / ')
-        throw new Error('用户没有同意访问 ' + host + '（他的回答：' + (raw === '' ? '未作答' : raw) + '）。别重试这个站点，换个办法，或直接告诉用户你要做什么。')
-      }
-      const set = browserAllowedSites.get(key) || new Set()
-      set.add(host)
-      browserAllowedSites.set(key, set)
-      trace({ level: 'info', kind: 'browser-site-allowed', host, session: key })
-    }
     // 模型能不能吃图像（照抄引擎 read_image 的判据：路由必须显式声明 image 输入）
     async function imageCapable(exec) {
       try {
@@ -642,11 +584,9 @@ export default {
         textTool({
           name: 'browser_open_page',
           description: '在内置浏览器里开一个新标签并返回它的 id。url 省略则开空白页。'
-            + '首次访问某个网站，工具会**弹一张确认卡片给用户**（这是产品设定，别想绕过）；用户没同意就会报错，那就换个办法或直接问用户。'
             + '⚠ 只开"用户请你做的事"需要的页面，别自己乱开。',
           parameters: { url: OS('要打开的网址（省略 = about:blank）。不带协议时按 https 补，localhost/IP 按 http 补') },
-          async run(args, exec) {
-            await ensureSiteAllowed(exec, args.url || '')
+          async run(args) {
             const r = await browserCall('page.open', { url: args.url || 'about:blank' })
             return '已开：' + r.id + ' —— ' + r.url + '。接下来用这个 id 调其它 browser_* 工具。'
           },
@@ -659,10 +599,9 @@ export default {
         })
         textTool({
           name: 'browser_navigate',
-          description: '让某个页面跳到指定网址（当前页可以是任何状态）。首次访问新网站，工具会**弹一张确认卡片给用户**；用户没同意就会报错。',
+          description: '让某个页面跳到指定网址（当前页可以是任何状态）。',
           parameters: { id: ID, url: S('要去的网址') },
-          async run(args, exec) {
-            await ensureSiteAllowed(exec, args.url)
+          async run(args) {
             const r = await browserCall('page.navigate', { id: args.id, url: args.url })
             return '已跳到 ' + r.url + (r.title ? '（标题：' + r.title + '）' : '') + (r.status === null ? '' : '，HTTP ' + r.status)
           },
@@ -989,11 +928,6 @@ export default {
         trace({ level: 'info', kind: 'browser-tools-ready', count: list.length, bridge: BROWSER_BRIDGE !== '' })
       })
       .catch((err) => trace({ level: 'warn', kind: 'browser-tools-failed', error: String((err && err.message) || err) }))
-
-    // ⚠ 别把"首访网站要用户同意"改回 `tools/pre-execute` 的 `{kind:'ask'}`：
-    // 天工的权限预设是 `danger-full-access`（审批策略 `never`），平台会把**任何** ask 直接判成
-    // "用户拒绝"、框都不会弹（2026-10-08 实测踩到）。同意只能走工具内部的 `ctx.userQuestions.ask`
-    // （见 ensureSiteAllowed），那条路不受审批策略影响。
 
     // ── 文件系统变更信号（资源管理器自动刷新，2026-09-16）───────────────
     // 平台 ctx.fs 没有 watch 能力（packages/fs/fs/src 全文无 watch），"磁盘变没变"

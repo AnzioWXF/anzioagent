@@ -2198,6 +2198,9 @@ window.__ModuleLoader__.load({
       nonBasicASCII: false,
       includeComments: true,
       includeStrings: true,
+      // 单词建议（Word Based Suggestions）：2026-10-19 从"永久关"改成可开关的偏好，
+      // 默认值跟 monaco / VSCode 一致 = 开（用户在设置页自己关）。
+      wordSuggest: true,
     };
     function readEditorPrefs() {
       var out = {};
@@ -2246,6 +2249,10 @@ window.__ModuleLoader__.load({
           includeComments: !!prefs.includeComments,
           includeStrings: !!prefs.includeStrings,
         },
+        // 关 = 'off'；开走 'currentDocument'（= monaco / VSCode 的默认档：只捞当前文件里的词）。
+        // 不用布尔 true：这个 build 里布尔会被映射成 'matchingDocuments'（连别的同语言文件一起捞），
+        // 比默认档更吵，不是我们要的"还原默认"。
+        wordBasedSuggestions: prefs.wordSuggest ? 'currentDocument' : 'off',
       };
     }
     var EDITOR_PREF_APPLIERS = [];   // 编辑器挂载后登记"实时生效"的回调（设置页改一项就调一次）
@@ -3062,8 +3069,11 @@ window.__ModuleLoader__.load({
     // ── 【编辑器设置】页（2026-09-22 用户要求）────────────────────────────────
     // 左侧活动栏「⚙️ 设置 → 编辑器设置…」点开后在中面板出现的**详细设置页**：一行一个
     // monaco 配置项，带官方键名与说明，改完立刻生效 + 存本机（localStorage）。
-    // 目前先上「易混淆字符 / 看不见的字符 / 非基本 ASCII + 适用范围」这一组
-    // （= 用户看到的那句 "The character U+FF09 ... could be confused" 的开关所在地）。
+    // 两组：① 特殊字符提醒（易混淆字符 / 看不见的字符 / 非基本 ASCII + 适用范围，
+    //        = 用户看到的那句 "The character U+FF09 ... could be confused" 的开关所在地）；
+    //        ② 输入提示（单词建议）。
+    // 新增一项 = 在 EDITOR_PREF_DEF 加键（带默认值）+ 在这里加一行 + 在
+    // editorPrefsToMonacoOptions 里翻译成 monaco 选项，三处齐了才算接上。
     var EDITOR_PREF_ROWS = [
       { group: '特殊字符提醒（monaco 叫 unicode 高亮）', rows: [
         { key: 'ambiguousCharacters', icon: '❓', label: '易混淆字符',
@@ -3084,6 +3094,12 @@ window.__ModuleLoader__.load({
         { key: 'includeStrings', icon: '🔠', label: '字符串里也算',
           desc: '上面三项的适用范围之一：字符串字面量里的字符也提醒（默认开）。',
           monacoKey: 'editor.unicodeHighlight.includeStrings' },
+      ] },
+      { group: '输入提示（monaco 叫 suggest）', rows: [
+        { key: 'wordSuggest', icon: '🔡', label: '单词建议',
+          desc: '打字时自动弹出下拉，候选是当前文件里已经出现过的词（不是语言服务的智能补全），按 Enter 会直接打上。'
+            + 'monaco / VSCode 默认开；嫌它吵就关掉 —— 关它不影响语言服务的真补全，也不影响 Enter 换行。',
+          monacoKey: 'editor.wordBasedSuggestions' },
       ] },
     ];
 
@@ -4774,7 +4790,7 @@ window.__ModuleLoader__.load({
       function makeEditor(monaco) {
         if (editorRef.current) return;
         var themeName = monacoThemeName(monaco, themeModeRef.current);
-        var uniOpts = editorPrefsToMonacoOptions(readEditorPrefs());
+        var prefOpts = editorPrefsToMonacoOptions(readEditorPrefs());
         var editor = monaco.editor.create(hostRef.current, {
           model: null,
           automaticLayout: true,
@@ -4798,7 +4814,8 @@ window.__ModuleLoader__.load({
           padding: { top: 8, bottom: 24 },
           fixedOverflowWidgets: true,
           // 【编辑器设置】页的偏好（存本机；改完实时生效 + 下次创建读回）
-          unicodeHighlight: uniOpts.unicodeHighlight,
+          unicodeHighlight: prefOpts.unicodeHighlight,
+          wordBasedSuggestions: prefOpts.wordBasedSuggestions,
         });
         editorRef.current = editor;
         // 【编辑器设置】页改一项 → 从这里套到当前编辑器（登记后立刻用当前偏好对齐一次）
