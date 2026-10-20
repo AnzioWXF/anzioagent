@@ -3851,6 +3851,26 @@ export default {
           }
         }
 
+        // ── Agent 铁律（「Agent 设置」页读写）──────────────────────────────
+        if (action === '/agent-rules' && req.method === 'GET') {
+          const rules = readIronRules()
+          return json(res, 200, { ok: true, text: rules.text })
+        }
+        if (action === '/agent-rules' && req.method === 'POST') {
+          const body = await readBody(req)
+          try {
+            const out = await writeIronRules(body)
+            trace({
+              level: 'info', kind: 'agent-rules', msg: 'save',
+              meta: { chars: String((body && body.text) || '').length },
+            })
+            return json(res, 200, out)
+          } catch (err) {
+            trace({ level: 'error', kind: 'agent-rules', msg: 'save-failed', error: errOf(err) })
+            return json(res, 200, { ok: false, error: errOf(err) })
+          }
+        }
+
         if (action === '/trace' && req.method === 'POST') {
           const body = await readBody(req)
           // client 一批最多攒 100 条：这里必须收得下（旧值 50 会把后半批静默丢掉）
@@ -3880,6 +3900,76 @@ export default {
         return json(res, 500, { error: errOf(e), code: codeOf(e) })
       }
     }
+
+    // ── Agent 铁律：每轮注入（2026-10-20，用户定稿）──────────────────────────
+    // 用户在「Agent 设置」页写一大段自由文本，每轮对话前原样塞进上下文最前面。
+    // 存独立 json 而不塞 settings.yaml / 装配单：这是天工的业务配置，跟着引擎版本走的东西不掺进来。
+    // 读盘按 mtime+size 缓存（每轮都会调到，别每轮真读盘）；写盘直接刷新缓存。
+    const IRON_RULES_PATH = process.env.DSH_HOME === undefined
+      ? null
+      : path.join(process.env.DSH_HOME, 'agent-iron-rules.json')
+    // 只有一段文本，没有开关（用户口径：默认恒开，想停就清空）
+    let ironRulesCache = { key: '', text: '' }
+    let ironRulesSeq = 0
+
+    function readIronRules() {
+      if (IRON_RULES_PATH === null) return { text: '' }
+      try {
+        const st = statSync(IRON_RULES_PATH)
+        const key = st.mtimeMs + ':' + st.size
+        if (key === ironRulesCache.key) return ironRulesCache
+        const raw = JSON.parse(readFileSync(IRON_RULES_PATH, 'utf8'))
+        ironRulesCache = {
+          key,
+          text: raw !== null && typeof raw === 'object' && typeof raw.text === 'string' ? raw.text : '',
+        }
+        return ironRulesCache
+      } catch {
+        // 没写过 / 文件坏了：都当"没有铁律"，绝不让它拖累对话
+        ironRulesCache = { key: '', text: '' }
+        return ironRulesCache
+      }
+    }
+
+    async function writeIronRules(patch) {
+      if (IRON_RULES_PATH === null) return { ok: false, error: 'no-dsh-home' }
+      const next = {
+        text: patch !== null && typeof patch === 'object' && typeof patch.text === 'string'
+          ? patch.text
+          : readIronRules().text,
+      }
+      await mkdir(path.dirname(IRON_RULES_PATH), { recursive: true })
+      await writeFile(IRON_RULES_PATH, JSON.stringify(next, null, 2), 'utf8')
+      try {
+        const st = statSync(IRON_RULES_PATH)
+        ironRulesCache = { key: st.mtimeMs + ':' + st.size, text: next.text }
+      } catch { ironRulesCache = { key: '', text: next.text } }
+      return { ok: true, text: next.text }
+    }
+
+    // 挂 `agent/pre-step`（引擎每步请求前唯一能改上下文的地方；请求内容随后由会话日志推导，
+    // 事后改请求数组无效）。返回的消息形状必须满足会话落盘校验：id/role/source.kind/content。
+    // 走 next() 之后追加，是为了排在其它监听之后、贴着用户消息 —— 越近注意越强。
+    ctx.effect(() => ctx.on('agent/pre-step', async (payload, next) => {
+      // 只在这一步真认领到用户消息时注入。pre-step 每一步都跑（工具调用后也算一步），
+      // 不挡这一下 → 一轮里几次工具调用就塞几条铁律，会话直接被撑爆。
+      if (payload === undefined || payload === null
+        || !Array.isArray(payload.messages) || payload.messages.length === 0) return next()
+      const downstream = await next()
+      if (downstream === undefined || downstream === null || downstream.kind !== 'enter') return downstream
+      const rules = readIronRules()
+      const text = typeof rules.text === 'string' ? rules.text.trim() : ''
+      if (text === '') return downstream
+      ironRulesSeq += 1
+      const message = {
+        id: 'dsh-ide-iron-rules-' + Date.now() + '-' + ironRulesSeq,
+        role: 'user',
+        content: [{ type: 'text', text }],
+        source: { kind: 'dsh-ide-iron-rules' },
+      }
+      trace({ level: 'info', kind: 'agent-rules', msg: 'inject', meta: { chars: text.length } })
+      return { ...downstream, messages: [...downstream.messages, message] }
+    }), 'dsh-ide: agent iron rules')
 
     ctx.effect(() => webServer.register({ kind: 'prefix', path: ROUTE_PREFIX, handler }), 'dsh-ide: api routes')
 

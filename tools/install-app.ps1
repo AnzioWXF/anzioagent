@@ -129,6 +129,11 @@ if (Test-Path -LiteralPath $homeFilesSrc) {
   foreach ($f in (Get-ChildItem -LiteralPath $homeFilesSrc -Recurse -File -Force)) {
     $rel = $f.FullName.Substring($homeFilesSrc.Length + 1)
     $dest = Join-Path $appHome $rel
+    # profiles\ 下是用户层配置（默认模式、主题等）：已存在就保留，否则每次装机都把它抹回产品默认。
+    if ($rel -like 'profiles\*' -and (Test-Path -LiteralPath $dest)) {
+      Write-Step "家目录文件 $rel（已存在，保留）"
+      continue
+    }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
     Copy-Item -LiteralPath $f.FullName -Destination $dest -Force
     Write-Step "家目录文件 $rel"

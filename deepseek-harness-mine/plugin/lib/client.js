@@ -51,7 +51,9 @@ window.__ModuleLoader__.load({
       '.dside-upd.has{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary);font-weight:600;}',
       '.dside-btn{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:4px 12px;font:inherit;font-size:12px;cursor:pointer;transition:background var(--ds-transition-duration-fast) var(--ds-ease-in-out),border-color var(--ds-transition-duration-fast) var(--ds-ease-in-out);}',
       '.dside-btn:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l3);}',
-      '.dside-btn.primary{background:var(--dsw-alias-button-info-fill);border-color:transparent;color:var(--dsw-alias-label-primary-foreground);}',
+      // 白字写死，不吃 label-primary-foreground：那个 token 是"贴在反色块上的前景色"，
+      // 深色主题下官方值近黑（见下面 token 块的说明）——跟着它会变成蓝底黑字。
+      '.dside-btn.primary{background:var(--dsw-alias-button-info-fill);border-color:transparent;color:#FFFFFF;}',
       '.dside-btn.primary:hover{background:var(--dsw-alias-button-info-hover);}',
       '.dside-btn.danger{background:transparent;border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);}',
       '.dside-btn.danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger);}',
@@ -331,6 +333,16 @@ window.__ModuleLoader__.load({
     '.dside-eset-desc{font-size:11px;line-height:1.55;color:var(--dsw-alias-label-secondary);}',
     '.dside-eset-key{font-family:var(--ds-font-family-code);font-size:10px;color:var(--dsw-alias-label-tertiary);}',
     '.dside-eset-row .dside-toggle{flex:none;margin-top:2px;}',
+    // 【Agent 设置】页（复用 .dside-eset 外壳；文本框给固定起步高度、可手动拉高，
+    // 不撑满整屏 —— 撑满会变成一根顶天立地的大黑柱，2026-10-20 用户当场否掉）
+    '.dside-rules .dside-eset-body{display:flex;flex-direction:column;overflow:auto;padding:10px 18px 16px;}',
+    '.dside-rules-note{flex:none;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);padding:0 2px 8px;}',
+    '.dside-rules-input{flex:none;width:100%;min-height:220px;max-height:56vh;box-sizing:border-box;resize:vertical;padding:10px 12px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-family:var(--ds-font-family-code);font-size:13px;line-height:1.7;outline:none;}',
+    '.dside-rules-input:focus{border-color:var(--dsw-alias-state-business-primary);}',
+    '.dside-rules-input::placeholder{color:var(--dsw-alias-label-quaternary);}',
+    '.dside-rules-foot{flex:none;display:flex;align-items:center;gap:10px;padding:8px 2px 0;font-size:11px;color:var(--dsw-alias-label-tertiary);}',
+    '.dside-rules-foot .grow{flex:1;min-width:0;}',
+    '.dside-rules-foot .dside-btn:disabled{opacity:.45;cursor:default;}',
     '.dside-term{height:260px;flex:none;box-sizing:border-box;position:relative;display:flex;flex-direction:column;border-top:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-base);}',
     '.dside-term-head{height:30px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--dsw-alias-border-l1);font-size:12px;color:var(--dsw-alias-label-secondary);}',
     '.dside-term-head .ttl{font-weight:600;color:var(--dsw-alias-label-primary);flex:none;}',
@@ -381,7 +393,7 @@ window.__ModuleLoader__.load({
       '.dside-diff-head .sp{flex:1;}',
       '.dside-diff-body{flex:1;min-height:0;position:relative;}',
       '.dside-diff-monaco{position:absolute;inset:0;}',
-      // ⑥ 第二刀：本轮改动清单（Agent 面板内）
+      // ⑥ 第二刀：待处理改动清单（Agent 面板内；2026-10-19 起跨轮合并，见下方分组段）
       '.dside-changes{flex:none;max-height:34%;overflow:auto;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-2);}',
       '.dside-changes-head{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:11px;color:var(--dsw-alias-label-secondary);}',
       '.dside-changes-head b{color:var(--dsw-alias-label-primary);font-weight:600;}',
@@ -587,7 +599,14 @@ window.__ModuleLoader__.load({
       //   四周 chrome #0D0D0F、内容 #141416、控件 #1C1C20、边框 #242428。
       // ⚠ 零渐变、零发光（上一版"蓝调科技感"被否的教训，见 00devCore §6 57）。
       // 编辑器内部底色同步在 static/themes/dark-modern.json（editor.background #141416 等），改色板时两处一起改。
-      '.dside-root{--dsw-alias-bg-base:#141416;--dsw-alias-bg-layer-1:#0D0D0F;--dsw-alias-bg-layer-2:#0D0D0F;--dsw-alias-bg-layer-3:#17171A;--dsw-alias-bg-overlay:#17171A;--dsw-alias-border-l1:#242428;--dsw-alias-border-l2:#2E2E33;--dsw-alias-border-l3:#3A3A40;--dsw-alias-border-l4:#45454C;--dsw-alias-label-primary:#D6D6D6;--dsw-alias-label-secondary:#9A9AA0;--dsw-alias-label-tertiary:#7C7C84;--dsw-alias-label-primary-foreground:#FFFFFF;--dsw-alias-interactive-bg-hover:rgba(255,255,255,.08);--dsw-alias-interactive-bg-active:rgba(255,255,255,.10);--dsw-alias-interactive-bg-hover-danger:rgba(248,81,73,.18);--dsw-alias-state-business-primary:#0078D4;--dsw-alias-state-business-tertiary:rgba(0,120,212,.40);--dsw-alias-button-info-fill:#0078D4;--dsw-alias-button-info-hover:#026EC1;--dsw-static-deepseek-400:#0078D4;--dsw-specific-bubble:#26262B;--dsw-specific-input-major:#1C1C20;--dsw-alias-state-error-primary:#F85149;--dsw-alias-state-warn-primary:#CCA700;--dsw-alias-state-warning-primary:#CCA700;--dsw-alias-state-warn-tertiary:rgba(204,167,0,.22);--dsw-alias-state-success-primary:#2EA043;--dsw-alias-state-success-tertiary:rgba(46,160,67,.22);}',
+      //
+      // ⚠⚠ label-primary-foreground 不是"白字颜色"，是"贴在反色块（主按钮/开关/复选框）上的前景色"：
+      //   官方深色主题里 brand-primary 是近白 rgb(249,250,251)，所以这一位官方给的是**近黑**。
+      //   2026-10-20 之前这里写的是 #FFFFFF，结果主按钮"白底白字"、开关"白轨道白圆点"——界面里
+      //   凡是官方用这对 token 的控件（问答卡片确定、模型设置保存、账号页、反馈 chip）全看不清。
+      //   ⇒ 这一位**不覆盖**，交还给官方主题（深色近黑、浅色纯白，都跟着走）。
+      //   要"反色块里写白字"就自己写死 #FFFFFF（见 .dside-btn.primary），别动这一位。
+      '.dside-root{--dsw-alias-bg-base:#141416;--dsw-alias-bg-layer-1:#0D0D0F;--dsw-alias-bg-layer-2:#0D0D0F;--dsw-alias-bg-layer-3:#17171A;--dsw-alias-bg-overlay:#17171A;--dsw-alias-border-l1:#242428;--dsw-alias-border-l2:#2E2E33;--dsw-alias-border-l3:#3A3A40;--dsw-alias-border-l4:#45454C;--dsw-alias-label-primary:#D6D6D6;--dsw-alias-label-secondary:#9A9AA0;--dsw-alias-label-tertiary:#7C7C84;--dsw-alias-interactive-bg-hover:rgba(255,255,255,.08);--dsw-alias-interactive-bg-active:rgba(255,255,255,.10);--dsw-alias-interactive-bg-hover-danger:rgba(248,81,73,.18);--dsw-alias-state-business-primary:#0078D4;--dsw-alias-state-business-tertiary:rgba(0,120,212,.40);--dsw-alias-button-info-fill:#0078D4;--dsw-alias-button-info-hover:#026EC1;--dsw-static-deepseek-400:#0078D4;--dsw-specific-bubble:#26262B;--dsw-specific-input-major:#1C1C20;--dsw-alias-state-error-primary:#F85149;--dsw-alias-state-warn-primary:#CCA700;--dsw-alias-state-warning-primary:#CCA700;--dsw-alias-state-warn-tertiary:rgba(204,167,0,.22);--dsw-alias-state-success-primary:#2EA043;--dsw-alias-state-success-tertiary:rgba(46,160,67,.22);}',
       // 激活标签：VSCode 是"顶部 1px 蓝线 + 白字"（tab.activeBorderTop / tab.activeForeground）
       '.dside-tab.active{color:#FFFFFF;}',
       '.dside-tab.active::after{top:0;bottom:auto;height:1px;background:#0078D4;}',
@@ -1164,6 +1183,56 @@ window.__ModuleLoader__.load({
       var s = String(p || '');
       var i = Math.max(s.lastIndexOf('/'), s.lastIndexOf('\\'));
       return i < 0 ? s : s.slice(i + 1);
+    }
+
+    // ── @ 引用的「打开的文件」候选源（2026-10-19 用户要求）──────────────────
+    // 外壳每帧把"当前打开的文件"写进 mentionFilesState，候选源读它。
+    // 为什么不用 state/props 递：候选源是 apply 里注册的普通对象，拿不到组件树；
+    // 这份快照是纯派生值（不触发渲染），渲染期直接写是这里最省的一条路。
+    var mentionFilesState = { list: [], cwd: '' };
+
+    /** 把标签列表镜像成候选源要的形状：当前激活的排第一，其余按标签从左到右。 */
+    function syncMentionOpenFiles(tabs, activePath, cwd) {
+      var list = [], active = null, i;
+      if (Array.isArray(tabs)) {
+        for (i = 0; i < tabs.length; i++) {
+          var t = tabs[i];
+          // diff:// / settings:// / browser:// 这类虚拟标签不是文件，不能进 @ 候选
+          if (!t || !t.path || String(t.path).indexOf('://') >= 0) continue;
+          var path = String(t.path);
+          var item = { path: path, name: String(t.name || basenameOf(path)) };
+          if (activePath && path === activePath) active = item;
+          else list.push(item);
+        }
+      }
+      var out = active ? [active].concat(list) : list;
+      if (out.length > 12) out.length = 12;   // 只取前 3，留 12 是给"激活项变化时顺序重排"留余量
+      mentionFilesState.list = out;
+      mentionFilesState.cwd = String(cwd || '');
+    }
+
+    /** 绝对路径 → 相对工作目录的展示路径（分隔符统一成 /，与官方候选一致）。 */
+    function mentionRelPath(path, cwd) {
+      var p = String(path || '').replace(/\\/g, '/');
+      var base = String(cwd || '').replace(/\\/g, '/').replace(/\/+$/, '');
+      if (!base || !p) return p;
+      var lower = p.toLowerCase(), b = base.toLowerCase();
+      if (lower.indexOf(b + '/') === 0) return p.slice(base.length + 1);
+      return p;   // 工作区外用绝对路径（引擎的引用语法允许绝对路径）
+    }
+
+    /** 引用文本：与官方 @file 同一条格式，含空白时用 @"..."。 */
+    function mentionTextFor(path, cwd) {
+      var rel = mentionRelPath(path, cwd);
+      if (!rel) return '';
+      return /\s/.test(rel) ? '@"' + rel + '"' : '@' + rel;
+    }
+
+    /** 候选行右侧的位置说明（父目录）；根目录下的文件没有可说的位置。 */
+    function mentionDescriptionFor(path, cwd) {
+      var rel = mentionRelPath(path, cwd);
+      var slash = rel.lastIndexOf('/');
+      return slash <= 0 ? '' : rel.slice(0, slash);
     }
     function relDisplay(p, root) {
       var s = String(p || '');
@@ -3249,6 +3318,98 @@ window.__ModuleLoader__.load({
       );
     }
 
+    // ── Agent 设置 · 铁律（2026-10-20）─────────────────────────────────────────
+    // 一大段自由文本，存 host 侧（每轮注入在 host 跑，浏览器缓存它读不到）。
+    // 保存 = 停手约 1 秒自动落盘；开关只管"注不注入"，不删内容。
+    function AgentRulesView(props) {
+      // 用户定的口径（2026-10-20）：手动保存、不做开关、默认恒开。
+      // 没有"停用"这回事 —— 想停就清空，清空后不注入。
+      var textState = React.useState(null);          // null = 还没读到
+      var text = textState[0], setText = textState[1];
+      var savedState = React.useState('');           // 上次落盘的内容，用来算"未保存"
+      var savedText = savedState[0], setSavedText = savedState[1];
+      // loading | idle | saving | error-read | error-save
+      var statusState = React.useState('loading');
+      var status = statusState[0], setStatus = statusState[1];
+      var textRef = React.useRef('');                // 保存回调里读最新输入，避开闭包
+      var aliveRef = React.useRef(true);
+      React.useEffect(function () {
+        aliveRef.current = true;
+        apiGet('/agent-rules').then(function (r) {
+          if (!aliveRef.current) return;
+          if (r && r.ok === true) {
+            var got = String(r.text || '');
+            textRef.current = got;
+            setText(got);
+            setSavedText(got);
+            setStatus('idle');
+          } else {
+            setStatus('error-read');
+          }
+        });
+        return function () { aliveRef.current = false; };
+      }, []);
+      function save() {
+        var body = textRef.current;
+        setStatus('saving');
+        apiPost('/agent-rules', { text: body }).then(function (r) {
+          var ok = !!(r && r.ok === true);
+          trace('ui', ok ? 'info' : 'error', 'agent-rules-save', { chars: body.length });
+          if (!aliveRef.current) return;
+          if (ok) { setSavedText(body); setStatus('idle'); } else { setStatus('error-save'); }
+        });
+      }
+      var dirty = (text || '') !== savedText;
+      var statusText = status === 'saving' ? '保存中…'
+        : (status === 'error-read' ? '读取失败（保存会新建一份）'
+          : (status === 'error-save' ? '保存失败（细节见轨迹日志）'
+            : (status === 'loading' ? '读取中…' : (dirty ? '未保存' : '已保存'))));
+      return h('div', { className: 'dside-eset dside-rules' },
+        h('div', { className: 'dside-keys-head' },
+          h('span', { className: 'dside-keys-title' }, '📜 Agent 设置'),
+          h('button', {
+            className: 'dside-btn small',
+            title: '回到编辑器（Esc 也能关）',
+            onClick: function () { if (props.onClose) props.onClose(); },
+          }, '✕ 关闭'),
+        ),
+        h('div', { className: 'dside-eset-body' },
+          h('div', { className: 'dside-eset-group-title' }, '铁律'),
+          h('div', { className: 'dside-rules-note' },
+            '每轮对话开始前，这段字会原样排在你的话前面发给 Agent，当作最高优先级的要求。'
+            + '整段粘进来就行，换行、编号原样保留。改完点「保存」（或 Ctrl+S）；没保存就关掉这个标签，改动会丢。'
+            + '清空并保存 = 不注入。'),
+          h('textarea', {
+            className: 'dside-rules-input',
+            'data-agent-rules': 'text',
+            spellCheck: false,
+            placeholder: '例如：回答前先确认事实；不确定就直说不知道；改代码前必须有明确指令……',
+            value: text === null ? '' : text,
+            onChange: function (e) {
+              textRef.current = String(e.target.value || '');
+              setText(textRef.current);
+            },
+            onKeyDown: function (e) {
+              if ((e.ctrlKey || e.metaKey) && String(e.key).toLowerCase() === 's') {
+                e.preventDefault();
+                save();
+              }
+            },
+          }),
+          h('div', { className: 'dside-rules-foot' },
+            h('span', { className: 'grow' }, String((text || '').length) + ' 字 · ' + statusText),
+            h('button', {
+              className: 'dside-btn small' + (dirty ? ' primary' : ''),
+              'data-agent-rules-save': '1',
+              disabled: !dirty || status === 'saving',
+              title: dirty ? '把这段内容存下来（Ctrl+S）' : '没有改动',
+              onClick: save,
+            }, '保存'),
+          ),
+        ),
+      );
+    }
+
     function BlocksPanel(props) {
       return h('div', { className: 'dside-explorer' },
         h('div', { className: 'dside-pane-title' }, props.title),
@@ -3795,7 +3956,7 @@ window.__ModuleLoader__.load({
     // 这类边角散落在多处，漏一处就会冒出"重开软件后一个打不开的设置标签"这种怪事。
     function isPseudoPath(path) { return isBrowserPath(path) || isReviewPath(path) || isSettingsPath(path); }
     // 设置类标签的页名 → 标签标题（`settings://<页>`）：engine = 引擎那套设置，另两个是天工自己的页。
-    var SETTINGS_TAB_TITLE = { engine: 'harness 设置', 'editor-prefs': '编辑器设置', keys: '快捷键' };
+    var SETTINGS_TAB_TITLE = { engine: 'harness 设置', 'editor-prefs': '编辑器设置', keys: '快捷键', agent: 'Agent 设置' };
     // 差异标签的「上一处 / 下一处改动」要被键位调用（Alt+Shift+F5 / Alt+F5），
     // 而那个 step() 是 ReviewPane 的局部函数、键位实现住在 IdeApp 那层 ⇒ 用一个模块级指针接上。
     // ReviewPane 挂载时写、卸载时清（清之前先比一句，免得后挂的那个被先卸的抹掉）。
@@ -3861,11 +4022,24 @@ window.__ModuleLoader__.load({
         });
       }
       setRef.current = apply;
+      // 几何同步的 effect 只建一次（deps=[id]）→ 闭包里的 st 会一直停在挂载那一刻。
+      // "有没有地址"要按最新值判（决定原生视图显不显示），所以走 ref。
+      var urlRef = React.useRef(st.url);
+      urlRef.current = st.url;
+      // 原生视图**按需创建**：地址为空就根本不存在视图（不建、也就不需要藏）。
+      // 2026-10-20 事故：空白标签也建视图、再按"有没有地址"藏/显，Electron 那边藏了再显会
+      // 留在旧帧 → 屏幕上停着"藏之前截的占位图"（一张加载中的白页），而 Agent 在真实视图里照常操作。
+      // ⇒ 视图的生死只跟"有没有地址"走，不做藏/显来回。
+      var createdRef = React.useRef(false);
 
       // ① 视图生命期 + 壳事件订阅（每个浏览器标签一份；切标签会卸载本组件，但**不销毁**视图）
       React.useEffect(function () {
         if (!bridge) return;
-        bridge.create(id, props.url || '');
+        if (props.url) {
+          try { bridge.create(id, props.url); createdRef.current = true } catch (e) {
+            trace('ui', 'error', 'browser-create-failed', { id: id, error: String((e && e.message) || e) });
+          }
+        }
         // 视图可能早就建好了（切标签会卸载本组件，但**不销毁**视图）→ 问壳要一次当前状态，
         // 否则切回来地址栏是空的、前进/后退是灰的（壳只在"有变化"时才推送事件）。
         try {
@@ -3907,7 +4081,9 @@ window.__ModuleLoader__.load({
         return function () {
           if (off) { try { off(); } catch (e) { /* 忽略 */ } }
           // 卸载只是"这个标签不显示了"（切走了/面板换了），**不销毁视图**：视图的存亡由标签的关闭决定
-          try { bridge.setVisible(id, false); } catch (e) { /* 忽略 */ }
+          if (createdRef.current) {
+            try { bridge.setVisible(id, false); } catch (e) { /* 忽略 */ }
+          }
           visibleRef.current = false;
         };
       }, [id]);
@@ -3926,10 +4102,34 @@ window.__ModuleLoader__.load({
           try {
             var box = el.getBoundingClientRect();     // 判定用原始 DOMRect（left/right/top/bottom 都在）
             try { bridge.setBounds(id, rectOf()); } catch (e) { /* 忽略 */ }
-            var want = !rectOccluded(box);
+            // 空白标签（还没输网址）不显示原生视图：它永远盖在 DOM 之上，一显示就会把
+            // 界面自己的空白提示整块压住。没地址的视图本来没有内容可看 —— 而且这种标签
+            // **连视图都不建**（见 createdRef），所以这里判 false 不会触发"藏→显"的来回。
+            var want = !!urlRef.current && !rectOccluded(box);
+            if (want && !createdRef.current && urlRef.current) {
+              // 地址是刚有的（地址栏回车 / Agent 导航过来）→ 先把视图建出来，下面再显示它
+              try { bridge.create(id, urlRef.current); createdRef.current = true } catch (e) {
+                trace('ui', 'error', 'browser-create-failed', { id: id, error: String((e && e.message) || e) });
+              }
+            }
             if (want !== visibleRef.current) {
               visibleRef.current = want;
-              try { bridge.setVisible(id, want); } catch (e) { /* 忽略 */ }
+              trace('ui', 'info', 'browser-view', { id: id, visible: want, url: urlRef.current || '' });
+              try {
+                Promise.resolve(bridge.setVisible(id, want)).then(function (r) {
+                  if (r && r.ok === false) {
+                    trace('ui', 'error', 'browser-visible-failed', { id: id, visible: want, result: r });
+                    return;
+                  }
+                  // 真显示出来了才撤占位图：那张图只该在"视图藏着"的时候顶班，
+                  // 留着它一旦视图没画出来，用户看到的就是一张冻住的旧画面
+                  if (want) setRef.current({ shot: null });
+                }).catch(function (e) {
+                  trace('ui', 'error', 'browser-visible-failed', { id: id, visible: want, error: String((e && e.message) || e) });
+                });
+              } catch (e) {
+                trace('ui', 'error', 'browser-visible-failed', { id: id, visible: want, error: String((e && e.message) || e) });
+              }
               // 视图收起来时把焦点交还页面，否则键盘还在那个看不见的视图里（VSCode 同样处理）
               if (!want) { try { bridge.blur(); } catch (e) { /* 忽略 */ } }
             }
@@ -3960,6 +4160,12 @@ window.__ModuleLoader__.load({
         };
       }, [id]);
 
+      // 地址从空变成有（地址栏回车）→ 原生视图该露出来了；上面那套同步只盯布局变化
+      // （ResizeObserver / 窗口事件），state 变化它收不到，这一条是显隐的触发口。
+      React.useEffect(function () {
+        if (syncRef.current) syncRef.current();
+      }, [st.url]);
+
       function act(action) {
         if (!bridge) return;
         try { bridge.action(id, action); } catch (e) { /* 忽略 */ }
@@ -3970,6 +4176,12 @@ window.__ModuleLoader__.load({
         editingRef.current = false;
         if (!raw) return;
         setRef.current({ fail: null });
+        // 空白标签还没建视图（见 createdRef）→ 先建，否则 navigate 会落到"找不到页面"
+        if (!createdRef.current) {
+          try { bridge.create(id, raw); createdRef.current = true } catch (e) {
+            trace('ui', 'error', 'browser-create-failed', { id: id, error: String((e && e.message) || e) });
+          }
+        }
         try { bridge.navigate(id, raw); } catch (e) { /* 忽略 */ }
       }
 
@@ -4030,6 +4242,13 @@ window.__ModuleLoader__.load({
           ? h('div', { className: 'dside-browser-empty' },
               h('div', { className: 'dside-browser-empty-big' }, '页面打不开'),
               h('div', { className: 'dside-browser-empty-sub' }, st.fail + (st.url ? '（' + st.url + '）' : '')))
+          : null,
+        // 空白标签的占位（照 VSCode 的 BrowserWelcomeFeature：不加载任何页面，界面自己铺字）。
+        // 这时原生视图是藏着的，所以这几行真的看得见。
+        (!st.url && !st.fail)
+          ? h('div', { className: 'dside-browser-empty' },
+              h('div', { className: 'dside-browser-empty-big' }, '内置浏览器'),
+              h('div', { className: 'dside-browser-empty-sub' }, '在上方地址栏输入网址，回车打开'))
           : null,
       );
 
@@ -5608,7 +5827,9 @@ window.__ModuleLoader__.load({
                       if (b && b.applyEditorPrefs) b.applyEditorPrefs(editorPrefsToMonacoOptions(next));
                     },
                   })
-                : (props.renderSlot
+                : (settingsPage === 'agent'
+                    ? h(AgentRulesView, { onClose: closeSettingsTab })
+                    : (props.renderSlot
                     ? h(SlotErrorBoundary, { name: 'main/settings', fallback: '设置页暂时显示不了（细节见轨迹日志）' },
                         h('div', { className: 'dside-settings' },
                           props.renderSlot('main', {}, {
@@ -5616,7 +5837,7 @@ window.__ModuleLoader__.load({
                             // 面板右上那颗关闭按钮 = 关掉这个标签（VSCode 的设置标签也能关）
                             onClose: closeSettingsTab,
                           })))
-                    : null)))
+                    : null))))
         : null;
       // ── Markdown 文档预览（2026-10-14）：**当前标签原地翻面**（VSCode 1.138 的
       //    markdown.togglePreview 语义），不是另开标签 ⇒ monaco 模型照旧挂着，
@@ -6351,7 +6572,7 @@ window.__ModuleLoader__.load({
       return out;
     }
 
-    // ⑥ 第二刀：从会话事件里投影"本轮改动清单"。
+    // ⑥ 第二刀：从会话事件里投影改动记录（待处理清单与历史视图共同的数据源）。
     // 数据源形状（探针实测 tools/probe-session-events.mjs，别照猜）：
     //   tool/call   data = { turn, step, callId, name, arguments }
     //   tool/result data = { turn, step, message:{ source:{kind:'tool',callId},
@@ -6512,7 +6733,7 @@ window.__ModuleLoader__.load({
       var listState = props.listState, current = props.current, conv = props.conv,
         sessionFace = props.sessionFace, onSelectSession = props.onSelectSession,
         onSend = props.onSend, onCancel = props.onCancel, onNewSession = props.onNewSession,
-        rounds = props.rounds || [], currentGroups = props.currentGroups || [], allGroups = props.allGroups || [],
+        rounds = props.rounds || [], pendingGroups = props.pendingGroups || [], allGroups = props.allGroups || [],
         historyOpen = !!props.historyOpen, hasMoreChanges = !!props.hasMoreChanges,
         sessionsOpen = !!props.sessionsOpen,
         sesSearch = props.sesSearch || { q: '', items: null, hasMore: false, busy: false },
@@ -6715,14 +6936,25 @@ window.__ModuleLoader__.load({
 
       // ── ⑥ 第二/三刀：改动清单（Agent 改了哪些文件 → 逐个看 / 撤销）──
       // 交互按主流 IDE 的习惯（2026-09-17 用户反馈后重做）：
-      //   · 它是「待处理队列」，不是常驻面板 —— 本轮的改动全部处理完，整块直接消失；
+      //   · 它是「待处理队列」，不是常驻面板 —— 待处理的改动全部处理完，整块直接消失；
       //   · 文件行本身就是入口（点行 = 看这个文件的差异），不再放多余的「审阅」按钮；
       //   · 「历史 N 轮」是"主动回看已处理内容"的唯一入口（命令面板里也有一条，面板消失后仍可达）。
       var changesBlock = null;
       var totalGroups = allGroups.length;
+      // 待处理集合由外层算好（跨轮合并后的队列）；折叠态只列它，不再"只看最近一轮"
+      var pend = pendingGroups;
       if (totalGroups) {
-        function changeRow(g, idx, queue) {
-          var counts = lineCounts(g.before, g.after);
+        function changeRow(g, idx, queue, showRound) {
+          // 行数按每一处改动各自算再累加（跨轮合并后 before/after 是拼起来的片段，直接整段比会失真）
+          var counts = { added: 0, removed: 0 };
+          if (g.entries && g.entries.length) {
+            for (var ci = 0; ci < g.entries.length; ci++) {
+              var cc = lineCounts(g.entries[ci].before, g.entries[ci].after);
+              counts.added += cc.added; counts.removed += cc.removed;
+            }
+          } else {
+            counts = lineCounts(g.before, g.after);
+          }
           return h('div', {
             key: g.key,
             className: 'dside-change',
@@ -6735,6 +6967,10 @@ window.__ModuleLoader__.load({
               counts.added ? h('span', { className: 'add' }, '+' + counts.added) : null,
               counts.removed ? h('span', { className: 'del' }, '−' + counts.removed) : null,
             ),
+            // 跨轮的条目标出来源（"第 2–3 轮"）：不然用户不知道这一行里压着两轮没处理的改动
+            showRound && g.rounds && g.rounds.length > 1
+              ? h('span', { className: 'dside-change-tag' }, '第 ' + g.rounds[0] + '–' + g.rounds[g.rounds.length - 1] + ' 轮')
+              : null,
             // 行尾两个动作（鼠标移上去才显形，VSCode 的改动列表同款）：
             // ✓ = 这份改动认了；↺ = 还原回去。
             // ⚠ 这里**不显示**"已保留/已撤销""3/5"这类自造状态 —— 处理完的行直接退场，不留句尾（2026-10-10 重做）。
@@ -6772,14 +7008,12 @@ window.__ModuleLoader__.load({
           );
         }
 
-        var pend = [], j0;
-        for (j0 = 0; j0 < currentGroups.length; j0++) if (!currentGroups[j0].status) pend.push(currentGroups[j0]);
-        // 折叠态只列"还没处理"的；一条都不剩就整块不渲染（历史视图除外 —— 那是用户主动打开的）
+        // 折叠态列的是"跨轮合并后的待处理队列"；一条都不剩就整块不渲染（历史视图除外 —— 那是用户主动打开的）
         if (historyOpen || pend.length) {
           var headEl, rows = [], i;
           if (historyOpen) {
             headEl = h('div', { className: 'dside-changes-head' },
-              h('b', null, '本次会话改动 ' + totalGroups + ' 个文件'),
+              h('b', null, '本次会话改动 ' + totalGroups + ' 处'),
               h('span', null, rounds.length + ' 轮'),
               h('span', { className: 'sp' }),
               h('button', { className: 'dside-btn small', onClick: onKeepAll }, '全部保留'),
@@ -6794,7 +7028,7 @@ window.__ModuleLoader__.load({
             }
           } else {
             headEl = h('div', { className: 'dside-changes-head' },
-              h('b', null, '本轮改动 ' + pend.length + ' 个文件'),
+              h('b', null, '待处理 ' + pend.length + ' 项'),
               h('span', { className: 'sp' }),
               h('button', { className: 'dside-btn small primary', onClick: onKeepAll }, '全部保留'),
               h('button', { className: 'dside-btn small danger', onClick: onUndoAll }, '全部撤销'),
@@ -6802,7 +7036,7 @@ window.__ModuleLoader__.load({
                 ? h('button', { className: 'link', onClick: onToggleHistory }, '历史 ' + rounds.length + ' 轮')
                 : null,
             );
-            for (i = 0; i < pend.length; i++) rows.push(changeRow(pend[i], i, pend));
+            for (i = 0; i < pend.length; i++) rows.push(changeRow(pend[i], i, pend, true));
           }
           changesBlock = h('div', { className: 'dside-changes' }, headEl, rows,
             historyOpen && hasMoreChanges
@@ -7051,6 +7285,8 @@ window.__ModuleLoader__.load({
         return null;
       });
       var activePath = activePathState[0], setActivePath = activePathState[1];
+      // @ 引用的候选源读这份快照（渲染期同步；当前激活的排第一）
+      syncMentionOpenFiles(tabs, activePath, root);
       var editorBridgeRef = React.useRef(null);
       var overlayState = React.useState(null);   // null | 'commands' | 'files'（③ 面板）
       var overlay = overlayState[0], setOverlay = overlayState[1];
@@ -7136,6 +7372,7 @@ window.__ModuleLoader__.load({
       }
       function openKeybindings() { openSettingsTab('keys'); }
       function openEditorSettings() { openSettingsTab('editor-prefs'); }
+      function openAgentSettings() { openSettingsTab('agent'); }
       // ── Markdown 文档预览（2026-10-14，用户拍板"目录走页内目录"）─────────────
       // 预览状态记在**标签自己身上**（mdPreview）：语义是"这个标签现在显示源码还是预览"，
       // 不是"另开了一个预览标签"（VSCode 的 markdown.togglePreview 也是原地翻面）。
@@ -8583,6 +8820,7 @@ window.__ModuleLoader__.load({
             { icon: '🗂', label: '改动历史（本次会话）', run: function () { setHistoryOpen(true); } },
             { icon: '⏱', label: '工作区快照（回撤 / 还原）', run: openSnapshots },
             { icon: '🖥', label: '集成终端', keys: keyHint('view.terminal'), run: function () { setTermOpen(function (v) { return !v; }); } },
+            { icon: '🌐', label: '打开内置浏览器', title: '在中间面板开一个浏览器标签', run: function () { openBrowserTab(''); } },
             { icon: '🧩', label: '插件（左侧活动栏）', run: function () { pickActivity('plugins'); } },
             { icon: '👁', label: '显隐侧边栏', keys: keyHint('view.explorer'), run: function () { setShowExplorer(function (v) { return !v; }); } },
           ] },
@@ -8620,6 +8858,7 @@ window.__ModuleLoader__.load({
             { icon: '⚙', label: 'harness 相关设置…', title: '在中面板里打开引擎自带的设置页（通用设置 / 模型 / 插件 / Agent 预设）', run: openSettingsPage },
             { icon: '⚙️', label: '编辑器设置…', title: '在中面板里逐项设置编辑器喜好（易混淆字符 / 看不见的字符 / 非 ASCII + 适用范围）', run: openEditorSettings },
             { icon: '⌨', label: '快捷键…', title: '在中面板里一条条查看 / 修改（点「改」后按下新的组合键）', run: openKeybindings },
+            { icon: '📜', label: 'Agent 设置…', title: '在中面板里写 Agent 的「铁律」：每轮对话前原样发给它的一段话（可临时停用）', run: openAgentSettings },
           ] },
           { title: '外观', items: [
             { render: h(FontSizeRow, { onApply: function (px) { var b = editorBridgeRef.current; if (b && b.setFontSize) b.setFontSize(px); } }) },
@@ -9323,13 +9562,17 @@ window.__ModuleLoader__.load({
       }, []);
 
       // ── ⑥ 第二/三刀：改动清单（会话事件 → 按「轮次 × 文件」归组；保留/撤销状态本地记）──
-      // 第二刀只看最近一轮；第三刀保留全部轮次：折叠时显示本轮，展开「历史」可看本次会话每一轮改了什么。
+      // 2026-10-19 改口径（用户实测）：清单的**待处理集合跨轮合并**，对齐 VSCode chat 的 working set。
+      // 旧行为只看最近一轮 —— 上一轮没点保留/撤销的改动，下一轮一产生改动就从列表里消失，
+      // 只剩「历史 N 轮」里能找到；同文件被下一轮再改，上一轮连撤销都做不了（对不上文本）。
+      // 现在：未处理的改动不分轮，同一文件连续几轮的编辑并成一条；历史视图仍按轮展示（回看语义）。
       // 轮次 = 事件里的 data.turn（实测 1,2,3… 单调递增），ordinal 是窗口内的序号（第 1..N 轮）。
-      var changeStatusRef = React.useRef({});   // 当前会话的 `${turn}|${path}` -> 'kept' | 'undone'
+      var changeStatusRef = React.useRef({});   // 当前会话的 `${path}|${首条事件 seq}` -> 'kept' | 'undone'
       // ── 审阅状态必须落盘（2026-09-17 用户实测：点完「全部保留」，重开软件又让重审一遍）──
       // changeStatusRef 只是内存 ref，而面板每次都是从会话事件重新投影的 → 不落盘就等于白点。
-      // 形态 { [sessionId]: { 'turn|path': 'kept'|'undone' } }：键用 turn（会话事件里单调递增、
-      // 重启后稳定），不用 ordinal（窗口相对序号，会变）。localStorage 落在应用数据目录里，重启不丢。
+      // 形态 { [sessionId]: { 'path|首条seq': 'kept'|'undone' } }：键跟着"待处理链的起点"走，
+      // 不用 ordinal（窗口相对序号，会变）。旧键 `turn|path` 在分组时自动迁移，老记录不丢。
+      // localStorage 落在应用数据目录里，重启不丢。
       var CHANGE_STATUS_KEY = 'dside.changeStatus.v1';
       function loadChangeStore() {
         try {
@@ -9371,13 +9614,20 @@ window.__ModuleLoader__.load({
       var historyState = React.useState(false);
       var historyOpen = historyState[0], setHistoryOpen = historyState[1];
 
-      function changeKeyOf(g) { return (g.turn || '') + '|' + g.path; }
+      function changeKeyOf(g) {
+        if (g && g.changeKey) return g.changeKey;
+        var e0 = (g && g.entries && g.entries[0]) || null;
+        return ((g && g.path) || '') + '|' + (e0 && e0.seq !== undefined ? e0.seq : '');
+      }
 
-      var roundList = [];    // 轮次（最新一轮在前）
-      var allGroups = [];    // 全部轮次的文件组（新→旧），"本次会话"口径用
+      var roundList = [];      // 轮次（最新一轮在前）—— 历史视图用
+      var allGroups = [];      // 全部轮次的文件组（新→旧），"本次会话"口径用
+      var pendingGroups = [];  // 待处理集合（跨轮合并；同一文件连续未处理的编辑并成一条）
+      var groupIndex = {};     // changeKey -> 组 / 合并条目（审阅浮层、差异标签回调用）
       (function () {
         var raw = (conv && conv.changes) || [];
         if (!raw.length) return;
+        var migrated = false;   // 旧状态键（turn|path）迁移过 → 渲染后补一次落盘
         var byTurn = {}, order = [];
         for (var i = 0; i < raw.length; i++) {
           var c = raw[i];
@@ -9406,6 +9656,28 @@ window.__ModuleLoader__.load({
             var e0 = gg.entries[0];
             gg.kind = e0.kind;
             gg.roundLabel = rl.ordinal;
+            // 状态键 = 文件 + 这一组首条事件的 seq；跨轮合并后键就是"链的起点"，不随轮次变化
+            gg.changeKey = gg.path + '|' + (e0.seq === undefined ? '' : e0.seq);
+            gg.chainKeys = [gg.changeKey];
+            // 旧键迁移：`turn|path` -> `path|首条 seq`（老用户的保留/撤销记录不能因为换键就复活）
+            var oldKey = (gg.turn || '') + '|' + gg.path;
+            if (oldKey !== gg.changeKey && changeStatusRef.current[oldKey] !== undefined) {
+              if (changeStatusRef.current[gg.changeKey] === undefined) {
+                changeStatusRef.current[gg.changeKey] = changeStatusRef.current[oldKey];
+              }
+              delete changeStatusRef.current[oldKey];
+              migrated = true;
+            }
+            if (oldKey !== gg.changeKey) {
+              for (var q0 = 0; q0 < gg.entries.length; q0++) {
+                var ok0 = oldKey + '#' + gg.entries[q0].key;
+                if (changeStatusRef.current[ok0] === undefined) continue;
+                var nk0 = gg.changeKey + '#' + gg.entries[q0].key;
+                if (changeStatusRef.current[nk0] === undefined) changeStatusRef.current[nk0] = changeStatusRef.current[ok0];
+                delete changeStatusRef.current[ok0];
+                migrated = true;
+              }
+            }
             // write 类：birthMs >= 调用时间-5s → 是这次新建；false → 文件本来就有（无变化覆写）
             var probeKey = e0.path + '|' + e0.time;
             var probed = e0.kind === 'write' ? createProbeRef.current[probeKey] : undefined;
@@ -9438,10 +9710,73 @@ window.__ModuleLoader__.load({
               gg.after = as.join('\n⋯\n');
             }
             allGroups.push(gg);
+            groupIndex[gg.changeKey] = gg;
           }
         }
+
+        // ── 待处理集合：跨轮合并（2026-10-19，对齐 VSCode chat 的 working set）──
+        // 同一文件连续未处理的编辑并成一条；中间夹着已处理（保留/撤销）就断开、从下一轮重起一条 ——
+        // 否则这一条会跨过结算点，撤销时把已经认过的改动一起翻掉。
+        // 整文件写入（write）不参与合并：before 只有 null，跟片段拼不出可信对照，各自单独成条。
+        var byPath = {}, pathOrder = [];
+        for (var p1 = 0; p1 < allGroups.length; p1++) {
+          var g1 = allGroups[p1];
+          if (!byPath[g1.path]) { byPath[g1.path] = []; pathOrder.push(g1.path); }
+          byPath[g1.path].push(g1);
+        }
+        function makeChain(chain) {
+          if (chain.length === 1) return chain[0];   // 单轮一条：用它自己，键与状态都不变
+          var first = chain[0];
+          var ents = [], keys = [], ords = [], bs = [], as = [], x, y;
+          for (x = 0; x < chain.length; x++) {
+            keys.push(chain[x].changeKey);
+            ords.push(chain[x].roundLabel);
+            for (y = 0; y < chain[x].entries.length; y++) ents.push(chain[x].entries[y]);
+          }
+          for (x = 0; x < ents.length; x++) { bs.push(ents[x].before || ''); as.push(ents[x].after || ''); }
+          var out = {
+            // 审阅身份键与状态键分开：状态键 = 链起点（结算时链上每一轮都要写），
+            // 身份键 = 整条链自己（否则历史里点"第 1 轮"会跟这条链撞成同一份审阅内容）
+            key: 'chain|' + first.changeKey,
+            reviewKey: 'chain|' + first.changeKey,
+            changeKey: first.changeKey, chainKeys: keys,
+            path: first.path, name: first.name, turn: first.turn,
+            kind: 'hunk', isCreate: !!first.isCreate, ambiguousWrite: false,
+            entries: ents, status: '', rounds: ords,
+            before: bs.join('\n⋯\n'), after: as.join('\n⋯\n'),
+            hunkCount: ents.length, hunkDone: 0,
+          };
+          for (x = 0; x < ents.length; x++) {
+            if (changeStatusRef.current[out.changeKey + '#' + ents[x].key]) out.hunkDone += 1;
+          }
+          groupIndex[out.reviewKey] = out;
+          return out;
+        }
+        for (var p2 = 0; p2 < pathOrder.length; p2++) {
+          var pathGroups = byPath[pathOrder[p2]];
+          pathGroups.sort(function (x, y) {
+            return (x.entries[0].seq || 0) - (y.entries[0].seq || 0);   // 事件序 = 时间序
+          });
+          var chain = [];
+          for (var p3 = 0; p3 < pathGroups.length; p3++) {
+            var lg = pathGroups[p3];
+            if (lg.kind !== 'hunk' || lg.status) {
+              if (chain.length) { pendingGroups.push(makeChain(chain)); chain = []; }
+              if (!lg.status && lg.kind !== 'hunk') pendingGroups.push(lg);   // 未处理的整份写入单独成条
+              continue;
+            }
+            chain.push(lg);
+          }
+          if (chain.length) pendingGroups.push(makeChain(chain));
+        }
+        // 最近改动的排最上面
+        pendingGroups.sort(function (x, y) {
+          var xs = x.entries && x.entries.length ? x.entries[x.entries.length - 1].seq : 0;
+          var ys = y.entries && y.entries.length ? y.entries[y.entries.length - 1].seq : 0;
+          return (ys || 0) - (xs || 0);
+        });
+        if (migrated) persistChangeStatus();   // 迁移只在渲染期发生一次，这里补落盘
       })();
-      var currentGroups = roundList.length ? roundList[0].groups : [];
 
       // write 类改动的新建判定（异步：一次 /stat 查创建时间，结果缓存进 ref）
       React.useEffect(function () {
@@ -9464,15 +9799,28 @@ window.__ModuleLoader__.load({
 
       // 这个文件的改动处理完了（文件级状态已落）→ 关掉它的差异标签。
       // VSCode 同款：Keep/Undo 处理完，那个 diff 编辑器就关了，不留"已处理"的空壳。
+      // 标签 id 用的是审阅身份键：跨轮合并的条目是 chain|…，单轮组就是自己（见 reviewItemOf）。
+      function closeReviewTabsOf(stateKey, g) {
+        var ids = [stateKey];
+        if (g && g.reviewKey && g.reviewKey !== stateKey) ids.push(g.reviewKey);
+        for (var i = 0; i < ids.length; i++) {
+          try { closeTab(REVIEW_SCHEME + ids[i], true, true) } catch (e) { /* 标签可能早关了 */ }
+        }
+      }
       function closeReviewTabIfDone(changeKey) {
         if (!changeStatusRef.current[changeKey]) return;
-        try { closeTab(REVIEW_SCHEME + changeKey, true, true) } catch (e) { /* 标签可能早关了 */ }
+        closeReviewTabsOf(changeKey, groupIndex[changeKey] || null);
       }
       function markChange(g, status) {
-        changeStatusRef.current[changeKeyOf(g)] = status;
+        // 跨轮合并的条目 = 一条链：链上每一轮都要一起记，否则链尾那轮还会以"未处理"冒出来
+        var ks = (g && g.chainKeys) || [changeKeyOf(g)];
+        for (var i = 0; i < ks.length; i++) {
+          changeStatusRef.current[ks[i]] = status;
+          closeReviewTabIfDone(ks[i]);
+        }
+        closeReviewTabsOf(changeKeyOf(g), g);   // 合并条目的差异标签（身份键）也一并退场
         persistChangeStatus();   // 落盘：撤销状态同样要能扛住重开软件
         bumpChangeTick(function (n) { return n + 1; });
-        closeReviewTabIfDone(changeKeyOf(g));
       }
 
       // 逐块审阅：把一个文件组的 hunk 拆成"块"（⑥ 第四刀）。
@@ -9499,7 +9847,7 @@ window.__ModuleLoader__.load({
       function reviewItemOf(g) {
         return {
           path: g.path, name: g.name, isCreate: !!g.isCreate, kind: g.kind, status: g.status, turn: g.turn || '',
-          changeKey: changeKeyOf(g), hunks: hunkEntriesOf(g),
+          changeKey: g.reviewKey || changeKeyOf(g), hunks: hunkEntriesOf(g),
           leftTitle: g.isCreate
             ? '改动前（文件不存在）'
             : (g.kind === 'write' ? '改动前（内容未知 · 整文件写入）' : '改动前（片段）'),
@@ -9527,8 +9875,12 @@ window.__ModuleLoader__.load({
       function reviewChange(g) { reviewGroups([g], 0); }
 
       function rollbackByPath(path) {
-        for (var i = 0; i < allGroups.length; i++) {
-          if (allGroups[i].path === path) { rollbackChange(allGroups[i]); return; }
+        // 优先撤"待处理"的那条（跨轮合并后的链）；没有待处理的才回落到单轮记录
+        for (var i = 0; i < pendingGroups.length; i++) {
+          if (pendingGroups[i].path === path) { rollbackChange(pendingGroups[i]); return; }
+        }
+        for (var j = 0; j < allGroups.length; j++) {
+          if (allGroups[j].path === path) { rollbackChange(allGroups[j]); return; }
         }
         setStatusText('找不到这个文件的改动记录（可能已切走会话）');
       }
@@ -9536,31 +9888,52 @@ window.__ModuleLoader__.load({
       // 撤销 = 把磁盘还原成 Agent 动手之前的样子。两道安全闸：
       //   ① 只对"磁盘内容仍等于 Agent 产出"的文件生效（否则可能盖掉后续改动）；
       //   ② 写回/删除都带版本令牌（平台 replaceIfVersion 守卫）。
-      function rollbackChange(g) {
+      // 跨轮合并的条目 = 一条链，entries 已按时间升序排好，倒序回放正好一路退回最初。
+      // done 用于「全部撤销」把多个文件串起来：同一文件可能同时有整份写入与局部编辑两条待处理，
+      // 并发写盘会互相盖掉（版本令牌也会打架），所以一条落定才动下一条。
+      function rollbackChange(g, done) {
+        var fin = function () { if (typeof done === 'function') done(); };
+        var ents = (g && g.entries) || [];
+        var onlyHunk = true, i0;
+        for (i0 = 0; i0 < ents.length; i0++) {
+          if (ents[i0].kind === 'write' || ents[i0].kind === 'create') onlyHunk = false;
+        }
+        if (!onlyHunk && g.kind !== 'write') {
+          // 写入与编辑混在一条链里：before 只有 null，没法逐段回放 → 绝不猜，交给人
+          setStatusText('这个文件既有整份写入又有局部编辑，无法自动撤销 —— 已打开差异供你手动处理');
+          trace('ui', 'warn', 'change-undo-skip', { path: g.path, reason: 'mixed-write-hunk' });
+          reviewChange(g);
+          fin();
+          return;
+        }
         apiGet('/read-file', { path: g.path }).then(function (d) {
           if (!d || d.error || typeof d.content !== 'string') {
             markChange(g, 'undone');
             setStatusText('撤销：磁盘上已经没有这个文件了');
+            fin();
             return;
           }
           if (g.kind === 'write') {
             // 整文件写入：只有确认"这个文件是这次调用新建的"才允许用删除撤销。
             // 判定来自 birthMs 探测（见上面 createProbeRef），查不出/不是新建一律不动磁盘
-            var pk = g.entries[0].path + '|' + g.entries[0].time;
+            var pk = ents[0].path + '|' + ents[0].time;
             if (createProbeRef.current[pk] !== true) {
               setStatusText('这个文件在 Agent 写它之前就已存在（删除会误伤）—— 已打开差异供你手动处理');
               trace('ui', 'warn', 'change-undo-skip', { path: g.path, reason: 'not-confirmed-create' });
               reviewChange(g);
+              fin();
               return;
             }
             apiPost('/delete-file', { path: g.path, baseVersion: d.version }).then(function (r) {
               if (r && r.error) {
                 setStatusText('撤销失败: ' + r.error);
                 trace('ui', 'error', 'change-undo-failed', { path: g.path, error: String(r.error) });
+                fin();
                 return;
               }
               afterRollback(g);
-            });
+              fin();
+            }).catch(function () { fin(); });
             return;
           }
           if (g.isCreate) {
@@ -9568,15 +9941,17 @@ window.__ModuleLoader__.load({
               if (r && r.error) {
                 setStatusText('撤销失败: ' + r.error);
                 trace('ui', 'error', 'change-undo-failed', { path: g.path, error: String(r.error) });
+                fin();
                 return;
               }
               afterRollback(g);
-            });
+              fin();
+            }).catch(function () { fin(); });
             return;
           }
           // 编辑：把每处改动的 newText 还原成 oldText（倒序 + 要求唯一匹配，匹配不上就交给人）
           var text = d.content;
-          var entries = g.entries.slice().reverse();
+          var entries = ents.slice().reverse();
           for (var i = 0; i < entries.length; i++) {
             var nt = entries[i].after, ot = entries[i].before || '';
             if (typeof nt !== 'string' || !nt) continue;
@@ -9585,6 +9960,7 @@ window.__ModuleLoader__.load({
               setStatusText('这个文件在 Agent 改动后又被改过，无法自动撤销 —— 已打开差异供你手动处理');
               trace('ui', 'warn', 'change-undo-skip', { path: g.path, reason: at < 0 ? 'not-found' : 'ambiguous' });
               reviewChange(g);
+              fin();
               return;
             }
             text = text.slice(0, at) + ot + text.slice(at + nt.length);
@@ -9593,11 +9969,13 @@ window.__ModuleLoader__.load({
             if (r && r.error) {
               setStatusText('撤销失败: ' + r.error);
               trace('ui', 'error', 'change-undo-failed', { path: g.path, error: String(r.error) });
+              fin();
               return;
             }
             afterRollback(g);
-          });
-        });
+            fin();
+          }).catch(function () { fin(); });
+        }).catch(function () { fin(); });
       }
 
       function afterRollback(g) {
@@ -9611,10 +9989,8 @@ window.__ModuleLoader__.load({
       // 安全闸与整文件撤销同一套：读回当前内容 + 版本令牌写回；匹配不上（找不到 / 多处命中）
       // 就拒绝自动改，绝不猜位置 —— 猜错会改坏用户别的代码。
       function groupByChangeKey(key) {
-        for (var i = 0; i < allGroups.length; i++) {
-          if (changeKeyOf(allGroups[i]) === key) return allGroups[i];
-        }
-        return null;
+        // groupIndex 同时收单轮组与跨轮合并条目（合并条目的键 = 链起点）
+        return groupIndex[key] || null;
       }
       // 块状态变了 → 让浮层重建：走 reviewReq 这条**唯一**的跨组件通道
       //（外层 effect 盯 seq 变化，然后自己重算 diffState）。seq 变则差异编辑器重建、滚动回顶部。
@@ -9635,23 +10011,30 @@ window.__ModuleLoader__.load({
           };
         });
       }
-      function markHunk(changeKey, hunkKey, status) {
-        changeStatusRef.current[changeKey + '#' + hunkKey] = status;
+      function markHunk(reviewKey, hunkKey, status) {
+        var g = groupByChangeKey(reviewKey);
+        // 块状态必须写在"状态键"（链起点）上：合并条目的审阅身份键是 chain|…，跟状态表不是一套
+        var base = g ? changeKeyOf(g) : reviewKey;
+        changeStatusRef.current[base + '#' + hunkKey] = status;
         // 这个文件的块全处理完了 → 连文件级一起标上，清单里该行退场
         //（与 VSCode 一致：处理完的文件从改动列表消失，不留"2/2"这种句尾）
-        var g = groupByChangeKey(changeKey);
-        if (g && g.entries && g.entries.length && !changeStatusRef.current[changeKey]) {
+        if (g && g.entries && g.entries.length && !changeStatusRef.current[base]) {
           var all = true, i;
           for (i = 0; i < g.entries.length; i++) {
-            if (!changeStatusRef.current[changeKey + '#' + String(g.entries[i].key)]) { all = false; break; }
+            if (!changeStatusRef.current[base + '#' + String(g.entries[i].key)]) { all = false; break; }
           }
           if (all) {
-            changeStatusRef.current[changeKey] = 'kept';
-            closeReviewTabIfDone(changeKey);   // 全处理完 → 差异标签也退场
+            // 整条链一起记（跨轮合并的条目可能横跨几轮，只标链起点会让链尾那轮又冒出来）
+            var ks = g.chainKeys || [base];
+            for (i = 0; i < ks.length; i++) {
+              changeStatusRef.current[ks[i]] = 'kept';
+              closeReviewTabIfDone(ks[i]);
+            }
+            closeReviewTabsOf(base, g);   // 合并条目的差异标签（身份键）也退场
           }
         }
         persistChangeStatus();
-        trace('ui', 'info', 'change-hunk-mark', { key: changeKey, hunk: hunkKey, status: status });
+        trace('ui', 'info', 'change-hunk-mark', { key: base, hunk: hunkKey, status: status });
         bumpChangeTick(function (v) { return v + 1; });
         refreshReview();
       }
@@ -9691,33 +10074,49 @@ window.__ModuleLoader__.load({
         });
       }
 
-      // 保留/撤销按「组」走：行内 = 一个文件，轮次头 = 一轮，面板头 = 当前口径（本轮 / 本次会话）
+      // 保留/撤销按「组」走：行内 = 一个文件，轮次头 = 一轮，面板头 = 待处理（跨轮合并后的队列）
       function keepGroups(groups, label) {
         var list = groups || [];
         var n = 0, keys = [];
         for (var i = 0; i < list.length; i++) {
           if (list[i].status === 'undone') continue;   // 已撤销的不翻案
-          changeStatusRef.current[changeKeyOf(list[i])] = 'kept';
-          keys.push(changeKeyOf(list[i]));
+          var ks = list[i].chainKeys || [changeKeyOf(list[i])];
+          for (var m = 0; m < ks.length; m++) {
+            changeStatusRef.current[ks[m]] = 'kept';
+            keys.push(ks[m]);
+          }
           n += 1;
         }
-        persistChangeStatus();   // 落盘（本次 bug 的根因就是这里只改了内存）
+        persistChangeStatus();   // 落盘（不落盘 = 重开软件又让重审一遍）
         bumpChangeTick(function (v) { return v + 1; });
         for (var j = 0; j < keys.length; j++) closeReviewTabIfDone(keys[j]);   // 处理完的差异标签一并退场
-        setStatusText('已保留' + (label || '本轮') + ' Agent 的改动（' + n + ' 个文件）');
-        trace('ui', 'info', 'change-keep-all', { count: n, scope: label || '本轮' });
+        setStatusText('已保留 ' + n + ' 项改动' + (label ? '（' + label + '）' : ''));
+        trace('ui', 'info', 'change-keep-all', { count: n, scope: label || '待处理' });
       }
 
       function undoGroups(groups, label) {
         var list = [];
         for (var i = 0; i < (groups || []).length; i++) if (groups[i].status !== 'undone') list.push(groups[i]);
-        for (var j = list.length - 1; j >= 0; j--) rollbackChange(list[j]);   // 倒序：后改的先还原
-        setStatusText('正在撤销' + (label || '本轮') + ' Agent 改动（' + list.length + ' 个文件）…');
-        trace('ui', 'warn', 'change-undo-all', { count: list.length, scope: label || '本轮' });
+        if (!list.length) return;
+        var idx = list.length - 1;
+        // 倒序 + 串行：后改的先还原；同一文件可能同时有"整份写入"与"编辑"两条待处理，
+        // 并发写盘会互相盖掉（版本令牌也会打架），所以一条落定才动下一条。
+        function next() {
+          if (idx < 0) {
+            setStatusText('已撤销 ' + list.length + ' 项改动' + (label ? '（' + label + '）' : ''));
+            return;
+          }
+          var g = list[idx];
+          idx -= 1;
+          rollbackChange(g, function () { next(); });
+        }
+        setStatusText('正在撤销 ' + list.length + ' 项改动…');
+        trace('ui', 'warn', 'change-undo-all', { count: list.length, scope: label || '待处理' });
+        next();
       }
 
-      function keepAllChanges() { keepGroups(historyOpen ? allGroups : currentGroups, historyOpen ? '本次会话' : '本轮'); }
-      function undoAllChanges() { undoGroups(historyOpen ? allGroups : currentGroups, historyOpen ? '本次会话' : '本轮'); }
+      function keepAllChanges() { keepGroups(historyOpen ? allGroups : pendingGroups, historyOpen ? '本次会话' : '待处理'); }
+      function undoAllChanges() { undoGroups(historyOpen ? allGroups : pendingGroups, historyOpen ? '本次会话' : '待处理'); }
 
       // ⑥ 编辑器 → Agent：把「选中代码 + 当前文件 + 诊断」拼好的消息发进当前会话，
       // 并把右侧切到 Agent 页（VSCode 的 Ctrl+I 也是"就地提问、答案立刻可见"）
@@ -10059,7 +10458,7 @@ window.__ModuleLoader__.load({
                   sessionsOpen: sessionsOpen, sesSearch: sesSearch,
                   onSessionSearch: onSessionSearch,
                   onToggleSessions: function () { setSessionsOpen(function (v) { return !v; }); },
-                  rounds: roundList, currentGroups: currentGroups, allGroups: allGroups,
+                  rounds: roundList, pendingGroups: pendingGroups, allGroups: allGroups,
                   historyOpen: historyOpen, hasMoreChanges: !!(conv && conv.hasMore),
                   onToggleHistory: function () {
                     setHistoryOpen(!historyOpen);
@@ -10539,6 +10938,80 @@ window.__ModuleLoader__.load({
       try { window.__DSH_HOST_COMPOSER__ = { presetInToolRow: true }; } catch (e) { /* 声明失败只是版式退回平台默认 */ }
       var workspaces = ctx.get('workspaces');
       var sessions = ctx.get('sessions');
+
+      // ── @ 引用的「打开的文件」候选源（2026-10-19 用户要求）──────────────────
+      // 官方那个 @ 来源在裸 @ 时列的是工作区根目录（文件夹优先 + 名字字典序），
+      // 第一个永远是 $RECYCLE.BIN 这类目录；用户要的是"先看到当前编辑器开着的文件"。
+      // 菜单是"一个来源一组、按 order 排"（ui-input-trigger 的 roster），所以这里注册一个
+      // order 更前的来源：只在还没输入过滤词时给最多 3 行；输入过滤词后整组消失，交给官方文件搜索。
+      // ⚠ 插入的引用 source 必须写 'reference'：codec 与「点引用预览」都按来源名路由，
+      //    写自己的名字会让提交时找不到序列化实现（发送直接失败）。
+      ctx.inject(['inputTriggers'], function (scope) {
+        var triggers = scope.get('inputTriggers');
+        if (!triggers || typeof triggers.registerSource !== 'function') return;
+        scope.effect(function () {
+          return triggers.registerSource({
+            trigger: '@',
+            name: 'ide-opened-files',
+            order: -1,             // 排在官方 @file / @session 那组前面
+            showGroupTitle: false, // 组标题由 section 承担，别多一行
+            candidates: function (session, req) {
+              var query = String((req && req.query) || '');
+              if ((req && req.quoted) || query.trim() !== '') return Promise.resolve([]);
+              var files = mentionFilesState.list || [];
+              if (!files.length) return Promise.resolve([]);
+              // 路径按会话 cwd 解析（引擎就是这么解释 @相对路径 的）；拿不到再退回天工记录的根
+              var cwd = '';
+              try {
+                var byId = sessions && sessions.list && sessions.list.getSnapshot
+                  ? sessions.list.getSnapshot().byId : null;
+                var rec = byId && session && session.sessionId !== undefined ? byId[session.sessionId] : null;
+                cwd = (rec && rec.cwd) || '';
+              } catch (e) { cwd = ''; }
+              if (!cwd) cwd = mentionFilesState.cwd || '';
+              var rows = [], seen = {}, i;
+              for (i = 0; i < files.length && rows.length < 3; i++) {
+                var f = files[i];
+                var path = String((f && f.path) || '');
+                var key = path.toLowerCase();
+                if (!path || seen[key]) continue;
+                seen[key] = true;
+                var mention = mentionTextFor(path, cwd);
+                if (!mention) continue;
+                var label = (f && f.name) || basenameOf(path);
+                var row = {
+                  name: label,
+                  icon: 'file',
+                  section: '打开的文件',
+                  value: JSON.stringify({ mention: mention, label: label }),
+                };
+                var desc = mentionDescriptionFor(path, cwd);
+                if (desc) row.description = desc;
+                rows.push(row);
+              }
+              return Promise.resolve(rows);
+            },
+            onPick: function (pick) {
+              var v = null;
+              try { v = JSON.parse(String((pick && pick.candidate && pick.candidate.value) || '')); } catch (e) { v = null; }
+              if (!v || !v.mention) return undefined;
+              return {
+                insert: {
+                  source: 'reference',
+                  ref: v.mention,
+                  label: v.label,
+                  appearance: 'file',
+                  clipboardText: v.mention,
+                },
+              };
+            },
+            codec: {
+              clipboardText: function (ref) { return ref; },
+              serialize: function (ref) { return Promise.resolve(ref); },
+            },
+          });
+        }, 'dsh-ide: @ opened files');
+      });
       // 平台把"工作空间导航"（选目录 / 连接 / 开会话）放在 uiWorkspace 服务上；
       // `workspaces` 只是注册表（create/rename/delete/insert…），**没有** pickDirectory/connectWorkspace
       // —— 2026-09-17 实测踩到（"workspaces.connectWorkspace is not a function"）。

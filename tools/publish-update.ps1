@@ -116,6 +116,8 @@ $homeFiles = Join-Path $ShellDir 'home-files'
 if ((Test-Path -LiteralPath $homeFiles) -and (-not $SkipShell)) {
   foreach ($f in (Get-ChildItem -LiteralPath $homeFiles -Recurse -File -Force)) {
     $rel = Rel $homeFiles $f.FullName
+    # profiles/ 下是用户层配置：不进更新包，否则安装端会把用户的默认模式、主题等抹回默认。
+    if ($rel -like 'profiles/*') { continue }
     $cand['home/' + $rel] = @{ src = $f.FullName; dest = ('${HOME}\' + ($rel -replace '/', '\')); scope = 'home' }
   }
 }
@@ -149,6 +151,8 @@ $delScopes = @()
 if ($Full -or (-not $SkipShell)) { $delScopes += 'shell/'; $delScopes += 'home/' }
 if (-not $SkipPlugin) { $delScopes += 'plugin/' }
 foreach ($k in $base.Keys) {
+  # 用户层配置永不进删除清单（更新包里本来也不再带它们）
+  if ($k -like 'home/profiles/*') { continue }
   $inScope = $false
   foreach ($s in $delScopes) { if ($k.StartsWith($s)) { $inScope = $true; break } }
   if ($inScope -and -not $cand.Contains($k)) { $deletions += $k }

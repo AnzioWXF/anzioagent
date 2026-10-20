@@ -122,3 +122,27 @@
   name: "@deepseek-ai/dsh-client-ui-theme"
   config:
     preference: dark
+# ── @ 文件候选：排除 Windows 回收站（2026-10-19）────────────────────────
+# 裸 @ 时列的是工作区根目录，`$RECYCLE.BIN` 以 `$` 开头（字符序最前）又是文件夹 ⇒ 永远第一。
+# 回收站不该出现在任何候选里。⚠ 这个配置是**整体替换**，必须写全默认表：
+# 漏一个就等于把 .git / node_modules 那些重新放进来（几万条索引白建）。
+- id: file-reference-local
+  name: "@deepseek-ai/dsh-file-reference-local"
+  config:
+    excludedDirectories:
+      - .git
+      - node_modules
+      - dist
+      - build
+      - out
+      - coverage
+      - target
+      - .next
+      - .nuxt
+      - .turbo
+      - .venv
+      - __pycache__
+      - .pytest_cache
+      - .mypy_cache
+      - .gradle
+      - "$RECYCLE.BIN"
