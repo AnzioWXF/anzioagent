@@ -235,6 +235,21 @@ function createWindow() {
     failCount = 0
   })
 
+  // ── 页面里 window.open / target=_blank 一律不开原生窗口（2026-10-21 用户报障）──────────
+  // 报障原样：Agent 对话里点网址，Electron 默认给开一个没用的小窗口。
+  // 壳不替用户选：把 URL 送进页面，由天工的设置决定用系统浏览器还是内置浏览器标签
+  // （那边的默认值也是"系统浏览器"）。非 http(s) 的直接丢，不弹任何窗口。
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    const target = String(url || '')
+    if (/^(https?:|mailto:)/i.test(target)) {
+      try { mainWindow.webContents.send('anzio-shell:open-link', target) } catch { /* 窗口已毁 */ }
+      noteLog('info', 'open-link', '页面请求打开外链', { url: target })
+    } else if (target) {
+      noteLog('info', 'open-link', '非 http(s) 的新窗口请求已拦截', { url: target })
+    }
+    return { action: 'deny' }
+  })
+
   // ── 渲染层事故留证（2026-10-19）：以前这些全被"没有控制台"吃掉 ──────────
   // 页面 console.error：只收 error 档（info/warn 太吵），同一句话 60s 合并一次
   mainWindow.webContents.on('console-message', (...args) => {

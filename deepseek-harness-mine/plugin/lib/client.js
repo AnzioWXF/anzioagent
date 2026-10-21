@@ -107,6 +107,11 @@ window.__ModuleLoader__.load({
       '.dside-fontbtn{flex:none;width:20px;height:20px;padding:0;border-radius:5px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:12px;line-height:1;}',
       '.dside-toggle{flex:none;margin-left:auto;min-width:34px;height:20px;padding:0 6px;border-radius:10px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary);cursor:pointer;font-size:11px;line-height:1;}',
       '.dside-toggle.on{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-primary);color:#fff;}',
+      // 设置里的两选一（链接打开方式）
+      '.dside-lor-opts{flex:none;display:flex;gap:4px;}',
+      '.dside-lor-opt{height:20px;padding:0 8px;border-radius:10px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary);cursor:pointer;font-family:inherit;font-size:11px;line-height:1;}',
+      '.dside-lor-opt:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+      '.dside-lor-opt.on{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-primary);color:#fff;}',
       '.dside-fontbtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
       '.dside-pane-title{flex:none;padding:10px 14px 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);}',
     // 资源管理器标题栏 + 右侧动作按钮（VSCode 的 ViewTitle actions：新建文件 / 新建文件夹 / 折叠 / 刷新）
@@ -352,6 +357,33 @@ window.__ModuleLoader__.load({
     '.dside-term-head .ttl{font-weight:600;color:var(--dsw-alias-label-primary);flex:none;}',
     '.dside-term-head .st{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:11px;}',
     '.dside-term-body{flex:1;min-height:0;padding:4px 6px 2px;overflow:hidden;}',
+    // ── 多终端（2026-10-21）：关面板只隐藏不销毁，所以面板本体常驻，用 .hidden 藏起来 ──
+    '.dside-term.hidden{display:none;}',
+    // 终端页 = 左边内容 + 右边「终端列表」。VSCode 的 `terminal.integrated.tabs.location` 默认 right、
+    // 列表默认宽 120（terminalTabsList.ts:62-69），这里照抄这两个数。
+    '.dside-term-split{flex:1;min-height:0;display:flex;align-items:stretch;}',
+    // 两个页（终端 / 键盘）都常驻，只切显示 —— 卸载终端页等于把所有 PTY 一起关掉
+    '.dside-term-split.hidden,.dside-kbwrap.hidden{display:none;}',
+    '.dside-kbwrap{flex:1;min-height:0;display:flex;}',
+    '.dside-term-stage{flex:1;min-width:0;min-height:0;position:relative;display:flex;}',
+    '.dside-term-slot{position:absolute;inset:0;display:none;flex-direction:column;}',
+    '.dside-term-slot.on{display:flex;}',
+    '.dside-term-list{flex:none;position:relative;box-sizing:border-box;border-left:1px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1);min-width:46px;max-width:500px;}',
+    '.dside-term-list-body{flex:1;min-height:0;overflow:auto;padding:3px;}',
+    '.dside-term-li{display:flex;align-items:center;gap:6px;height:22px;flex:none;padding:0 6px;border-radius:4px;cursor:pointer;font-size:12px;color:var(--dsw-alias-label-secondary);box-sizing:border-box;}',
+    '.dside-term-li:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+    '.dside-term-li.on{background:var(--dsw-alias-interactive-bg-active);color:var(--dsw-alias-label-primary);}',
+    '.dside-term-li.exited{color:var(--dsw-alias-label-quaternary);}',
+    '.dside-term-li-ico{flex:none;font-size:11px;}',
+    '.dside-term-li-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+    '.dside-term-li-kill{flex:none;display:flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;border:0;border-radius:3px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1;cursor:pointer;opacity:0;}',
+    '.dside-term-li:hover .dside-term-li-kill{opacity:1;}',
+    '.dside-term-li-kill:hover{background:var(--dsw-alias-interactive-bg-active);color:var(--dsw-alias-label-primary);}',
+    '.dside-term-new{flex:none;display:flex;align-items:center;gap:6px;height:24px;margin:2px;padding:0 6px;border:0;border-radius:4px;background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12px;line-height:1;cursor:pointer;}',
+    '.dside-term-new:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+    '.dside-term-sash{position:absolute;left:-2px;top:0;bottom:0;width:4px;cursor:col-resize;z-index:3;}',
+    '.dside-term-sash:hover{background:var(--dsw-alias-border-l2);}',
+    '.dside-term-empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary);font-size:12px;}',
     // ── 面板内的标签栏 + 「Agent幻影」键盘映射面板（第三期，2026-10-08）────────────
     '.dside-term-tabs{flex:none;display:flex;align-items:center;gap:2px;}',
     '.dside-term-tab{display:flex;align-items:center;gap:5px;height:22px;padding:0 9px;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-tertiary);font-family:inherit;font-size:12px;line-height:1;cursor:pointer;}',
@@ -1536,22 +1568,31 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function TermPanel(props) {
-      // 面板内的标签：'term' 终端 / 'keys' Agent键盘映射（第三期）。状态在 IdeApp 那层，
-      // 因为"Agent 打字时该不该闪点"要由它判断。
-      var pane = props.pane === 'keys' ? 'keys' : 'term';
+    // ── 一个终端实例（对应 VSCode 的 ITerminalInstance）：一条 PTY + 一个 xterm + 一条轮询 ──
+    // 生命周期口径（2026-10-21，照 VSCode）：**面板隐藏、切到别的终端都只藏不卸载**。
+    // 以前"关面板 = 卸载 = 发 /term-close 杀 PTY"，正在跑的构建/长命令会被连带干掉；
+    // 现在只有「结束终端」（列表项上的 🗑）才卸载 → 才通知后端杀进程。
+    function TermView(props) {
+      var tid = props.tid;
+      var cbRef = React.useRef(props);
+      cbRef.current = props;                       // effect 里要拿最新回调（props 是旧闭包）
       var hostRef = React.useRef(null);
       var termRef = React.useRef(null);
       var fitRef = React.useRef(null);
       var idRef = React.useRef(null);
       var seqRef = React.useRef(0);
       var timerRef = React.useRef(null);
-      var phaseState = React.useState('starting'); // starting | ready | exited | error
-      var phase = phaseState[0], setPhase = phaseState[1];
-      var errState = React.useState(null);
-      var err = errState[0], setErr = errState[1];
-      var sizeState = React.useState('');           // 终端尺寸（cols×rows），显示在标题栏，见 applyFit
-      var size = sizeState[0], setSize = sizeState[1];
+      var lastPollRef = React.useRef(0);
+      var visibleRef = React.useRef(!!props.visible);
+      visibleRef.current = !!props.visible;
+      var statusRef = React.useRef({ phase: 'starting', err: null, size: '' });
+
+      function report(patch) {
+        var s = statusRef.current;
+        if (patch) { for (var k in patch) s[k] = patch[k] }
+        var cb = cbRef.current;
+        if (cb && cb.onStatus) cb.onStatus(tid, { phase: s.phase, err: s.err, size: s.size });
+      }
 
       React.useEffect(function () {
         var disposed = false;
@@ -1562,14 +1603,16 @@ window.__ModuleLoader__.load({
         // shell 于是在窄宽度里疯狂换行，看着就像"终端坏了"。所以起完会话要再补几次 fit。
         function applyFit() {
           if (disposed) return;
+          var host = hostRef.current;
+          // 面板藏起来时容器尺寸是 0：这时 fit 会算出极小 cols/rows 并写进 PTY，
+          // 一展开就是"20 列疯狂换行"的老毛病（2026-09-21 报障）。没尺寸就直接不碰。
+          if (!host || !host.clientWidth || !host.clientHeight) return;
           try { if (fitRef.current) fitRef.current.fit() } catch (e) { return }
           var t = termRef.current;
           if (t && idRef.current) {
             apiPost('/term-resize', { id: idRef.current, cols: t.cols, rows: t.rows });
-            // 把尺寸显示在终端标题栏（用户 2026-09-21 第三次报"按 Ctrl+` 呼不出终端"之后加的）：
-            // 被布局挤成窄条时，标题栏会直接写着 `20×14` —— 一眼区分"没打开"和"打开了但太窄"，
-            // 免得再靠日志猜（§6 73 的教训：面板类功能要把自己的尺寸露出来）。
-            setSize(t.cols + '×' + t.rows);
+            // 尺寸露在面板标题栏：被布局挤成窄条时直接写着 `20×14`，一眼区分"没打开"和"打开了但太窄"
+            report({ size: t.cols + '×' + t.rows });
           }
         }
 
@@ -1582,7 +1625,7 @@ window.__ModuleLoader__.load({
             if (r.data) { try { termRef.current.write(r.data) } catch (e) { /* ignore */ } }
             if (typeof r.seq === 'number') seqRef.current = r.seq;
             if (r.exited) {
-              setPhase('exited');
+              report({ phase: 'exited' });
               if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
             }
           });
@@ -1591,7 +1634,7 @@ window.__ModuleLoader__.load({
         loadXterm().then(function (ns) {
           if (disposed || !hostRef.current) return;
           var Terminal = ns && ns.Terminal;
-          if (typeof Terminal !== 'function') { setErr('xterm Terminal 不可用'); setPhase('error'); return; }
+          if (typeof Terminal !== 'function') { report({ phase: 'error', err: 'xterm Terminal 不可用' }); return; }
           var term = new Terminal({
             fontFamily: 'var(--ds-font-family-code), Consolas, "Courier New", monospace',
             fontSize: 12.5,
@@ -1606,22 +1649,89 @@ window.__ModuleLoader__.load({
           termRef.current = term;
           fitRef.current = fit;
           try { if (fit) fit.fit() } catch (e) { /* 布局尚未完成 */ }
-          apiPost('/term-create', { cols: term.cols || 100, rows: term.rows || 30, cwd: props.root }).then(function (r) {
-            if (disposed) return;
-            if (!r || r.error) { setErr((r && (r.detail || r.error)) || 'network'); setPhase('error'); return; }
-            idRef.current = r.id;
-            setPhase('ready');
-            term.onData(function (d) { apiPost('/term-input', { id: r.id, data: d }); });
-            timerRef.current = setInterval(pollTerm, 100);
+          // 标签标题跟随 shell 自己报的标题（VSCode `terminal.integrated.tabs.title` 默认 ${process}）。
+          // ⚠ pwsh 报上来的是**完整路径**（实测 `C:\Program Files\WindowsApps\...\pwsh.exe`），
+          //   直接拿去当标签名会挤成一坨 —— 只留程序名（VSCode 的 ${process} 也是这个粒度）。
+          try {
+            if (term.onTitleChange) {
+              term.onTitleChange(function (title) {
+                var cb = cbRef.current;
+                if (!cb || !cb.onTitle) return;
+                var s = String(title || '').trim();
+                if (!s) return;
+                if (/[\\/]/.test(s)) s = s.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || s;
+                s = s.replace(/\.exe$/i, '');
+                cb.onTitle(tid, s.slice(0, 60));
+              });
+            }
+          } catch (e) { /* 同上 */ }
+          // 两个入口：新建（/term-create）与**接回**（页面重载后，认领重载前那条还活着的 PTY）
+          function startPolling() {
+            // 非活动/隐藏的终端降频拉取（100ms → 350ms）：后台终端不必占满轮询，但输出一块都不丢
+            timerRef.current = setInterval(function () {
+              if (!visibleRef.current && Date.now() - lastPollRef.current < 350) return;
+              lastPollRef.current = Date.now();
+              pollTerm();
+            }, 100);
             pollTerm();
-            term.focus();
-            trace('ui', 'info', 'term-open', { id: r.id, cwd: r.cwd || null });
-            // 会话起好后再补三次适配（下一帧 / 120ms / 400ms）：布局定型后把真实尺寸报给 PTY
+          }
+          // 会话起好后补三次适配（下一帧 / 120ms / 400ms）：布局定型后把真实尺寸报给 PTY
+          function startFits() {
             if (window.requestAnimationFrame) window.requestAnimationFrame(applyFit);
             setTimeout(applyFit, 120);
             setTimeout(applyFit, 400);
-          }).catch(function (e) { setErr(String((e && e.message) || e)); setPhase('error'); });
-        }).catch(function (e) { setErr(String((e && e.message) || e)); setPhase('error'); });
+          }
+          // 回放历史输出：一次塞几十万字符会把界面卡住，按 64KB 分块写，写完再开始增量读
+          function replayInto(data, done) {
+            var i = 0, step = 64 * 1024;
+            function next() {
+              if (disposed) return;
+              if (i >= data.length) { done(); return }
+              var chunk = data.slice(i, i + step);
+              i += step;
+              try { term.write(chunk, next) } catch (e) { done() }
+            }
+            if (!data.length) { done(); return }
+            next();
+          }
+
+          var claimId = cbRef.current.remoteId || null;
+          if (claimId) {
+            // 接回：不新建进程，先把后端留着的输出画回来，再接着增量读
+            idRef.current = claimId;
+            report({ phase: 'ready' });
+            term.onData(function (d) { apiPost('/term-input', { id: claimId, data: d }); });
+            apiGet('/term-read', { id: claimId, since: 0 }).then(function (r) {
+              if (disposed) return;
+              if (!r || r.error) { report({ phase: 'error', err: '这个终端已经结束了' }); return }
+              if (typeof r.seq === 'number') seqRef.current = r.seq;
+              var history = r.data || '';
+              replayInto(history, function () {
+                if (disposed) return;
+                startPolling();
+                term.focus();
+                startFits();
+                trace('ui', 'info', 'term-claim', { id: claimId, bytes: history.length });
+              });
+            }).catch(function (e) { report({ phase: 'error', err: String((e && e.message) || e) }); });
+          } else {
+            var cwd = cbRef.current.cwd;
+            apiPost('/term-create', { cols: term.cols || 100, rows: term.rows || 30, cwd: cwd }).then(function (r) {
+              if (disposed) return;
+              if (!r || r.error) { report({ phase: 'error', err: (r && (r.detail || r.error)) || 'network' }); return; }
+              idRef.current = r.id;
+              report({ phase: 'ready' });
+              // 让上层记住"这个标签对应后端哪一条" —— 页面重载后靠它认领，不然重载一次就漏一条进程
+              var cb = cbRef.current;
+              if (cb && cb.onReady) cb.onReady(tid, r.id);
+              term.onData(function (d) { apiPost('/term-input', { id: r.id, data: d }); });
+              startPolling();
+              term.focus();
+              trace('ui', 'info', 'term-open', { id: r.id, cwd: r.cwd || null });
+              startFits();
+            }).catch(function (e) { report({ phase: 'error', err: String((e && e.message) || e) }); });
+          }
+        }).catch(function (e) { report({ phase: 'error', err: String((e && e.message) || e) }); });
 
         var ro = null;
         if (window.ResizeObserver && hostRef.current) {
@@ -1633,7 +1743,9 @@ window.__ModuleLoader__.load({
           disposed = true;
           if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
           if (ro) ro.disconnect();
-          if (idRef.current) apiPost('/term-close', { id: idRef.current });
+          // 只有卸载（= 点 🗑 结束终端）才真的杀进程。页面整页卸载（刷新/关窗）时绝不能发：
+          // 那条进程正是重载后要接回来的东西。
+          if (idRef.current && !PAGE_UNLOADING) apiPost('/term-close', { id: idRef.current });
           var dead = termRef.current;
           termRef.current = null;
           // 也要清掉 fit 引用：否则排队中的 rAF/超时回调会对**已 dispose 的终端**再 fit 一次，
@@ -1644,7 +1756,91 @@ window.__ModuleLoader__.load({
         };
       }, []);
 
-      return h('div', { className: 'dside-term', style: props.height ? { height: Math.round(props.height) + 'px' } : null },
+      // 从"藏着"变"看得见"（面板重新展开 / 切到这个终端）：容器尺寸是从 0 back 回来的，
+      // 必须重新 fit，否则 xterm 还按旧尺寸画（表现为一片空白或错行）。
+      React.useEffect(function () {
+        if (!props.visible) return;
+        function fitNow() {
+          var host = hostRef.current;
+          if (!host || !host.clientWidth || !host.clientHeight) return;   // 布局还没回来，别按 0 尺寸算
+          try { if (fitRef.current) fitRef.current.fit() } catch (e) { /* 布局未定型 */ }
+          var t = termRef.current;
+          if (t && idRef.current) apiPost('/term-resize', { id: idRef.current, cols: t.cols, rows: t.rows });
+          if (t && t.focus) { try { t.focus() } catch (e) { /* ignore */ } }
+        }
+        fitNow();
+        var raf = window.requestAnimationFrame ? window.requestAnimationFrame(fitNow) : 0;
+        var t1 = setTimeout(fitNow, 120);
+        return function () {
+          if (raf && window.cancelAnimationFrame) window.cancelAnimationFrame(raf);
+          clearTimeout(t1);
+        };
+      }, [props.visible]);
+
+      return h('div', { className: 'dside-term-body', ref: hostRef });
+    }
+
+    function TermPanel(props) {
+      // 面板内的两个页签：'term' 终端 / 'keys' Agent键盘映射（第三期）。
+      // 终端页里再套一条右侧的**终端列表**（VSCode `terminal.integrated.tabs.location` 默认 right，
+      // 列表默认宽 120、每项 22 高 —— terminalTabsList.ts:62-69）。键盘页没有列表。
+      var pane = props.pane === 'keys' ? 'keys' : 'term';
+      var tabs = props.tabs || [];
+      var active = null;
+      for (var ti = 0; ti < tabs.length; ti++) if (tabs[ti].tid === props.activeId) { active = tabs[ti]; break }
+      var listW = props.listW || 120;
+
+      function startResize(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var startX = e.clientX, startW = listW;
+        function move(ev) {
+          var w = Math.max(46, Math.min(500, startW + (startX - ev.clientX)));
+          if (props.onListW) props.onListW(w);
+        }
+        function up() {
+          document.removeEventListener('mousemove', move);
+          document.removeEventListener('mouseup', up);
+          document.body.classList.remove('dside-resizing-col');
+        }
+        document.body.classList.add('dside-resizing-col');
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+      }
+
+      var statusText = pane !== 'term'
+        ? 'Agent 操作内置浏览器时，实时显示它按下的键'
+        : (!active ? '还没有终端'
+          : active.phase === 'error' ? ('启动失败：' + String(active.err || ''))
+            : active.phase === 'exited' ? '进程已退出'
+              : active.phase === 'starting' ? '启动中…' : (active.size || ''));
+
+      var listItems = [];
+      var seenTitle = {};          // 同名终端加序号（两个 pwsh 光看名字分不出谁是谁）
+      for (var i = 0; i < tabs.length; i++) {
+        (function (t) {
+          var on = t.tid === props.activeId;
+          var base = String(t.title || '终端');
+          seenTitle[base] = (seenTitle[base] || 0) + 1;
+          var shown = seenTitle[base] > 1 ? (base + ' (' + seenTitle[base] + ')') : base;
+          listItems.push(h('div', {
+            key: t.tid,
+            className: 'dside-term-li' + (on ? ' on' : '') + (t.phase === 'exited' ? ' exited' : ''),
+            title: shown + (t.cwd ? '\n' + t.cwd : ''),
+            onClick: function () { if (props.onSelect) props.onSelect(t.tid); },
+          },
+            h('span', { className: 'dside-term-li-ico' }, t.phase === 'exited' ? '▫' : '▪'),
+            h('span', { className: 'dside-term-li-name' }, shown),
+            h('button', {
+              className: 'dside-term-li-kill',
+              title: '结束这个终端（会杀掉里面正在跑的进程）',
+              onClick: function (e) { e.stopPropagation(); if (props.onKill) props.onKill(t.tid); },
+            }, '🗑'),
+          ));
+        })(tabs[i]);
+      }
+
+      return h('div', { className: 'dside-term' + (props.hidden ? ' hidden' : ''), style: props.height ? { height: Math.round(props.height) + 'px' } : null },
         // ⑰ 高度手柄：压在面板上边缘（VSCode 的 sash 也不占布局空间）
         props.onResize
           ? h(Sash, {
@@ -1654,8 +1850,6 @@ window.__ModuleLoader__.load({
             })
           : null,
         h('div', { className: 'dside-term-head' },
-          // 面板内的标签栏（第三期）：终端 / Agent键盘映射。这是**面板内**的标签，
-          // 与中间列的编辑器标签是两回事，别混。
           h('span', { className: 'dside-term-tabs' },
             h('button', {
               className: 'dside-term-tab' + (pane === 'term' ? ' on' : ''),
@@ -1669,25 +1863,48 @@ window.__ModuleLoader__.load({
               '⌨ 键盘',
               (props.kbFlash && pane !== 'keys') ? h('span', { className: 'dside-dot dirty' }) : null),
           ),
-          pane === 'term'
-            ? h('span', { className: 'st' },
-                phase === 'error' ? ('启动失败：' + String(err))
-                  : phase === 'exited' ? '进程已退出'
-                    : phase === 'starting' ? '启动中…' : (size || ''))
-            : h('span', { className: 'st' }, 'Agent 操作内置浏览器时，实时显示它按下的键'),
-          // 这里只剩「关闭终端」，对齐 VSCode 面板标题栏的 Hide Panel（`panelActions.ts:74-81`）。
-          // ⚠ 别再往这儿加"重新适配尺寸"这类按钮：fit / `/term-resize` 在尺寸变化时由 ResizeObserver 自动跑，
-          //   手动再放一颗既冗余、点了又看不出效果（2026-09-30 用户报"无效"→ 去掉）。VSCode 那颗 `order:1`
-          //   是**最大化面板**（`toggleMaximizedPanel`），天工没有"面板最大化"这个能力，不要用别的动作冒充它。
+          h('span', { className: 'st' }, statusText),
+          // 这颗 ✕ 是 VSCode 面板的 Hide Panel（`panelActions.ts:30-42`，标题就叫 Hide Panel）：
+          // **只把面板藏起来，终端进程照跑**。要结束终端请点右侧列表项上的 🗑。
           h('button', {
-            className: 'dside-btn', title: '关闭终端',
-            onClick: function () { if (props.onClose) props.onClose(); },
+            className: 'dside-btn', title: '隐藏面板（终端继续在后台跑）',
+            onClick: function () { if (props.onHide) props.onHide(); },
           }, '✕'),
         ),
-        // ⚠ 终端宿主**只隐藏、不卸载**：xterm 的容器一旦离开文档，回来会是一片空白（要等重新 fit）。
-        //   切回终端时尺寸变化会触发面板自己的 ResizeObserver → 自动重新 fit。
-        h('div', { className: 'dside-term-body', ref: hostRef, style: pane === 'keys' ? { display: 'none' } : null }),
-        pane === 'keys' ? h(KeyboardPanel, { kb: props.kb }) : null,
+        // ⚠ 两页都常驻、只切显示：切到「⌨ 键盘」时若把终端那一坨卸载，所有 PTY 会被连带关掉
+        //   （这正是这次要修的病）。键盘页同理，别让它反复重建。
+        h('div', { className: 'dside-term-split' + (pane === 'term' ? '' : ' hidden') },
+              h('div', { className: 'dside-term-stage' },
+                tabs.length
+                  ? tabs.map(function (t) {
+                      return h('div', {
+                        key: t.tid,
+                        className: 'dside-term-slot' + (t.tid === props.activeId ? ' on' : ''),
+                      }, h(TermView, {
+                        tid: t.tid, cwd: t.cwd,
+                        remoteId: t.remoteId || null,     // 有值 = 页面重载前就存在的那条，直接接回，不新建
+                        // 面板藏着时也算"不可见"：这时容器尺寸是 0，fit 出来的 cols/rows 会把 PTY 挤坏
+                        visible: t.tid === props.activeId && !props.hidden,
+                        onStatus: props.onStatus, onTitle: props.onTitle, onReady: props.onReady,
+                      }));
+                    })
+                  : h('div', { className: 'dside-term-empty' },
+                      props.restoring ? '正在接回上次的终端…' : '还没有终端 —— 点右下角「＋ 新建终端」'),
+              ),
+              h('div', { className: 'dside-term-list', style: { width: Math.round(listW) + 'px' } },
+                h('div', {
+                  className: 'dside-term-sash', title: '拖动调整列表宽度（双击恢复 120）',
+                  onMouseDown: startResize,
+                  onDoubleClick: function () { if (props.onListW) props.onListW(120); },
+                }),
+                h('div', { className: 'dside-term-list-body' }, listItems),
+                h('button', {
+                  className: 'dside-term-new', title: '新建终端（Ctrl+Shift+`）',
+                  onClick: function () { if (props.onNew) props.onNew(); },
+                }, '＋ 新建终端'),
+              ),
+            ),
+        h('div', { className: 'dside-kbwrap' + (pane === 'keys' ? '' : ' hidden') }, h(KeyboardPanel, { kb: props.kb })),
       );
     }
 
@@ -2287,6 +2504,22 @@ window.__ModuleLoader__.load({
     // （和 Ctrl+B 一个效果）。天工目前三个组：资源管理器 / 操作 / 设置。
     // 「操作」组按用户要求做成"区块"：区块左上角是小组标题（文件/编辑/查看/帮助），
     // 区块里是具体操作行（图标 + 名称 + 快捷键提示），「打开文件夹」放在「文件」区块里。
+    // ── Agent 对话里点链接用哪个浏览器打开（2026-10-21 用户要求）──────────────────
+    // 背景：以前没这一项，官方对话点网址会 `window.open` → Electron 默认弹一个没用的小窗口。
+    // 现在壳把所有新窗口请求拦下交给页面（main.js 的 setWindowOpenHandler），由这里二选一。
+    // 默认系统浏览器 —— 用户先报的就是"小窗口很怪"，系统浏览器是他最熟的落点。
+    var LINK_OPEN_KEY = 'dside.linkOpenMode.v1';
+    function readLinkOpenMode() {
+      try {
+        var v = window.localStorage.getItem(LINK_OPEN_KEY);
+        if (v === 'builtin' || v === 'system') return v;
+      } catch (e) { /* 隐私模式等 */ }
+      return 'system';
+    }
+    function writeLinkOpenMode(v) {
+      try { window.localStorage.setItem(LINK_OPEN_KEY, v === 'builtin' ? 'builtin' : 'system'); } catch (e) { /* 忽略 */ }
+    }
+
     var FONT_SIZE_KEY = 'dside.editorFontSize.v1';
     function readEditorFontSize() {
       try {
@@ -2604,6 +2837,61 @@ window.__ModuleLoader__.load({
     // ⑰ 面板尺寸（VSCode 的 sash 拖拽，2026-09-21 用户要求"跟 VSCode 一样可以拖拽改变宽度/高度"）：
     // 默认值 = 天工原来的固定值（左栏 272 / 右栏 704 / 终端高 260），拖拽结果持久化在 localStorage。
     // 作用域取"全局"（一份 localStorage）—— VSCode 是每工作区一份 view state，天工先按全局来（更省心）。
+    // ── 终端的"界面会话"（页面重载后接回原进程，2026-10-21）───────────────────────
+    // 存 sessionStorage：刷新页面保留，关掉天工就清 —— 关应用时后端一起停、进程已经没了，
+    // 再恢复出来只是假象。记的是"开过哪几个终端 + 各自是后端哪一条 + 当前哪个"，重载后向后端认领。
+    var TERM_SESSION_KEY = 'dside.termSession.v1';
+    function readTermSession() {
+      try {
+        var o = JSON.parse(window.sessionStorage.getItem(TERM_SESSION_KEY) || 'null');
+        if (!o || !Array.isArray(o.tabs)) return null;
+        var tabs = [];
+        for (var i = 0; i < o.tabs.length; i++) {
+          var t = o.tabs[i];
+          if (!t || !t.tid) continue;
+          tabs.push({
+            tid: String(t.tid),
+            remoteId: t.remoteId ? String(t.remoteId) : null,
+            cwd: t.cwd || null,
+            title: t.title || '终端',
+          });
+        }
+        return { tabs: tabs, active: o.active ? String(o.active) : null };
+      } catch (e) { return null }
+    }
+    function writeTermSession(tabs, active) {
+      try {
+        var out = [];
+        for (var i = 0; i < (tabs || []).length; i++) {
+          var t = tabs[i];
+          out.push({ tid: t.tid, remoteId: t.remoteId || null, cwd: t.cwd || null, title: t.title || '' });
+        }
+        window.sessionStorage.setItem(TERM_SESSION_KEY, JSON.stringify({ tabs: out, active: active || null }));
+      } catch (e) { /* 存不下就算了，功能不崩 */ }
+    }
+    // 页面正在卸载（刷新 / 关窗）：这时的卸载清理绝不能发 /term-close，
+    // 否则"刷新后接回原终端"接回来的是一具尸体。React 在整页卸载时本来也不保证跑清理，
+    // 但面板/标签切换那种"真卸载"必须照旧关门 —— 所以要用这个旗子区分。
+    var PAGE_UNLOADING = false;
+    try {
+      window.addEventListener('pagehide', function () { PAGE_UNLOADING = true });
+      window.addEventListener('beforeunload', function () { PAGE_UNLOADING = true });
+    } catch (e) { /* 忽略 */ }
+
+    // 终端列表宽度：VSCode 把列表宽度按 profile 存（terminalTabbedView.ts:278-279），
+    // 默认 120 与它的 DefaultWidth 一致（terminalTabsList.ts:66）。
+    var TERM_LIST_W_KEY = 'dside.termListWidth.v1';
+    function readTermListW() {
+      try {
+        var v = parseInt(window.localStorage.getItem(TERM_LIST_W_KEY) || '', 10);
+        if (v >= 46 && v <= 500) return v;
+      } catch (e) { /* 隐私模式等 */ }
+      return 120;
+    }
+    function writeTermListW(px) {
+      try { window.localStorage.setItem(TERM_LIST_W_KEY, String(px)); } catch (e) { /* 忽略 */ }
+    }
+
     var LAYOUT_KEY = 'dside.layout.v1';
     var LAYOUT_MIN = { sideW: 170, rightW: 320, termH: 77 };     // 最小尺寸（左栏 170、终端高 77 —— 都与 VSCode 一致）
     var LAYOUT_MAX = { sideW: 4000, rightW: 4000, termH: 4000 };  // VSCode 对侧栏/面板**没有最大宽高**，真正的上限由"编辑区保底"决定
@@ -3169,6 +3457,26 @@ window.__ModuleLoader__.load({
       );
     }
 
+    // 左栏设置里的「点链接用哪个浏览器」：两选一（系统浏览器 / 内置浏览器标签）
+    function LinkOpenRow(props) {
+      var mode = props.mode === 'builtin' ? 'builtin' : 'system';
+      function opt(v, label, hint) {
+        return h('button', {
+          className: 'dside-lor-opt' + (mode === v ? ' on' : ''),
+          title: hint,
+          onClick: function () { if (props.onChange) props.onChange(v); },
+        }, label);
+      }
+      return h('div', { className: 'dside-block-row' },
+        h('span', { className: 'dside-block-icon' }, '🔗'),
+        h('span', { className: 'dside-block-label' }, '点链接时用'),
+        h('span', { className: 'dside-lor-opts' },
+          opt('system', '系统浏览器', '用 Windows 默认浏览器打开（默认）'),
+          opt('builtin', '内置浏览器', '在天工中间面板开一个浏览器标签'),
+        ),
+      );
+    }
+
     // 设置面板里的开关行（开 / 关，点一下切换；持久化交给调用方）
     function ToggleRow(props) {
       var on = !!props.value;
@@ -3527,6 +3835,59 @@ window.__ModuleLoader__.load({
       );
     }
 
+    // ── 资源管理器：展开状态记忆 + 自动定位（2026-10-21）──────────────────────────
+    // 两条都照 VSCode 的语义做，不是自创：
+    //   ① 展开状态：VSCode 把"哪些节点展开着"整份 view state **按工作区**存进 workspace storage
+    //      （explorerView.ts:179 `workbench.explorer.treeViewState`，关窗 storeTreeViewState 写入、
+    //      下次 setInput 读回）⇒ 天工同样按工作区根分键存本机 localStorage。
+    //   ② 自动定位：VSCode 监听 `onDidActiveEditorChange` → `selectActiveFile` → `selectResource`
+    //      **逐级展开父链 → 滚动 → 设焦点与选中**（`explorer.autoReveal` 默认 true）。
+    var TREE_EXPAND_KEY = 'dside.treeExpanded.v1';
+    var MAX_EXPANDED_DIRS = 2000;   // 撑爆 localStorage 比"记不住"更糟，超了就截断
+    /** 目录身份键：Windows 路径不分大小写，尾部分隔符也不该算两个身份。 */
+    function dirKey(path) { return String(path || '').replace(/[\\/]+$/, '').toLowerCase(); }
+    function readTreeExpanded(root) {
+      var out = {};
+      if (!root) return out;
+      try {
+        var all = JSON.parse(window.localStorage.getItem(TREE_EXPAND_KEY) || '{}');
+        var list = all && all[dirKey(root)];
+        if (list && list.length) {
+          for (var i = 0; i < list.length && i < MAX_EXPANDED_DIRS; i++) out[dirKey(list[i])] = true;
+        }
+      } catch (e) { /* 坏数据 / 隐私模式：当没有记忆 */ }
+      return out;
+    }
+    function writeTreeExpanded(root, map) {
+      if (!root) return;
+      try {
+        var all = JSON.parse(window.localStorage.getItem(TREE_EXPAND_KEY) || '{}');
+        if (!all || typeof all !== 'object' || Array.isArray(all)) all = {};
+        var list = [];
+        for (var k in map) {
+          if (!map[k]) continue;
+          list.push(k);
+          if (list.length >= MAX_EXPANDED_DIRS) break;
+        }
+        all[dirKey(root)] = list;
+        window.localStorage.setItem(TREE_EXPAND_KEY, JSON.stringify(all));
+      } catch (e) { /* 写不进去就算了，功能不崩 */ }
+    }
+    // 滚动的口径照 VSCode `explorerView.ts:954`：**已经在视口里就不滚**（getRelativeTop 非空即不动），
+    // 要滚就滚到中间（reveal(item, 0.5)）—— 不是滚到"最近边缘"，那样长树里观感差很远。
+    function revealRowInView(el) {
+      if (!el || !el.getBoundingClientRect) return;
+      var sc = null, p = el.parentElement;
+      while (p && !sc) {
+        if (p.className && String(p.className).indexOf('dside-explorer-body') >= 0) sc = p;
+        p = p.parentElement;
+      }
+      if (!sc) return;
+      var r = el.getBoundingClientRect(), b = sc.getBoundingClientRect();
+      if (r.top >= b.top && r.bottom <= b.bottom) return;
+      try { el.scrollIntoView({ block: 'center' }) } catch (e) { el.scrollIntoView() }
+    }
+
     // VSCode 的折叠箭头画法（照 tree.css：**同一个「下箭头」**，收起时整体 rotate(-90°)，
     // 而不是换两个图标）—— 线宽 1.2、圆头，视觉与 codicon chevron 一致。
     function chevronSvg(expanded) {
@@ -3565,8 +3926,9 @@ window.__ModuleLoader__.load({
       var node = props.node, depth = props.depth, selected = props.selected, onSelect = props.onSelect;
       var onContext = props.onContext;
       var fsRev = props.fsRev;                      // 磁盘变更计数：变了就重列（资源管理器自动刷新）
-      var state = React.useState(false);
-      var expanded = state[0], setExpanded = state[1];
+      // 展开状态**不在这个组件里**：由 IdeApp 持有（并按工作区持久化），否则关窗就丢，
+      // 「折叠所有」和"自动展开到活动文件"这类跨层动作也指挥不动它。
+      var expanded = !!(props.expandedMap && props.expandedMap[dirKey(node.path)]);
       var childrenState = React.useState(null);
       var children = childrenState[0], setChildren = childrenState[1];
       var loadingState = React.useState(false);
@@ -3574,6 +3936,9 @@ window.__ModuleLoader__.load({
       var isDir = node.type === 'directory';
       var fsRevRef = React.useRef(fsRev);           // 初次挂载不算"变更"（展开时已经拉过一次）
       var inlineNew = props.inlineNew;              // 内联新建 {dir, kind} | null
+      var rowRef = React.useRef(null);
+      var revealReq = props.revealReq;              // 自动定位请求 {path, seq} | null
+      var revealSeq = revealReq ? revealReq.seq : 0;
 
       function fetchChildren(showLoading) {
         if (showLoading) setLoading(true);
@@ -3586,11 +3951,16 @@ window.__ModuleLoader__.load({
       function toggle() {
         if (props.onFocusNode) props.onFocusNode(node);       // 记录"当前层级"（Ctrl+N 用它决定新建到哪）
         if (!isDir) { onSelect(node); return; }
-        var next = !expanded;
-        setExpanded(next);
-        // 展开一律重列（不再"没拉过才拉"）：VSCode 展开读的也是当前磁盘状态
-        if (next) fetchChildren(children === null);
+        if (props.onToggleDir) props.onToggleDir(node.path, !expanded);
       }
+
+      // 展开 = 拉子项，而且**每次都重拉**（VSCode 展开读的也是当前磁盘状态），
+      // 只有"要不要显示加载中"看有没有缓存。恢复记忆后首屏就已展开的目录也走这里，
+      // 所以 toggle 里不另发一份请求（否则一次展开两个 list-dir）。
+      React.useEffect(function () {
+        if (!isDir || !expanded) return;
+        fetchChildren(children === null);
+      }, [expanded]);
 
       // 磁盘变了 → 已展开的目录跟着重列（折叠的不白拉，等下次展开）
       React.useEffect(function () {
@@ -3599,18 +3969,35 @@ window.__ModuleLoader__.load({
         if (isDir && expanded) fetchChildren(false);
       }, [fsRev, expanded]);
 
-      // 「折叠所有文件夹」：collapseTick 一变就收起（explorer.collapseAll 同款）
-      React.useEffect(function () {
-        if (!props.collapseTick) return;
-        setExpanded(false);
-      }, [props.collapseTick]);
-
       // 内联新建的目标就是本目录 → 必须展开（否则新行没地方显示）
       var isInlineTarget = !!(isDir && inlineNew && inlineNew.dir === node.path);
       React.useEffect(function () {
-        if (!isInlineTarget) return;
-        if (!expanded) { setExpanded(true); fetchChildren(children === null); }
+        if (!isInlineTarget || expanded) return;
+        if (props.onToggleDir) props.onToggleDir(node.path, true);
       }, [isInlineTarget]);
+
+      // 活动文件换了（点标签 / 代码跳转 / Agent 打开）→ 逐级展开到它所在的目录。
+      // VSCode 的做法：`selectActiveFile` → `selectResource` 从根往下 while 循环 expand 父链；
+      // 这里靠"每一层各自判断目标是否在自己子树里"实现同一效果，层级多深都能展开到。
+      React.useEffect(function () {
+        if (!isDir || !revealReq || !revealReq.path) return;
+        if (!pathUnderRoot(revealReq.path, node.path)) return;       // 目标不在我这棵子树
+        if (dirKey(revealReq.path) === dirKey(node.path)) return;    // 目标就是我自己
+        if (!expanded && props.onToggleDir) props.onToggleDir(node.path, true);
+      }, [revealSeq]);
+
+      // 目标节点本身：滚到视口中间。父链是逐层异步展开的，所以只能挂在"自己渲染出来之后"，
+      // 不能在一次 reveal 里算好位置（那时节点还不存在）。
+      React.useEffect(function () {
+        if (!revealReq || !revealReq.path) return;
+        if (dirKey(revealReq.path) !== dirKey(node.path)) return;
+        revealRowInView(rowRef.current);
+        // 同一帧里父亲那一层可能刚展开完、兄弟节点随后插进来，位置还会再走一次
+        // → 下一帧按最终布局补滚一次（VSCode 的 tree.reveal 也是布局后算的相对位置）
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(function () { revealRowInView(rowRef.current); });
+        }
+      }, [revealSeq]);
 
       // 缩进参考线：祖先每一层一根竖条（VSCode 同款几何 —— 第 i 层的线正好落在第 i 层那一行
       // 折叠箭头的左边缘）。深度 0 没有线；没有子节点的目录展开后线自然消失。
@@ -3621,8 +4008,10 @@ window.__ModuleLoader__.load({
 
       var row = h('div', {
         // selected 传下来的是"当前选中的路径"（字符串）—— 必须**逐个节点比对**，
-        // 否则非空字符串恒为真 → 打开任意文件后整棵树都套上选中态（2026-09-21 用户实测报障）
-        className: 'dside-node' + (selected === node.path ? ' sel' : ''),
+        // 否则非空字符串恒为真 → 打开任意文件后整棵树都套上选中态（2026-09-21 用户实测报障）。
+        // 比对用 dirKey：Windows 路径不分大小写，编辑器给来的盘符小写不该让选中态落空。
+        ref: rowRef,
+        className: 'dside-node' + (dirKey(selected) === dirKey(node.path) ? ' sel' : ''),
         onClick: toggle,
         // 单击 = 预览（VSCode 手感：临时标签，斜体、复用同一个）；双击 = 固定打开
         onDoubleClick: function () { if (!isDir && props.onOpen) props.onOpen(node); },
@@ -3646,7 +4035,7 @@ window.__ModuleLoader__.load({
               key: c.path, node: c, depth: depth + 1, selected: selected, onSelect: onSelect, onOpen: props.onOpen,
               fsRev: fsRev, onContext: onContext, onFocusNode: props.onFocusNode,
               inlineNew: inlineNew, onInlineSubmit: props.onInlineSubmit, onInlineCancel: props.onInlineCancel,
-              collapseTick: props.collapseTick,
+              expandedMap: props.expandedMap, onToggleDir: props.onToggleDir, revealReq: revealReq,
             }));
           }
         }
@@ -3745,7 +4134,7 @@ window.__ModuleLoader__.load({
             key: c.path, node: c, depth: 0, selected: selected, onSelect: onSelect, onOpen: props.onOpen,
             fsRev: fsRev, onContext: props.onContext, onFocusNode: props.onFocusNode,
             inlineNew: inlineNew, onInlineSubmit: props.onInlineSubmit, onInlineCancel: props.onInlineCancel,
-            collapseTick: props.collapseTick,
+            expandedMap: props.expandedMap, onToggleDir: props.onToggleDir, revealReq: props.revealReq,
           }));
         });
       }
@@ -7454,10 +7843,71 @@ window.__ModuleLoader__.load({
       var treeSel = treeSelState[0], setTreeSel = treeSelState[1];
       var inlineNewState = React.useState(null);     // {dir, kind} | null
       var inlineNew = inlineNewState[0], setInlineNew = inlineNewState[1];
-      var collapseTickState = React.useState(0);
-      var collapseTick = collapseTickState[0], setCollapseTick = collapseTickState[1];
+      // 树里哪些目录展开着（{ <dirKey>: true }）—— 按工作区根持久化，见 readTreeExpanded
+      var treeExpandedState = React.useState({});
+      var treeExpanded = treeExpandedState[0], setTreeExpanded = treeExpandedState[1];
+      var treeExpandedRootRef = React.useRef(null);   // 当前这份集合属于哪个工作区
+      // 自动定位请求：编辑器换了活动文件就 +1，树里逐层展开到这个文件并滚到视口中间
+      var revealReqState = React.useState(null);      // {path, seq} | null
+      var revealReq = revealReqState[0], setRevealReq = revealReqState[1];
+      var revealSeqRef = React.useRef(0);
       var fsRevState = React.useState(0);              // 资源管理器自动刷新：host /fs-rev 变了就 +1
       var fsRev = fsRevState[0], setFsRev = fsRevState[1];
+
+      // 展开集合的"最新值"镜像：同一帧里连点两下、或回调里要读旧闭包时都得拿到真值
+      var treeExpandedRef = React.useRef({});
+      treeExpandedRef.current = treeExpanded;
+      // 工作区换了 → 换一份展开记忆（VSCode 的树 view state 就是按工作区存的）
+      React.useEffect(function () {
+        if (!root) {
+          treeExpandedRootRef.current = null;
+          treeExpandedRef.current = {};
+          setTreeExpanded({});
+          return;
+        }
+        if (treeExpandedRootRef.current === root) return;
+        treeExpandedRootRef.current = root;
+        var loaded = readTreeExpanded(root);
+        treeExpandedRef.current = loaded;
+        setTreeExpanded(loaded);
+        traceEvery('tree-expand-restore', 2000, 'ui', 'info', 'tree-expand-restore',
+          { root: root, dirs: Object.keys(loaded).length });
+      }, [root]);
+
+      function setDirExpanded(path, next) {
+        var k = dirKey(path);
+        var prev = treeExpandedRef.current || {};
+        if (!!prev[k] === !!next) return;
+        var out = {};
+        for (var p in prev) out[p] = prev[p];
+        if (next) out[k] = true; else delete out[k];
+        treeExpandedRef.current = out;
+        treeExpandedRootRef.current = root;
+        setTreeExpanded(out);
+        writeTreeExpanded(root, out);
+      }
+
+      // 折叠所有 = 把展开集合清空（VSCode 的 explorer.collapseAll 也就是把整棵树收起来，
+      // 我们的"树形态"就是这份集合，清空即等价；顺手落盘，重开还是全折叠）
+      function collapseAllDirs() {
+        treeExpandedRef.current = {};
+        setTreeExpanded({});
+        writeTreeExpanded(root, {});
+        trace('ui', 'info', 'tree-collapse-all', { dirs: Object.keys(treeExpanded || {}).length });
+      }
+
+      // 编辑器换了活动文件（点标签 / 代码跳转 / Agent 打开）→ 资源管理器展开到它并选中。
+      // VSCode 的做法：`onDidActiveEditorChange` → `selectActiveFile` → `selectResource`
+      // （`explorer.autoReveal` 默认 true）。目标不在工作区内就什么都不做 —— 树里本来没有它。
+      React.useEffect(function () {
+        if (!activePath || !root) return;
+        if (!pathUnderRoot(activePath, root)) return;
+        if (dirKey(activePath) === dirKey(root)) return;       // 工作区根本身不是树里的节点
+        revealSeqRef.current += 1;
+        setRevealReq({ path: activePath, seq: revealSeqRef.current });
+        setTreeSel({ path: activePath, name: String(activePath).split(/[\\/]/).pop() || activePath, type: 'file' });
+        traceEvery('tree-auto-reveal', 800, 'ui', 'info', 'tree-auto-reveal', { path: activePath });
+      }, [activePath, root]);
       var probCountsState = React.useState({ e: 0, w: 0 });   // ⑤ 状态栏诊断计数（2s 轮询 markers）
       var probCounts = probCountsState[0], setProbCounts = probCountsState[1];
       // 反悔药：最近一份快照的时间（状态栏入口）+ 刷新计数
@@ -7497,6 +7947,41 @@ window.__ModuleLoader__.load({
       // ⑮ 标签三件套偏好（预览模式总开关 / 快速打开走预览 / 代码跳转走预览）
       var tabPrefsState = React.useState(readTabPrefs);
       var tabPrefs = tabPrefsState[0], setTabPrefs = tabPrefsState[1];
+      // Agent 对话里点链接的去向（本机偏好，默认系统浏览器）
+      var linkOpenState = React.useState(readLinkOpenMode);
+      var linkOpen = linkOpenState[0], setLinkOpen = linkOpenState[1];
+      var linkOpenRef = React.useRef(linkOpen);
+      linkOpenRef.current = linkOpen;
+      function setLinkOpenMode(v) {
+        var next = v === 'builtin' ? 'builtin' : 'system';
+        writeLinkOpenMode(next);
+        setLinkOpen(next);
+        trace('ui', 'info', 'link-open-mode', { mode: next });
+      }
+      // 壳把"页面想开新窗口"的网址送到这里（main.js 的 setWindowOpenHandler）：
+      // 按设置决定交给系统浏览器还是天工的内置浏览器标签。浏览器里打开（没有壳桥）时不订阅，保持浏览器原生行为。
+      React.useEffect(function () {
+        var sh = (typeof window !== 'undefined') ? window.anzioShell : null;
+        if (!sh || !sh.onOpenLink) return;
+        return sh.onOpenLink(function (url) {
+          var target = String(url || '');
+          if (!target) return;
+          var mode = linkOpenRef.current;
+          // mailto: 这类只能交给系统（内置浏览器打不开），别按设置硬塞进浏览器标签
+          var isHttp = /^https?:\/\//i.test(target);
+          if (mode === 'builtin' && isHttp && openBrowserTab(target)) {
+            trace('ui', 'info', 'link-open-builtin', { url: target });
+            return;
+          }
+          if (sh.browser && sh.browser.openExternal) {
+            try { sh.browser.openExternal(target); } catch (e) { /* 忽略 */ }
+            setStatusText('已在系统浏览器中打开');
+            trace('ui', 'info', 'link-open-external', { url: target, mode: mode });
+          } else {
+            setStatusText('当前环境打不开这个链接');
+          }
+        });
+      }, []);
       function updateTabPrefs(patch) {
         var next = {};
         var key;
@@ -7592,8 +8077,15 @@ window.__ModuleLoader__.load({
       var kbPaneRef = React.useRef(termPane);      kbPaneRef.current = termPane;
       var kbTermOpenRef = React.useRef(termOpen);  kbTermOpenRef.current = termOpen;
       function kbSwitchPane(p) {
-        setTermPane(p === 'keys' ? 'keys' : 'term');
-        if (p !== 'keys') return;
+        var next = p === 'keys' ? 'keys' : 'term';
+        setTermPane(next);
+        // 切到终端页时一个终端都没有 → 起一个（VSCode 打开终端视图时实例为 0 也是新建）；
+        // 正在接回上次的终端时先等着，别把"接回"变成"再开一个"
+        if (next === 'term') {
+          if (termRestoring) { termPendingNewRef.current = true; return }
+          if (!termTabs.length) { newTerminal(); return }
+        }
+        if (next !== 'keys') return;
         // 点开键盘页 = 看过了 → 立刻把闪点清掉（不然还要等它自己过期）
         if (kbFlashTimerRef.current) { clearTimeout(kbFlashTimerRef.current); kbFlashTimerRef.current = null; }
         setKb(function (prev) { return prev.flash ? { held: prev.held, recent: prev.recent, flash: false } : prev; });
@@ -7688,13 +8180,69 @@ window.__ModuleLoader__.load({
         }
         kbOnRecord();
       }
-      // ③「在终端中打开」的目标目录（null = 用工作区根）。B 方案：单终端 —— 换目录就换 key 重建。
-      var termCwdState = React.useState(null);
-      var termCwd = termCwdState[0], setTermCwd = termCwdState[1];
-      // 「新建终端」（Ctrl+Shift+`）：单终端模型下没有"再开一个"这回事 → 递增这个计数让 TermPanel 换 key
-      // 重挂载（旧 PTY 在它的 cleanup 里 /term-close）。**只由命令显式递增**，不像 root 那样会自己变。
-      var termRevState = React.useState(0);
-      var termRev = termRevState[0], setTermRev = termRevState[1];
+      // ── 多终端（2026-10-21，照 VSCode）：每个终端一条独立 PTY，标签在面板右侧的列表里 ──
+      // 项 = { tid（本地 id，做 key 用）, cwd, title, phase, err, size }
+      var termTabsState = React.useState([]);
+      var termTabs = termTabsState[0], setTermTabs = termTabsState[1];
+      var termActiveState = React.useState(null);
+      var termActive = termActiveState[0], setTermActive = termActiveState[1];
+      var termSeqRef = React.useRef(0);              // 本地终端序号（标题默认「PowerShell」重名时加序号）
+      var termListWState = React.useState(readTermListW);
+      var termListW = termListWState[0], setTermListW = termListWState[1];
+      // 页面重载后先跟后端对账（接回原来的终端 / 清掉没人认领的孤儿）；对账完成前不自动新建，
+      // 否则会"接回旧的同时又起一条新的"。
+      var termRestoringState = React.useState(true);
+      var termRestoring = termRestoringState[0], setTermRestoring = termRestoringState[1];
+      var termPendingNewRef = React.useRef(false);    // 对账期间用户已经要求新建 → 对完再建
+      // 页面重载后跟后端对账：记录里还活着的接回来；后端有、记录里没有的（上轮漏下的孤儿）关掉。
+      // VSCode 重载窗口时也是这条路：pty 还在就重连，没被认领的实例 dispose。
+      React.useEffect(function () {
+        var alive = true;
+        var rec = readTermSession();
+        apiGet('/term-list').then(function (r) {
+          if (!alive) return;
+          var list = (r && r.terminals) || [];
+          var live = {};
+          for (var i = 0; i < list.length; i++) live[list[i].id] = true;
+          var keep = [];
+          if (rec) {
+            for (var j = 0; j < rec.tabs.length; j++) {
+              var t = rec.tabs[j];
+              if (t.remoteId && live[t.remoteId]) keep.push(t);
+            }
+          }
+          var keepIds = {};
+          for (var k = 0; k < keep.length; k++) keepIds[keep[k].remoteId] = true;
+          for (var m = 0; m < list.length; m++) {
+            if (keepIds[list[m].id]) continue;
+            apiPost('/term-close', { id: list[m].id });
+            trace('ui', 'info', 'term-orphan-close', { id: list[m].id });
+          }
+          setTermTabs(keep);
+          var act = null;
+          if (rec && rec.active) {
+            for (var n = 0; n < keep.length; n++) if (keep[n].tid === rec.active) { act = keep[n].tid; break }
+          }
+          setTermActive(act || (keep.length ? keep[0].tid : null));
+          setTermRestoring(false);
+          if (keep.length) trace('ui', 'info', 'term-restore', { count: keep.length });
+          // 对账期间用户已经按过"要终端"：接回来了就什么都不做，一个都没接回来才补一个
+          if (termPendingNewRef.current) {
+            termPendingNewRef.current = false;
+            if (!keep.length) newTerminal();
+          }
+        }).catch(function () {
+          if (!alive) return;
+          setTermRestoring(false);
+          if (termPendingNewRef.current) { termPendingNewRef.current = false; newTerminal(); }
+        });
+        return function () { alive = false };
+      }, []);
+      // 终端清单落 sessionStorage（刷新保留、关应用就清）：重载后靠它认领
+      React.useEffect(function () {
+        if (termRestoring) return;
+        writeTermSession(termTabs, termActive);
+      }, [termTabs, termActive, termRestoring]);
       // 铁律② 天工快捷键最高优先（2026-09-22 用户钉死）：键位路由那一层把当前键位表交给壳，
       // 壳在**窗口有焦点时**注册成全局快捷键（其它应用与我们冲突时必须让我们），触发后把键位串
       // 送回来走同一条 fire()。shellChordRef 给页面自己那条原生路做去重（极少数机器两条路都会响）。
@@ -7711,6 +8259,13 @@ window.__ModuleLoader__.load({
         if (id === activity && showExplorer) { setShowExplorer(false); return; }
         setActivity(id);
         setShowExplorer(true);
+        // 资源管理器由"看不见"变"看得见"时再定位一次活动文件 —— VSCode 在面板
+        // 变可见时也会再跑一次 selectActiveFile(true)（explorerView.ts:395），
+        // 不然人刚切回来时树还停在上次的滚动位置。
+        if (id === 'explorer' && activePath && root && pathUnderRoot(activePath, root)) {
+          revealSeqRef.current += 1;
+          setRevealReq({ path: activePath, seq: revealSeqRef.current });
+        }
       }
       var closedTabsState = React.useState([]);        // ④ Ctrl+Shift+T 重开栈（近 10 个）
       var closedTabs = closedTabsState[0], setClosedTabs = closedTabsState[1];
@@ -8274,7 +8829,8 @@ window.__ModuleLoader__.load({
       }
       // ③「在终端中打开」（VSCode 规格核实于本地 vscode-src：目录取它自己、文件取它的父目录
       //   dirname；命令 openInIntegratedTerminal，Explorer 右键 navigation 组 order 30）。
-      //   用户 2026-09-22 拍板 B 方案：面板目前是单终端 —— 直接换 cwd 重建（旧 PTY 随组件卸载关掉）。
+      //   多终端之后（2026-10-21）是在该目录**新开一个终端**，原来在跑的终端一个都不动
+      //   —— 与 VSCode 的 openInIntegratedTerminal 一致。
       function dirnameOf(p) {
         var s = String(p || '');
         var i = Math.max(s.lastIndexOf('\\'), s.lastIndexOf('/'));
@@ -8282,8 +8838,7 @@ window.__ModuleLoader__.load({
       }
       function openTerminalAt(dir) {
         if (!dir) return;
-        setTermCwd(function (cur) { return cur === dir ? cur : dir });   // 同目录就只显示，不白重建一次
-        setTermOpen(true);
+        newTerminal(dir);
         setStatusText('已在终端中打开：' + relDisplay(dir, root));
         trace('ui', 'info', 'terminal-open-at', { dir: dir });
       }
@@ -8480,7 +9035,26 @@ window.__ModuleLoader__.load({
         closeAll: closeAll, closeSaved: closeSaved, promoteTab: promoteTab, togglePinTab: togglePinTab,
         copyPath: function () { copyTabPath(activePath, false); },
         saveAll: function () { var b = editorBridgeRef.current; if (b && b.saveAll) b.saveAll(); },
+        switchTerminal: function (dir) { switchTerminal(dir); },
       };
+
+      // Ctrl+PageUp / PageDown 切终端（VSCode `terminal.focusNext/focusPrevious`，terminalActions.ts:533/551）。
+      // 走页面级捕获而不用 xterm 的 attachCustomKeyEventHandler：后者在实测里没触发（2026-10-21 E2E 抓到的），
+      // 而且它跟"不把这两个键发给 PTY"是两件事 —— 捕获阶段 stopPropagation 更直接。
+      // 只在焦点确实落在终端面板里时接管，别的地方（编辑器/侧栏）完全不受影响。
+      React.useEffect(function () {
+        function onTermKey(e) {
+          if (!e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+          if (e.key !== 'PageDown' && e.key !== 'PageUp') return;
+          var ae = document.activeElement;
+          if (!ae || !ae.closest || !ae.closest('.dside-term')) return;
+          e.preventDefault();
+          e.stopPropagation();
+          keyActRef.current.switchTerminal(e.key === 'PageDown' ? 1 : -1);
+        }
+        window.addEventListener('keydown', onTermKey, true);
+        return function () { window.removeEventListener('keydown', onTermKey, true); };
+      }, []);
 
       // ④ 键位实现表（**只有需要读组件状态的那些**才在这里登记；其余走命令表，见 fire()）：
       // 每次渲染重写一遍 = 回调永远拿到最新状态（同 keyActRef 的套路）
@@ -8502,11 +9076,8 @@ window.__ModuleLoader__.load({
           setOverlay(function (prev) { return prev === 'problems' ? null : 'problems'; });
         },
         'view.explorer': function () { keyActRef.current.toggleExplorer(); },
-        'view.terminal': function () {
-          // ⚠ 必须在 updater 里读当前值：这里用闭包里的 termOpen 会把方向算反
-          //（v1.5.31 及以前 `open: !termOpen` 记的**永远是 true**，日志说谎 —— 2026-09-21 修正）
-          setTermOpen(function (v) { var next = !v; trace('ui', 'info', 'terminal-toggle', { open: next }); return next });
-        },
+        // Ctrl+`：显示/隐藏面板。**隐藏不杀终端**（VSCode 的 Hide Panel）；第一次展开时没终端会起一个
+        'view.terminal': function () { toggleTerminalPanel(); },
         'view.nextTab': function () { keyActRef.current.activateTab(1); },
         'view.prevTab': function () { keyActRef.current.activateTab(-1); },
         // Ctrl+L：焦点送进内置浏览器的地址栏（浏览器惯例键）。同一时刻只有一个浏览器面板可见，
@@ -8783,7 +9354,7 @@ window.__ModuleLoader__.load({
           { id: 'view.problems', title: '显示问题面板（错误/警告）', cat: '视图', icon: '⚠️', keywords: 'problems diagnostics ctrl+shift+m 问题 诊断 错误 警告',
             run: function () { setOverlay('problems'); } },
           { id: 'view.terminal', title: '切换集成终端', cat: '视图', icon: '🖥', keywords: 'terminal shell console ctrl+` 终端 命令行',
-            run: function () { setTermOpen(function (v) { return !v; }); } },
+            run: toggleTerminalPanel },
           { id: 'term.new', title: '新建终端', cat: '视图', icon: '🖥', keywords: 'new terminal ctrl+shift+` 新建 终端',
             run: newTerminal },
           { id: 'file.close', title: '关闭当前标签', cat: '文件', icon: '✕', keywords: 'close tab ctrl+w',
@@ -8970,7 +9541,7 @@ window.__ModuleLoader__.load({
             { icon: '⚠️', label: '问题（错误 / 警告）', keys: keyHint('view.problems'), run: function () { closeOverlays(); setOverlay('problems'); } },
             { icon: '🗂', label: '改动历史（本次会话）', run: function () { setHistoryOpen(true); } },
             { icon: '⏱', label: '工作区快照（回撤 / 还原）', run: openSnapshots },
-            { icon: '🖥', label: '集成终端', keys: keyHint('view.terminal'), run: function () { setTermOpen(function (v) { return !v; }); } },
+            { icon: '🖥', label: '集成终端', keys: keyHint('view.terminal'), run: toggleTerminalPanel },
             { icon: '🌐', label: '打开内置浏览器', title: '在中间面板开一个浏览器标签', run: function () { openBrowserTab(''); } },
             { icon: '🧩', label: '插件（左侧活动栏）', run: function () { pickActivity('plugins'); } },
             { icon: '👁', label: '显隐侧边栏', keys: keyHint('view.explorer'), run: function () { setShowExplorer(function (v) { return !v; }); } },
@@ -9014,6 +9585,12 @@ window.__ModuleLoader__.load({
           { title: '外观', items: [
             { render: h(FontSizeRow, { onApply: function (px) { var b = editorBridgeRef.current; if (b && b.setFontSize) b.setFontSize(px); } }) },
             { icon: '🎨', label: '界面主题：深色（固定）', disabled: true, title: '按你的要求：应用只有深色，不提供切换' },
+          ] },
+          // 链接打开方式（2026-10-21 用户要求）：Agent 对话里点网址不该再弹一个没用的原生小窗
+          { title: '链接', items: [
+            { render: h(LinkOpenRow, { mode: linkOpen, onChange: setLinkOpenMode }) },
+            { icon: '🧭', label: '只管对话里的网址', disabled: true,
+              title: '工作区文件、代码跳转照旧在天工里打开；这一项管的是 Agent 回复里那些 http(s) 链接点下去去哪。' },
           ] },
           // ⑮ 标签三件套的开关（对应 VSCode 的 workbench.editor.*，**默认值与 VSCode 一致**）
           { title: '标签', items: [
@@ -10468,13 +11045,100 @@ window.__ModuleLoader__.load({
         });
       }
 
-      // 新建终端（VSCode `workbench.action.terminal.new`）：单终端模型 → 递增 termRev 触发重挂载；
-      // cwd 回工作区根（VSCode 新建终端的默认 cwd 也是工作区根）。
-      function newTerminal() {
-        setTermCwd(null);
-        setTermRev(function (n) { return n + 1; });
+      // ── 终端：新建 / 切换 / 结束（对应 VSCode 的 terminal.new / focusNext / kill）──
+      // 新建 = 再起一条独立 PTY（不再"把旧的重开一遍"）；cwd 回工作区根（VSCode 同）
+      function newTerminal(atCwd) {
+        termSeqRef.current += 1;
+        var tid = 't' + termSeqRef.current + '-' + Date.now().toString(36);
+        var cwd = (typeof atCwd === 'string' && atCwd) ? atCwd : (root || null);
+        // 标题默认「PowerShell」，重名时加序号（VSCode 标签名重复时的做法）；之后跟着 shell 报的标题走
+        var used = 0;
+        for (var i = 0; i < termTabs.length; i++) if (String(termTabs[i].title || '').indexOf('PowerShell') === 0) used += 1;
+        var title = used ? ('PowerShell (' + (used + 1) + ')') : 'PowerShell';
+        setTermTabs(function (prev) {
+          return prev.concat([{ tid: tid, remoteId: null, cwd: cwd, title: title, phase: 'starting', err: null, size: '' }]);
+        });
+        setTermActive(tid);
+        setTermPane('term');
         setTermOpen(true);
-        trace('ui', 'info', 'terminal-new', {});
+        trace('ui', 'info', 'terminal-new', { tid: tid, cwd: cwd });
+      }
+      function selectTerminal(tid) {
+        if (!tid || tid === termActive) return;
+        setTermActive(tid);
+        setTermPane('term');
+        trace('ui', 'info', 'terminal-switch', { tid: tid });
+      }
+      // 结束一个终端 = 从列表里摘掉 → 它的 TermView 卸载 → 卸载时才会发 /term-close 真的杀进程。
+      // 关掉的正是当前那个 → 选中相邻那个（VSCode 关实例后激活相邻实例）。
+      function killTerminal(tid) {
+        var idx = -1;
+        for (var i = 0; i < termTabs.length; i++) if (termTabs[i].tid === tid) { idx = i; break }
+        if (idx < 0) return;
+        setTermTabs(function (prev) { return prev.filter(function (t) { return t.tid !== tid }) });
+        if (termActive === tid) {
+          var next = termTabs[idx + 1] || termTabs[idx - 1] || null;
+          setTermActive(next ? next.tid : null);
+        }
+        trace('ui', 'info', 'terminal-kill', { tid: tid });
+      }
+      function switchTerminal(dir) {
+        if (termTabs.length < 2) return;
+        var idx = -1;
+        for (var i = 0; i < termTabs.length; i++) if (termTabs[i].tid === termActive) { idx = i; break }
+        var next = (idx + dir + termTabs.length) % termTabs.length;
+        setTermActive(termTabs[next].tid);
+        setTermPane('term');
+        trace('ui', 'info', 'terminal-switch', { tid: termTabs[next].tid, dir: dir });
+      }
+      function onTermStatus(tid, st) {
+        setTermTabs(function (prev) {
+          var at = -1;
+          for (var i = 0; i < prev.length; i++) if (prev[i].tid === tid) { at = i; break }
+          if (at < 0) return prev;
+          var cur = prev[at];
+          if (cur.phase === st.phase && cur.err === st.err && cur.size === st.size) return prev;
+          var out = prev.slice();
+          out[at] = { tid: cur.tid, remoteId: cur.remoteId, cwd: cur.cwd, title: cur.title, phase: st.phase, err: st.err, size: st.size };
+          return out;
+        });
+      }
+      // 新建出来的终端把"后端那一条的编号"回填到清单里 —— 页面重载后靠它认领，不然重载一次漏一条进程
+      function onTermReady(tid, remoteId) {
+        setTermTabs(function (prev) {
+          for (var i = 0; i < prev.length; i++) {
+            if (prev[i].tid !== tid) continue;
+            if (prev[i].remoteId === remoteId) return prev;
+            var cur = prev[i];
+            var out = prev.slice();
+            out[i] = { tid: cur.tid, remoteId: remoteId, cwd: cur.cwd, title: cur.title, phase: cur.phase, err: cur.err, size: cur.size };
+            return out;
+          }
+          return prev;
+        });
+      }
+      function onTermTitle(tid, title) {
+        setTermTabs(function (prev) {
+          var at = -1;
+          for (var i = 0; i < prev.length; i++) if (prev[i].tid === tid) { at = i; break }
+          if (at < 0 || prev[at].title === title) return prev;
+          var cur = prev[at];
+          var out = prev.slice();
+          out[at] = { tid: cur.tid, remoteId: cur.remoteId, cwd: cur.cwd, title: title, phase: cur.phase, err: cur.err, size: cur.size };
+          return out;
+        });
+      }
+      // 显示/隐藏面板（VSCode 的 Ctrl+`）：**只藏不杀**。第一次展开时若还没有终端就起一个
+      // （VSCode 打开终端视图时实例为 0 也会新建）。
+      function toggleTerminalPanel() {
+        var next = !termOpen;
+        trace('ui', 'info', 'terminal-toggle', { open: next });
+        setTermOpen(next);
+        if (!next) return;
+        setTermPane('term');
+        if (termRestoring) { termPendingNewRef.current = true; return }   // 正在接回上次的终端，等对账结果
+        if (!termTabs.length) { newTerminal(); return }
+        if (!termActive) setTermActive(termTabs[0].tid);
       }
       function openFolder() {
         if (!uiWorkspace || !workspaces) {
@@ -10573,10 +11237,11 @@ window.__ModuleLoader__.load({
                     inlineNew: inlineNew,
                     onInlineSubmit: submitInlineNew,
                     onInlineCancel: cancelInlineNew,
-                    collapseTick: collapseTick,
+                    // 展开状态（按工作区分份记忆）+ 自动定位请求（点标签/跳转 → 展开到该文件）
+                    expandedMap: treeExpanded, onToggleDir: setDirExpanded, revealReq: revealReq,
                     onNewFile: function () { startNewEntry('file', treeSel); },
                     onNewFolder: function () { startNewEntry('dir', treeSel); },
-                    onCollapseAll: function () { setCollapseTick(function (n) { return n + 1; }); trace('ui', 'info', 'tree-collapse-all', {}); },
+                    onCollapseAll: collapseAllDirs,
                     onRefresh: function () { setRefreshTick(function (t) { return t + 1; }); refreshOverview(); trace('ui', 'info', 'tree-refresh', {}); },
                   })
                 : (activity === 'actions'
@@ -10632,26 +11297,28 @@ window.__ModuleLoader__.load({
             ),
             // ⑯ 集成终端**只在中间这一列里**（用户 2026-09-21 明确要求："不要跑去 chat 面板，只能在中间面板"）
             // ⑰ 它的高度手柄在 TermPanel 内部（压在面板上边缘，只跨中间列）
-            termOpen
-              ? h(TermPanel, {
-                  // ③ B 方案（用户 2026-09-22 拍板）：单终端 —— 换目录就换 key，组件重挂载即用新 cwd
-                  //    起新 PTY，旧 PTY 在它的 cleanup 里被 /term-close 关掉。
-                  //    ⚠ key 里**不能带 root**：active-root 会跟着会话 cwd 反复覆盖回会话根，
-                  //      带上 root 就会在用户干活时把终端反复重建（把正在跑的 shell 杀掉）。
-                  //    termRev = 「新建终端」显式递增的重建计数（见 termRevState）。
-                  key: (termCwd || 'term') + '#' + termRev,
-                  root: termCwd || root, themeMode: themeMode,
-                  height: layout.termH,
-                  onResize: function (d) { nudgeLayout('termH', -d); },
-                  onResizeReset: function () { resetLayout('termH'); },
-                  onClose: function () { setTermOpen(false); },
-                  // 第三期：面板内的第二个标签（Agent 键盘映射）
-                  pane: termPane,
-                  onPane: kbSwitchPane,
-                  kb: kb,
-                  kbFlash: kb.flash,
-                })
-              : null,
+            // ⚠ 面板**常驻挂载、用 hidden 藏起来**，不能再用 `termOpen ? ... : null`：
+            //   那样一关面板就卸载组件 → 卸载清理里发 /term-close → 正在跑的进程被一起杀掉。
+            //   VSCode 的 Hide Panel 只藏不销毁（panelActions.ts:30-42），这里对齐。
+            h(TermPanel, {
+              hidden: !termOpen,
+              tabs: termTabs, activeId: termActive,
+              onSelect: selectTerminal, onNew: function () { newTerminal(); }, onKill: killTerminal,
+              onStatus: onTermStatus, onTitle: onTermTitle, onReady: onTermReady,
+              restoring: termRestoring,
+              onHide: function () { setTermOpen(false); },
+              listW: termListW,
+              onListW: function (w) { setTermListW(w); writeTermListW(w); },
+              themeMode: themeMode,
+              height: layout.termH,
+              onResize: function (d) { nudgeLayout('termH', -d); },
+              onResizeReset: function () { resetLayout('termH'); },
+              // 第三期：面板内的第二个标签（Agent 键盘映射）
+              pane: termPane,
+              onPane: kbSwitchPane,
+              kb: kb,
+              kbFlash: kb.flash,
+            }),
           ),
           h('div', { className: 'dside-side', style: { width: layout.rightW + 'px' } },
             // ⑰ 右栏手柄：同样挂在面板内部、压在左边缘
@@ -10738,7 +11405,7 @@ window.__ModuleLoader__.load({
             className: 'dside-snapstat' + (termOpen ? ' on' : ''),
             title: '集成终端（Ctrl+` / Ctrl+J）：点一下打开 / 收起'
               + (kb.flash && !termOpen ? '（Agent 正在操作浏览器，键盘映射面板里有新按键）' : ''),
-            onClick: function () { setTermOpen(function (v) { return !v; }); },
+            onClick: toggleTerminalPanel,
           }, '⌨ 终端',
             // 面板关着的时候没有标签可闪 → 在状态栏这颗开关上闪，别把 Agent 的动作变成"什么都没发生"
             (kb.flash && !termOpen) ? h('span', { className: 'dside-dot dirty' }) : null),
