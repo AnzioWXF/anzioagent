@@ -357,6 +357,248 @@ index 9005150af0..b458e43e1a 100644
  })
  
  /** Correlated retry-chain keyed Chat renderer. */
+diff --git a/packages/client/ui-chat/src/client/chat/TurnCostPill.tsx b/packages/client/ui-chat/src/client/chat/TurnCostPill.tsx
+new file mode 100644
+index 0000000000..d357d1a1e2
+--- /dev/null
++++ b/packages/client/ui-chat/src/client/chat/TurnCostPill.tsx
+@@ -0,0 +1,34 @@
++/** Estimated per-Turn charge, seated beside the Turn-usage pill. */
++
++import type { TurnTokenUsage } from '../contract/chat-nodes.ts'
++import type { ChatViewSlotProps } from '../contract/slots.ts'
++import { estimateTurnCost, formatTurnCost } from './turn-cost.ts'
++import css from './TurnUsagePanel.module.css'
++
++export interface TurnCostPillProps {
++  readonly usage: TurnTokenUsage
++  /** This Turn's tail time, which picks the peak/off-peak rate. */
++  readonly time: number
++  /** The owning view's locale seat, passed down as a plain prop. */
++  readonly t: ChatViewSlotProps['t']
++}
++
++/**
++ * Reading-only charge pill: nothing to open, so it carries no hover
++ * affordance and no dialog.
++ * @param props - Turn usage, tail time, locale seat.
++ * @returns the pill, or null when the Turn cannot be priced.
++ */
++export function TurnCostPill({ usage, time, t }: TurnCostPillProps) {
++  const estimate = estimateTurnCost(usage, time)
++  if (estimate === null) return null
++  return (
++    <span className={`${css.root} ${css.costRoot}`} data-turn-cost={estimate.peak ? 'peak' : 'off-peak'}>
++      <span className={css.cost} title={t('message.turnUsage.costHint')}>
++        <span className={css.label}>
++          {t('message.turnUsage.cost', { cost: formatTurnCost(estimate) })}
++        </span>
++      </span>
++    </span>
++  )
++}
+diff --git a/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx b/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx
+index a3d58a8cfe..474ec827d9 100644
+--- a/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx
++++ b/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx
+@@ -3,6 +3,7 @@ import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-sl
+ import type { ChatNodeViewProps, PerformanceUsageInjected, TurnTailOwnerProps } from '../contract/slots.ts'
+ import { MessageIconActions } from './MessageIconActions.tsx'
+ import { TurnUsagePanel } from './TurnUsagePanel.tsx'
++import { TurnCostPill } from './TurnCostPill.tsx'
+ import { assistantText } from './turn-assistant.ts'
+ import { hasAssistantReplyContent } from '../contract/assistant-content.ts'
+ import type { ChatNode } from '../contract/chat-nodes.ts'
+@@ -71,7 +72,12 @@ export const TurnTailNodeView = memo(function TurnTailNodeView({
+         className={css.actions}
+         extraActions={assistantActions}
+         usageAction={detailed && data.tokenUsage !== undefined
+-          ? <TurnUsagePanel usage={data.tokenUsage} t={t} />
++          ? (
++            <>
++              <TurnUsagePanel usage={data.tokenUsage} t={t} />
++              <TurnCostPill usage={data.tokenUsage} time={data.time} t={t} />
++            </>
++          )
+           : null}
+         t={t}
+       />
+diff --git a/packages/client/ui-chat/src/client/chat/TurnUsagePanel.module.css b/packages/client/ui-chat/src/client/chat/TurnUsagePanel.module.css
+index dfdfca258b..59533de2c0 100644
+--- a/packages/client/ui-chat/src/client/chat/TurnUsagePanel.module.css
++++ b/packages/client/ui-chat/src/client/chat/TurnUsagePanel.module.css
+@@ -32,6 +32,22 @@
+   cursor: pointer;
+ }
+ 
++/* Cost reading: same row geometry as the usage trigger, but nothing opens, so
++   it keeps the resting color and grows no hover background. */
++.cost {
++  display: inline-flex;
++  align-items: center;
++  gap: 4px;
++  min-width: 0;
++  height: calc(28px + var(--dsh-content-font-delta, 0px));
++  padding: 6px 8px;
++  color: var(--dsw-alias-label-tertiary);
++  font-size: calc(var(--dsh-content-font-size-secondary, 13px) - 1px);
++  font-variant-numeric: tabular-nums;
++  line-height: calc(24px + var(--dsh-content-font-delta, 0px));
++  white-space: nowrap;
++}
++
+ /* A narrow column trims the label to an ellipsis instead of overflowing the
+    pill; the data glyph never shrinks. */
+ .label {
+@@ -67,6 +83,11 @@
+     display: none;
+   }
+ 
++  /* No glyph to fall back to: the cost reading leaves the row entirely. */
++  .costRoot {
++    display: none;
++  }
++
+   .root + .root {
+     margin-left: 0;
+   }
+diff --git a/packages/client/ui-chat/src/client/chat/TurnUsagePanel.tsx b/packages/client/ui-chat/src/client/chat/TurnUsagePanel.tsx
+index 460d1092a2..5933906780 100644
+--- a/packages/client/ui-chat/src/client/chat/TurnUsagePanel.tsx
++++ b/packages/client/ui-chat/src/client/chat/TurnUsagePanel.tsx
+@@ -78,20 +78,14 @@ export function TurnUsagePanel({ usage, t }: TurnUsagePanelProps) {
+                 <dd>{`${cacheHit}%`}</dd>
+               </>
+             )}
+-            <dt>{t('message.turnUsage.input')}</dt>
+-            <dd>{formatExactCount(usage.uncachedInputTokens, t)}</dd>
+             {usage.cacheReadTokens !== undefined && (
+               <>
+                 <dt>{t('message.turnUsage.cacheRead')}</dt>
+                 <dd>{formatExactCount(usage.cacheReadTokens, t)}</dd>
+               </>
+             )}
+-            {usage.cacheWriteTokens !== undefined && (
+-              <>
+-                <dt>{t('message.turnUsage.cacheWrite')}</dt>
+-                <dd>{formatExactCount(usage.cacheWriteTokens, t)}</dd>
+-              </>
+-            )}
++            <dt>{t('message.turnUsage.input')}</dt>
++            <dd>{formatExactCount(usage.uncachedInputTokens, t)}</dd>
+             <dt>{t('message.turnUsage.output')}</dt>
+             <dd>
+               {formatExactCount(usage.outputTokens, t)}
+diff --git a/packages/client/ui-chat/src/client/chat/turn-cost.ts b/packages/client/ui-chat/src/client/chat/turn-cost.ts
+new file mode 100644
+index 0000000000..de99c69a7c
+--- /dev/null
++++ b/packages/client/ui-chat/src/client/chat/turn-cost.ts
+@@ -0,0 +1,104 @@
++/**
++ * Turn cost estimate from provider-reported tokens and DeepSeek's published
++ * price table. There is no per-request billing API (the account balance
++ * endpoint is the only official money-related endpoint), so a turn's cost can
++ * only be priced locally: exact tokens × the published per-million rate.
++ *
++ * Prices are CNY per million tokens, copied from
++ * https://api-docs.deepseek.com/zh-cn/quick_start/pricing on 2026-10-21.
++ * When DeepSeek changes its table this constant is the one place to edit.
++ */
++
++import type { TurnTokenUsage } from '../contract/chat-nodes.ts'
++
++interface ModelRate {
++  /** Cached input (cache hit) tokens. */
++  readonly cacheRead: number
++  /** Uncached input (cache miss) tokens. */
++  readonly input: number
++  readonly output: number
++}
++
++interface ModelRates {
++  readonly peak: ModelRate
++  readonly offPeak: ModelRate
++}
++
++const RATES: Readonly<Record<string, ModelRates>> = {
++  'deepseek-flash': {
++    peak: { cacheRead: 0.04, input: 2, output: 8 },
++    offPeak: { cacheRead: 0.02, input: 1, output: 4 },
++  },
++  'deepseek-v4-pro': {
++    peak: { cacheRead: 0.3, input: 9, output: 27 },
++    offPeak: { cacheRead: 0.15, input: 4.5, output: 13.5 },
++  },
++}
++
++/** Retired names DeepSeek still accepts and still bills at Flash rates. */
++const ALIASES: Readonly<Record<string, string>> = {
++  'deepseek-v4-flash': 'deepseek-flash',
++  'deepseek-v4-flash-vision-exp': 'deepseek-flash',
++}
++
++const BEIJING_OFFSET_MS = 8 * 3_600_000
++
++/**
++ * Peak billing runs on Beijing-time weekdays 09:00–12:00 and 14:00–18:00.
++ * Chinese public holidays bill off-peak but no holiday calendar is available
++ * here, so their requests price as peak — an over-estimate of about 2× on
++ * those days, never an under-estimate.
++ * @param time - epoch ms of the request (this turn's tail).
++ * @returns whether peak rates apply.
++ */
++export function isPeakTime(time: number): boolean {
++  const beijing = new Date(time + BEIJING_OFFSET_MS)
++  const day = beijing.getUTCDay()
++  if (day === 0 || day === 6) return false
++  const hour = beijing.getUTCHours()
++  return (hour >= 9 && hour < 12) || (hour >= 14 && hour < 18)
++}
++
++export interface TurnCostEstimate {
++  /** Estimated charge in CNY. */
++  readonly cny: number
++  readonly peak: boolean
++}
++
++/**
++ * Price one Turn.
++ * @param usage - exact provider-reported buckets for the whole Turn.
++ * @param time - epoch ms used to pick the peak/off-peak rate.
++ * @returns the estimate, or null when the model is unknown to the table or the
++ * Turn mixes models (its tokens cannot be split across rates).
++ */
++export function estimateTurnCost(usage: TurnTokenUsage, time: number): TurnCostEstimate | null {
++  const routes = usage.routes
++  const first = routes?.[0]
++  if (routes === undefined || first === undefined) return null
++  const model = first.model
++  if (!routes.every(route => route.model === model)) return null
++  const rates = RATES[ALIASES[model] ?? model]
++  if (rates === undefined) return null
++  const peak = isPeakTime(time)
++  const rate = peak ? rates.peak : rates.offPeak
++  const cacheRead = usage.cacheReadTokens ?? 0
++  // Cache writes are billed as plain misses: DeepSeek reports no such bucket,
++  // but another provider on the same model would count toward input.
++  const input = usage.uncachedInputTokens + (usage.cacheWriteTokens ?? 0)
++  const cny = (cacheRead * rate.cacheRead + input * rate.input + usage.outputTokens * rate.output) / 1_000_000
++  return { cny, peak }
++}
++
++/**
++ * Round for display: cents are noise below ¥0.01, where four decimals keep the
++ * reading non-zero for short turns.
++ * @param estimate - priced Turn.
++ * @returns the amount without a currency mark.
++ */
++export function formatTurnCost(estimate: TurnCostEstimate): string {
++  const value = estimate.cny
++  if (value >= 0.01) return value.toFixed(2)
++  if (value >= 0.0001) return value.toFixed(4)
++  return '<0.0001'
++}
 diff --git a/packages/client/ui-chat/src/client/contract/chat-nodes.ts b/packages/client/ui-chat/src/client/contract/chat-nodes.ts
 index cade646b1c..0ce50c0f00 100644
 --- a/packages/client/ui-chat/src/client/contract/chat-nodes.ts
@@ -599,7 +841,7 @@ index ddfffb0cca..6f3e49831e 100644
      return null
    },
 diff --git a/packages/client/ui-chat/src/client/locale.ts b/packages/client/ui-chat/src/client/locale.ts
-index 5d24261ad8..de2953f917 100644
+index 5d24261ad8..93165a99eb 100644
 --- a/packages/client/ui-chat/src/client/locale.ts
 +++ b/packages/client/ui-chat/src/client/locale.ts
 @@ -137,7 +137,9 @@ export const zh = {
@@ -613,7 +855,20 @@ index 5d24261ad8..de2953f917 100644
    'message.compaction.running': '正在压缩…',
    'message.compaction.completed': '已压缩 {items} 条历史记录（约 {tokens} tokens）',
    'message.compaction.expand': '点击查看压缩摘要',
-@@ -334,7 +336,9 @@ export const en = {
+@@ -178,9 +180,11 @@ export const zh = {
+   'message.turnUsage.model': '提供方 / 模型',
+   'message.turnUsage.cacheHit': '缓存命中',
+   'message.turnUsage.input': '未缓存输入',
+-  'message.turnUsage.cacheRead': '缓存读取',
++  'message.turnUsage.cacheRead': '缓存输入',
+   'message.turnUsage.cacheWrite': '缓存写入',
+   'message.turnUsage.output': '输出',
++  'message.turnUsage.cost': '费用 {cost} ￥',
++  'message.turnUsage.costHint': '按 DeepSeek 官方价目估算，实际以官方账单为准',
+   'message.turnUsage.reasoning': '（其中推理 {tokens}）',
+   'message.turnUsage.count': '{count} tok',
+   'duration.secondUnit': '秒',
+@@ -334,7 +338,9 @@ export const en = {
    'message.context.relay.from': 'From session {session}',
    'message.context.recall.counts': '{retained} kept · {omitted} omitted',
    'message.context.recall.truncated': 'truncated',
@@ -624,6 +879,15 @@ index 5d24261ad8..de2953f917 100644
    'message.compaction.running': 'Compacting context…',
    'message.compaction.completed': 'Compacted {items} history items (~{tokens} tokens)',
    'message.compaction.expand': 'View compaction summary',
+@@ -378,6 +384,8 @@ export const en = {
+   'message.turnUsage.cacheRead': 'Cached input',
+   'message.turnUsage.cacheWrite': 'Cache write',
+   'message.turnUsage.output': 'Output',
++  'message.turnUsage.cost': 'Cost ¥{cost}',
++  'message.turnUsage.costHint': 'Estimated from published DeepSeek prices; the official bill is authoritative.',
+   'message.turnUsage.reasoning': ' ({tokens} reasoning)',
+   'message.turnUsage.count': '{count} tok',
+   'duration.secondUnit': 's',
 diff --git a/packages/client/ui-chat/tests/chat-branch-tails.client.spec.tsx b/packages/client/ui-chat/tests/chat-branch-tails.client.spec.tsx
 index 7954e2cb45..ed73ea9473 100644
 --- a/packages/client/ui-chat/tests/chat-branch-tails.client.spec.tsx

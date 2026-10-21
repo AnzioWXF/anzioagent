@@ -539,6 +539,19 @@ function setupUpdater() {
     }
   })
 
+  // 选目录（2026-10-21）：服务器整目录下载要落一个本机目录，平台与壳原先都没有这个能力。
+  ipcMain.handle('anzio-shell:pick-dir', async () => {
+    try {
+      const r = await dialog.showOpenDialog(mainWindow, {
+        title: '选择保存目录', properties: ['openDirectory', 'createDirectory', 'dontAddToRecent'],
+      })
+      if (r.canceled || !r.filePaths || !r.filePaths.length) return { ok: false, code: 'canceled' }
+      return { ok: true, path: r.filePaths[0] }
+    } catch (e) {
+      return { ok: false, code: 'error', message: String((e && e.message) || e) }
+    }
+  })
+
   // 标签右键菜单的「在文件资源管理器中显示」：Windows 资源管理器里选中该文件。
   // 浏览器里打开 3081 时没有这个桥（window.anzioShell 不存在），插件会自己隐藏该条目。
   ipcMain.handle('anzio-shell:reveal', (_e, target) => {

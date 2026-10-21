@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld('anzioShell', {
   //    选文件/保存这两件事只能由壳提供。浏览器里没有此桥，插件靠特性探测降级提示。
   pickFile: () => ipcRenderer.invoke('anzio-shell:pick-file'),
   pickSavePath: (defaultPath) => ipcRenderer.invoke('anzio-shell:pick-save', String(defaultPath || '')),
+  // ④ 服务器整目录下载（2026-10-21）：落一个本机目录，这个能力平台与壳原先都没有
+  pickDirectory: () => ipcRenderer.invoke('anzio-shell:pick-dir'),
   // ⑤ 页面里的 window.open（Agent 对话里点网址）被壳拦下后送到这里（main.js 的 setWindowOpenHandler），
   //    天工按自己的设置决定用系统浏览器还是内置浏览器标签打开 —— 绝不再弹原生小窗口。
   onOpenLink: (cb) => {

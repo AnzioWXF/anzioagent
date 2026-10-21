@@ -129,6 +129,9 @@ const CLICK_SETTING = (label) => `(function(){ var rs=document.querySelectorAll(
     if (tg && l && String(l.textContent).indexOf(${JSON.stringify(label)})>=0){ tg.click(); return true } } return false })()`
 
 async function main() {
+  // 这套断言对"上次跑测试留下的标签"不幂等：热退出文件在，一开机就把上一轮的 pinned/preview
+  // 状态恢复回来，P3~P27 会成批误报。开跑前先清掉（只清测试家目录，不碰应用家目录）。
+  rmSync(HOME_DIR + '\\ide-session.json', { force: true })
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
@@ -466,8 +469,9 @@ async function main() {
 
     const actTitles = await evalJs(`(function(){ var bs=document.querySelectorAll('.dside-activitybar button'); var a=[];
       for (var i=0;i<bs.length;i++) a.push(String(bs[i].getAttribute('title')||'')); return a })()`)
-    check('P37 活动栏多了「插件」分组（资源管理器 / 操作 / 插件 + 设置）',
-      Array.isArray(actTitles) && actTitles.length === 4 && actTitles.join('|').includes('插件')
+    check('P37 活动栏分组齐了（资源管理器 / 服务器控制台 / 操作 / 插件 + 设置）',
+      Array.isArray(actTitles) && actTitles.length === 5 && actTitles.join('|').includes('插件')
+        && actTitles.join('|').includes('服务器控制台')
         && actTitles.join('|').includes('设置'), JSON.stringify(actTitles))
     await evalJs(PICK_ACTIVITY('插件')); await sleep(900)
     const pluginPanelInLeft = await evalJs(`!!document.querySelector('.dside-explorer .dside-plugins')`)

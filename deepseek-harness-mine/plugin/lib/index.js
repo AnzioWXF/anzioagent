@@ -18,13 +18,14 @@
 import { createRequire } from 'node:module'
 import { spawn } from 'node:child_process'
 import { createReadStream, watch, readFileSync, readdirSync, statSync } from 'node:fs'
-import { createHash } from 'node:crypto'
+import { createHash, createHmac } from 'node:crypto'
 import { zstdDecompressSync } from 'node:zlib'
 import { appendFile, copyFile, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 import { defineTool } from './tool-def.js'
+import { createSshManager, sshAvailable, sshLoadError } from './ssh.js'
 
 const ROUTE_PREFIX = '/dsh-ide'
 
@@ -1146,6 +1147,308 @@ export default {
         terminals.clear()
       }
     }, 'dsh-ide: terminals')
+
+    // ── ㉒ 服务器控制台 · SSH 会话（2026-10-21）─────────────────────────────
+    // 会话活在后端进程里：界面切走只是不画，连接与终端输出都留着（切回来不用重连）。
+    // 服务器清单落 <DSH_HOME>/ide-ssh.json，**只存地址与密钥路径，口令永远不落盘**。
+    const ssh = createSshManager({ trace })
+    // 远端文件的伪路径：`ssh://<连接 id>/<绝对路径>`。
+    // 为什么不给编辑器另开一套读写接口：编辑器的读、写、版本令牌、冲突条全部只认
+    // /read-file、/write-file、/stat 三个入口 —— 在这三处转发，编辑器那边一行都不用改。
+    const SSH_SCHEME = 'ssh://'
+    const parseSshPath = (p) => {
+      const s = String(p || '')
+      if (!s.startsWith(SSH_SCHEME)) return null
+      const rest = s.slice(SSH_SCHEME.length)
+      const i = rest.indexOf('/')
+      if (i <= 0) return null
+      return { sid: rest.slice(0, i), path: '/' + rest.slice(i + 1) }
+    }
+    const sshServersPath = () => path.join(process.env.DSH_HOME || process.cwd(), 'ide-ssh.json')
+    const readSshServers = async () => {
+      try {
+        const raw = await readFile(sshServersPath(), 'utf8')
+        const parsed = JSON.parse(raw)
+        return Array.isArray(parsed && parsed.servers) ? parsed.servers : []
+      } catch { return [] }
+    }
+    // ── 系统 known_hosts：主机指纹的可信来源（2026-10-21）──────────────────
+    // 你机器上的 ssh 早就连过这台服务器，那份记录就是"第一次的见证"——
+    // 能对账就不必让你手工核指纹；对不上才是真问题（重装 or 中间人）。
+    // 支持明文主机名与 HashKnownHosts（|1|salt|hmac，HMAC-SHA1），通配符不处理（罕见）。
+    function readKnownHosts(host, port) {
+      const dir = process.env.USERPROFILE || process.env.HOME || ''
+      const file = path.join(dir, '.ssh', 'known_hosts')
+      let text = ''
+      try { text = readFileSync(file, 'utf8') } catch { return { file, keys: [] } }
+      const target = (Number(port) || 22) !== 22 ? '[' + host + ']:' + (Number(port) || 22) : String(host)
+      const keys = []
+      for (const line of text.split(/\r?\n/)) {
+        const ln = line.trim()
+        if (!ln || ln.startsWith('#')) continue
+        const parts = ln.split(/\s+/)
+        if (parts.length < 3) continue
+        const hostField = parts[0]
+        let hit = false
+        if (hostField.startsWith('|1|')) {
+          const seg = hostField.split('|')
+          try {
+            const salt = Buffer.from(seg[2] || '', 'base64')
+            const mac = createHmac('sha1', salt).update(target).digest('base64')
+            hit = mac === seg[3]
+          } catch { hit = false }
+        } else {
+          for (const h of hostField.split(',')) {
+            if (h === target || h === String(host)) { hit = true; break }
+          }
+        }
+        if (hit) keys.push({ type: parts[1], base64: parts[2] })
+      }
+      return { file, keys }
+    }
+
+    const writeSshServers = async (servers) => {
+      const clean = (Array.isArray(servers) ? servers : []).slice(0, 20).map((s) => ({
+        id: String(s.id || '').slice(0, 60),
+        name: String(s.name || '').slice(0, 60),
+        host: String(s.host || '').slice(0, 200),
+        port: Number(s.port) || 22,
+        user: String(s.user || 'root').slice(0, 60),
+        keyPath: String(s.keyPath || '').slice(0, 400),
+        // 记住的那台机器的公钥（TOFU）：下次连接直接对账，对不上就拒连
+        fp: (s.fp && s.fp.fingerprint) ? {
+          fingerprint: String(s.fp.fingerprint),
+          type: String(s.fp.type || ''),
+          base64: String(s.fp.base64 || ''),
+          at: Number(s.fp.at) || 0,
+        } : null,
+      }))
+      await writeFile(sshServersPath(), JSON.stringify({ servers: clean }, null, 2), 'utf8')
+      return clean
+    }
+
+    // SSH 终端里敲了什么也要留痕（与本地终端同一口径：只记回车那一刻，口令打码）
+    const sshCmdBuf = new Map()
+    const sshFeedKeys = (sid, tid, chunk) => {
+      const s = String(chunk || '')
+      const st = sshCmdBuf.get(tid) || { buf: '', esc: false, secret: false }
+      for (let i = 0; i < s.length; i++) {
+        const ch = s[i]
+        if (ch === '\x1b') { st.esc = true; continue }
+        if (st.esc) { if (/[@-Z\\-_a-z{}|~]/.test(ch)) st.esc = false; continue }
+        if (ch === '\r' || ch === '\n') {
+          const line = String(st.buf || '').trim()
+          st.buf = ''
+          if (line) {
+            trace({
+              level: 'info', kind: 'ssh-terminal', msg: 'command',
+              meta: { sid, term: tid, line: st.secret ? '***' : maskTermLine(line), secret: st.secret || undefined },
+            })
+          }
+          st.secret = false
+          continue
+        }
+        if (ch === '\x7f' || ch === '\b') { st.buf = st.buf.slice(0, -1); continue }
+        if (ch === '\x03') { st.buf = ''; continue }
+        if (ch >= ' ') { if (st.buf.length < 2000) st.buf += ch }
+      }
+      sshCmdBuf.set(tid, st)
+    }
+
+    ctx.effect(() => {
+      const timer = setInterval(() => {
+        const now = Date.now()
+        for (const s of ssh.list()) {
+          for (const t of s.terms) {
+            const rec = ssh.get(s.id)
+            const term = rec && rec.terms.get(t.id)
+            if (term && now - (term.lastRead || term.startedAt) > TERM_IDLE_MS) ssh.closeTerm(s.id, t.id, 'idle-timeout')
+          }
+        }
+      }, 5 * 60 * 1000)
+      return () => {
+        clearInterval(timer)
+        // 插件卸载时还挂着的审批一律作废：绝不让一个等待中的写入在没人看的时候落地
+        for (const [, a] of sshApprovals) { clearTimeout(a.timer); a.resolve({ ok: false, reason: 'disposed' }) }
+        sshApprovals.clear()
+        ssh.disposeAll()
+      }
+    }, 'dsh-ide: ssh-sessions')
+
+    // ── ㉓ 服务器控制台 · 给 Agent 的工具（2026-10-21 第三刀）──────────────────
+    // Agent 与人在界面里用的是同一套能力（跑命令 / 列目录 / 读文件 / 写文件），
+    // 差别只在闸门：读与执行直接做；写、删先要在界面上点「允许」。
+    // 为什么不用引擎的审批卡：那套只认沙箱升权，自定义工具挂不上去（baseline §D.5）。
+    // 界面上下文（哪台机器、当前目录、选中项）由前端随时推进来，Agent 不用问路径。
+    const sshCtx = { sid: null, path: '/', sel: null, at: 0 }
+    const sshApprovals = new Map()
+    let sshApprovalSeq = 0
+    const askSshApproval = (entry) => new Promise((resolve) => {
+      sshApprovalSeq += 1
+      const id = 'a' + sshApprovalSeq
+      const timer = setTimeout(() => {
+        sshApprovals.delete(id)
+        trace({ level: 'warn', kind: 'ssh-approval', msg: 'timeout', meta: { id, tool: entry.tool } })
+        resolve({ ok: false, reason: 'timeout' })
+      }, 120000)
+      sshApprovals.set(id, { id, entry, resolve, timer })
+      trace({ level: 'info', kind: 'ssh-approval', msg: 'ask', meta: { id, tool: entry.tool, target: entry.target || '' } })
+    })
+    const answerSshApproval = (id, ok) => {
+      const rec = sshApprovals.get(String(id))
+      if (!rec) return { ok: false, error: 'no-approval' }
+      clearTimeout(rec.timer)
+      sshApprovals.delete(String(id))
+      trace({ level: 'info', kind: 'ssh-approval', msg: ok ? 'allow' : 'deny', meta: { id, tool: rec.entry.tool } })
+      rec.resolve({ ok: !!ok, reason: ok ? 'allowed' : 'denied' })
+      return { ok: true }
+    }
+    const shQuote = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'"
+
+    Promise.resolve().then(() => {
+      if (ctx.tools === undefined || typeof ctx.tools.register !== 'function') {
+        trace({ level: 'warn', kind: 'ssh-tool-skip', reason: 'no-tools-service' })
+        return
+      }
+      const pickSid = (args) => {
+        const want = String((args && args.server) || '')
+        if (want) {
+          for (const s of ssh.list()) {
+            if (s.id === want || s.name === want || s.host === want) return s.id
+          }
+        }
+        return sshCtx.sid
+      }
+      const needSid = (args) => {
+        const sid = pickSid(args)
+        if (!sid) throw new Error('还没有连服务器：先在左侧「服务器控制台」里连上一台，再让我干活')
+        const rec = ssh.get(sid)
+        if (!rec || rec.status !== 'open') throw new Error('那台服务器的连接不在线（可能已断开或超时），先在界面上重连')
+        return sid
+      }
+      const textOutput = {
+        schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true }, detail: { type: 'string', required: true } } },
+        render: (_a, v) => [{ type: 'text', text: String((v && v.detail) || '') }],
+      }
+      const reg = (tool) => ctx.tools.register(tool)
+
+      reg(defineTool({
+        name: 'ssh_run',
+        description: '在「服务器控制台」当前连接的那台服务器上执行一条 shell 命令，返回退出码与输出。'
+          + '适合看日志、看进程、看服务状态、重启服务。**改动线上文件请用 ssh_write（要用户点允许）**；'
+          + '这里跑什么都会立刻生效，别拿它做不可逆的删除/覆盖。',
+        parameters: {
+          cmd: { type: 'string', required: true, description: '要执行的命令（在服务器上跑）' },
+          cwd: { type: 'string', description: '在哪個目录下执行（省略 = 上次登录的目录）' },
+          server: { type: 'string', description: '服务器（名字/地址/连接 id），省略 = 界面当前这台' },
+        },
+        output: textOutput,
+        async execute(args) {
+          const sid = needSid(args)
+          const cmd = args.cwd ? ('cd ' + shQuote(args.cwd) + ' && ' + String(args.cmd)) : String(args.cmd)
+          const r = await ssh.exec(sid, cmd, { timeoutMs: 60000 })
+          trace({ level: 'info', kind: 'ssh-tool', msg: 'run', meta: { sid, code: r.code, ms: r.ms, line: maskTermLine(String(args.cmd)).slice(0, 200) } })
+          const parts = []
+          parts.push('退出码：' + (r.code === null ? '未知（超时或被杀）' : r.code) + '（' + r.ms + 'ms）')
+          if (r.stdout) parts.push('输出：\n' + r.stdout.trim().slice(-8000))
+          if (r.stderr) parts.push('错误输出：\n' + r.stderr.trim().slice(-4000))
+          if (!r.stdout && !r.stderr) parts.push('（没有任何输出）')
+          return { ok: r.code === 0, detail: parts.join('\n') }
+        },
+      }))
+
+      reg(defineTool({
+        name: 'ssh_ls',
+        description: '列出「服务器控制台」那台服务器上某个目录的内容（一层，不递归）。省略 path 就用界面里当前目录。',
+        parameters: {
+          path: { type: 'string', description: '目录绝对路径，省略 = 界面当前目录' },
+          server: { type: 'string', description: '服务器（名字/地址/连接 id），省略 = 界面当前这台' },
+        },
+        output: textOutput,
+        async execute(args) {
+          const sid = needSid(args)
+          const dir = String(args.path || sshCtx.path || '/')
+          const r = await ssh.ls(sid, dir)
+          const lines = r.entries.map((e) => (e.dir ? 'd' : '-') + ' ' + String(e.size).padStart(9) + '  ' + e.name)
+          return { ok: true, detail: dir + '（' + r.entries.length + ' 项）\n' + lines.join('\n') }
+        },
+      }))
+
+      reg(defineTool({
+        name: 'ssh_read',
+        description: '读「服务器控制台」那台服务器上的一个文本文件（上限 4MB）。看配置、看日志都用它。',
+        parameters: {
+          path: { type: 'string', required: true, description: '文件绝对路径' },
+          server: { type: 'string', description: '服务器（名字/地址/连接 id），省略 = 界面当前这台' },
+        },
+        output: textOutput,
+        async execute(args) {
+          const sid = needSid(args)
+          const r = await ssh.readText(sid, String(args.path))
+          const text = r.buf.toString('utf8')
+          trace({ level: 'info', kind: 'ssh-tool', msg: 'read', meta: { sid, path: String(args.path), bytes: r.size } })
+          return { ok: true, detail: text.slice(0, 200000) }
+        },
+      }))
+
+      reg(defineTool({
+        name: 'ssh_write',
+        description: '把内容写到「服务器控制台」那台服务器的文件里（覆盖整个文件；不存在就新建）。'
+          + '**调用后会在天工界面上弹出确认条，用户点「允许」才真的写**；用户拒绝或 2 分钟没点就作废。',
+        parameters: {
+          path: { type: 'string', required: true, description: '文件绝对路径' },
+          content: { type: 'string', required: true, description: '完整的新内容（不是补丁）' },
+          reason: { type: 'string', description: '一句话说明为什么要改它（给用户看，帮助判断）' },
+          server: { type: 'string', description: '服务器（名字/地址/连接 id），省略 = 界面当前这台' },
+        },
+        output: textOutput,
+        async execute(args) {
+          const sid = needSid(args)
+          const path = String(args.path)
+          const content = String(args.content)
+          const verdict = await askSshApproval({
+            tool: 'ssh_write', target: path, reason: String(args.reason || ''),
+            detail: '写入 ' + path + '（' + content.length + ' 字）',
+          })
+          if (!verdict.ok) {
+            return { ok: false, detail: verdict.reason === 'timeout' ? '用户没有在 2 分钟内确认，本次写入作废' : '用户拒绝了这次写入' }
+          }
+          await ssh.writeText(sid, path, content)
+          trace({ level: 'info', kind: 'ssh-tool', msg: 'write', meta: { sid, path, bytes: content.length } })
+          return { ok: true, detail: '已写入 ' + path + '（' + content.length + ' 字）' }
+        },
+      }))
+
+      reg(defineTool({
+        name: 'ssh_delete',
+        description: '删「服务器控制台」那台服务器上的文件或空目录。'
+          + '**调用后会在天工界面上弹出确认条，用户点「允许」才真的删**；目录必须为空（不做递归删）。',
+        parameters: {
+          path: { type: 'string', required: true, description: '文件或目录的绝对路径' },
+          dir: { type: 'boolean', description: 'true = 这是个目录（只能删空目录）' },
+          reason: { type: 'string', description: '一句话说明为什么要删（给用户看）' },
+          server: { type: 'string', description: '服务器（名字/地址/连接 id），省略 = 界面当前这台' },
+        },
+        output: textOutput,
+        async execute(args) {
+          const sid = needSid(args)
+          const path = String(args.path)
+          const isDir = args.dir === true
+          const verdict = await askSshApproval({
+            tool: 'ssh_delete', target: path, reason: String(args.reason || ''),
+            detail: '删除 ' + path + (isDir ? '（目录，必须为空）' : ''),
+          })
+          if (!verdict.ok) {
+            return { ok: false, detail: verdict.reason === 'timeout' ? '用户没有在 2 分钟内确认，本次删除作废' : '用户拒绝了这次删除' }
+          }
+          await ssh.remove(sid, path, isDir)
+          trace({ level: 'info', kind: 'ssh-tool', msg: 'delete', meta: { sid, path, dir: isDir } })
+          return { ok: true, detail: '已删除 ' + path }
+        },
+      }))
+
+      trace({ level: 'info', kind: 'ssh-tool-ready' })
+    }).catch((err) => trace({ level: 'warn', kind: 'ssh-tool-failed', error: String((err && err.message) || err) }))
 
     // ── ⑭-② inline 建议（ghost text）：模型配置从应用设置读 ──────────────────
     // 平台有 ctx.settings 服务，但要先知道模型配置注册在哪个 namespace；而 dsh-settings-file
@@ -2506,6 +2809,23 @@ export default {
 
         if (action === '/read-file' && req.method === 'GET') {
           const path = q.get('path') || ''
+          // 远端文件（ssh://）：走 SFTP 读，回给编辑器的形状与本地完全一致
+          const remote = parseSshPath(path)
+          if (remote) {
+            try {
+              const r = await ssh.readText(remote.sid, remote.path)
+              if (r.buf.includes(0)) {
+                return json(res, 415, { error: '远端二进制文件，不能按文本打开', code: 'FS_NOT_TEXT', binary: true, size: r.size, path: remote.path })
+              }
+              return json(res, 200, {
+                content: r.buf.toString('utf8'), size: r.size, path: remote.path,
+                // 版本令牌用远端修改时间：它变了就说明这个文件在打开之后被别处改过（跟本地同一套守卫）
+                version: String(r.mtime),
+              })
+            } catch (e) {
+              return json(res, 500, { error: errOf(e), code: 'SSH_READ_FAILED', path: remote.path })
+            }
+          }
           if (fsService === undefined || !path) return json(res, 400, { error: 'no-fs-or-path' })
           const target = await fsService.resolve(path)
           const info = await fsService.stat(target)
@@ -2605,6 +2925,20 @@ export default {
         // FsInfo 的不透明令牌（fs-local = dev:ino:size:mtimeNs:ctimeNs），内容一变就变。
         if (action === '/stat' && req.method === 'GET') {
           const path = q.get('path') || ''
+          // 远端文件：编辑器的外部改动轮询（每 2.5 秒一次 stat）落在这里
+          const remoteStat = parseSshPath(path)
+          if (remoteStat) {
+            try {
+              const st = await ssh.stat(remoteStat.sid, remoteStat.path)
+              return json(res, 200, {
+                exists: true, path: remoteStat.path, ssh: true,
+                type: st.dir ? 'directory' : 'file', size: st.size,
+                version: String(st.mtime), birthMs: null,
+              })
+            } catch (e) {
+              return json(res, 200, { exists: false, path: remoteStat.path, error: errOf(e) })
+            }
+          }
           if (fsService === undefined || !path) return json(res, 400, { error: 'no-fs-or-path' })
           try {
             const target = await fsService.resolve(path)
@@ -2667,6 +3001,25 @@ export default {
           // → FS_STALE_VERSION，绝不静默覆盖；force=true 表示用户在冲突条上明确选了覆盖。
           const baseVersion = typeof body.baseVersion === 'string' && body.baseVersion ? body.baseVersion : null
           const force = body.force === true
+          // 远端文件：同一套版本守卫（远端修改时间当令牌），冲突时照旧回 stale-version 让界面弹冲突条
+          const remote = parseSshPath(path)
+          if (remote) {
+            try {
+              if (baseVersion && !force) {
+                const cur = await ssh.stat(remote.sid, remote.path)
+                if (String(cur.mtime) !== String(baseVersion)) {
+                  return json(res, 409, { ok: false, code: 'stale-version', error: '远端文件在你打开之后被改过了' })
+                }
+              }
+              await ssh.writeText(remote.sid, remote.path, content)
+              const after = await ssh.stat(remote.sid, remote.path)
+              trace({ level: 'info', kind: 'ssh', msg: 'save', meta: { sid: remote.sid, path: remote.path, bytes: content.length } })
+              return json(res, 200, { ok: true, operation: 'remote-write', version: String(after.mtime) })
+            } catch (e) {
+              trace({ level: 'error', kind: 'ssh', msg: 'save-failed', meta: { sid: remote.sid, path: remote.path, error: errOf(e) } })
+              return json(res, 500, { error: errOf(e) })
+            }
+          }
           if (fsService === undefined || !path) return json(res, 400, { error: 'no-fs-or-path' })
           try {
             const target = await fsService.resolve(path)
@@ -2890,6 +3243,226 @@ export default {
             list.push({ id: t.id, cols: t.cols, rows: t.rows, exited: t.exited, exitCode: t.exitCode, bytes: t.bytes, startedAt: t.startedAt })
           }
           return json(res, 200, { ok: true, pty: !!ptyMod, ptyError: ptyLoadError, terminals: list })
+        }
+
+        // ── ㉒ 服务器控制台：SSH（连/列/读写/传/交互终端）────────────────────
+        // 契约与本地终端同形（open/read/input/resize/close），客户端那套"按块读、seq 递增"
+        // 的处理可以原样复用；区别只在会话活在 SSH 通道上。
+        if (action === '/ssh-status' && req.method === 'GET') {
+          return json(res, 200, {
+            ok: true, available: sshAvailable(), loadError: sshLoadError(),
+            servers: await readSshServers(), sessions: ssh.list(),
+          })
+        }
+
+        if (action === '/ssh-servers-save' && req.method === 'POST') {
+          const body = await readBody(req)
+          const saved = await writeSshServers(body.servers)
+          trace({ level: 'info', kind: 'ssh', msg: 'servers-saved', meta: { count: saved.length } })
+          return json(res, 200, { ok: true, servers: saved })
+        }
+
+        if (action === '/ssh-connect' && req.method === 'POST') {
+          const body = await readBody(req)
+          const host = String(body.host || '')
+          const port = Number(body.port) || 22
+          const servers = await readSshServers()
+          const savedIdx = servers.findIndex((s) => s.id === String(body.id || ''))
+          const stored = savedIdx >= 0 && servers[savedIdx] && servers[savedIdx].fp ? servers[savedIdx].fp : null
+          const sys = readKnownHosts(host, port)
+          const trust = String(body.trustFingerprint || '')
+          let seen = null
+          // 三道判据，从强到弱：记住过 → 系统 known_hosts → 用户显式认领
+          const checkHostKey = (info) => {
+            seen = info
+            if (stored && stored.fingerprint) {
+              if (info.fingerprint === stored.fingerprint) return { ok: true, from: 'remembered' }
+              if (trust && trust === info.fingerprint) return { ok: true, from: 'user-override' }
+              return { ok: false, code: 'host-key-changed', from: 'remembered' }
+            }
+            const hit = sys.keys.find((k) => k.type === info.type && k.base64 === info.base64)
+            if (hit) return { ok: true, from: 'known_hosts' }
+            if (trust && trust === info.fingerprint) return { ok: true, from: 'user-accepted' }
+            return { ok: false, code: 'host-key-unknown', from: sys.keys.length ? 'known_hosts-mismatch' : 'no-record' }
+          }
+          try {
+            const r = await ssh.connect({
+              id: body.id, host, port,
+              user: String(body.user || 'root'), keyPath: body.keyPath || undefined,
+              password: body.password || undefined, name: String(body.name || ''),
+              checkHostKey,
+            })
+            // 认下来之后就记住这台机器的公钥（下次直接对账，不再问）
+            if (seen && savedIdx >= 0) {
+              const next = servers.slice()
+              next[savedIdx] = Object.assign({}, next[savedIdx], { fp: { fingerprint: seen.fingerprint, type: seen.type, base64: seen.base64, at: Date.now() } })
+              await writeSshServers(next).catch(() => {})
+            }
+            return json(res, 200, Object.assign({ ok: true }, r, {
+              hostKey: seen ? { type: seen.type, fingerprint: seen.fingerprint } : null,
+            }))
+          } catch (e) {
+            return json(res, 500, {
+              ok: false, error: errOf(e), code: e && e.code ? String(e.code) : null,
+              fingerprint: (e && e.fingerprint) || (seen && seen.fingerprint) || null,
+              hostKeyType: (e && e.hostKeyType) || (seen && seen.type) || null,
+            })
+          }
+        }
+
+        if (action === '/ssh-disconnect' && req.method === 'POST') {
+          const body = await readBody(req)
+          return json(res, 200, Object.assign({ ok: true }, ssh.disconnect(body.id)))
+        }
+
+        if (action === '/ssh-exec' && req.method === 'POST') {
+          const body = await readBody(req)
+          try {
+            const r = await ssh.exec(body.id, String(body.cmd || ''), { timeoutMs: Number(body.timeoutMs) || undefined })
+            trace({ level: 'info', kind: 'ssh', msg: 'exec', meta: { sid: body.id, code: r.code, ms: r.ms, plain: maskTermLine(String(body.cmd || '')).slice(0, 200) } })
+            return json(res, 200, Object.assign({ ok: true }, r))
+          } catch (e) { return json(res, 500, { ok: false, error: errOf(e) }) }
+        }
+
+        if (action === '/ssh-ls' && req.method === 'POST') {
+          const body = await readBody(req)
+          try {
+            const r = await ssh.ls(body.id, String(body.path || '.'))
+            return json(res, 200, Object.assign({ ok: true }, r))
+          } catch (e) { return json(res, 500, { ok: false, error: errOf(e) }) }
+        }
+
+        if (action === '/ssh-read' && req.method === 'POST') {
+          const body = await readBody(req)
+          try {
+            const r = await ssh.readText(body.id, String(body.path || ''))
+            return json(res, 200, { ok: true, text: r.buf.toString('utf8'), size: r.size, mtime: r.mtime })
+          } catch (e) { return json(res, 500, { ok: false, error: errOf(e) }) }
+        }
+
+        if (action === '/ssh-write' && req.method === 'POST') {
+          const body = await readBody(req)
+          try {
+            await ssh.writeText(body.id, String(body.path || ''), String(body.text === undefined ? '' : body.text))
+            trace({ level: 'info', kind: 'ssh', msg: 'write', meta: { sid: body.id, path: String(body.path || ''), bytes: String(body.text || '').length } })
+            return json(res, 200, { ok: true })
+          } catch (e) { return json(res, 500, { ok: false, error: errOf(e) }) }
+        }
+
+        if (action === '/ssh-upload' && req.method === 'POST') {
+          const body = await readBody(req)
+          try { return json(res, 200, Object.assign({ ok: true }, await ssh.upload(body.id, String(body.local || ''), String(body.remote || '')))) }
+          catch (e) { return json(res, 500, { ok: false, error: errOf(e) }) }
+        }
+
+        // 下载落到本机临时目录：远端大文件不进内存，也不用把 base64 塞进 JSON
+        if (action === '/ssh-download' && req.method === 'POST') {
+          const body = await readBody(req)
+          try {
+            // 用户在下拉框里选了落点就照他选的写；没选（浏览器里没壳桥）就落到家目录 temp
+            let local = String(body.local || '')
+            if (!local) {
+              const base = body.localDir ? String(body.localDir) : path.join(process.env.DSH_HOME || process.cwd(), 'temp')
+              await mkdir(base, { recursive: true })
+              const name = path.basename(String(body.remote || 'download')).replace(/[\\/:*?"<>|]/g, '_')
+              local = path.join(base, name)
+            } else {
+              await mkdir(path.dirname(local), { recursive: true }).catch(() => {})
+            }
+            const r = await ssh.download(body.id, String(body.remote || ''), local)
+            return json(res, 200, Object.assign({ ok: true, local }, r))
+          } catch (e) { return json(res, 500, { ok: false, error: errOf(e) }) }
+        }
+
+        // 整目录下载：落到用户选的目录下（再套一层远端目录名，避免文件散一地）
+        if (action === '/ssh-download-dir' && req.method === 'POST') {
+          const body = await readBody(req)
+          try {
+            const remote = String(body.remote || '/')
+            let base = String(body.local || '')
+            if (!base) {
+              base = path.join(process.env.DSH_HOME || process.cwd(), 'temp')
+              await mkdir(base, { recursive: true })
+            }
+            const leaf = path.basename(remote.replace(/\/+$/, '')) || 'root'
+            const local = path.join(base, leaf)
+            const r = await ssh.downloadDir(body.id, remote, local)
+            trace({ level: 'info', kind: 'ssh', msg: 'download-dir', meta: { sid: body.id, remote, local, files: r.files, bytes: r.bytes, truncated: r.truncated } })
+            return json(res, 200, Object.assign({ ok: true, local }, r))
+          } catch (e) { return json(res, 500, { ok: false, error: errOf(e) }) }
+        }
+
+        if (action === '/ssh-mkdir' && req.method === 'POST') {
+          const body = await readBody(req)
+          try { return json(res, 200, Object.assign({ ok: true }, await ssh.mkdirp(body.id, String(body.path || '')))) }
+          catch (e) { return json(res, 500, { ok: false, error: errOf(e) }) }
+        }
+
+        if (action === '/ssh-remove' && req.method === 'POST') {
+          const body = await readBody(req)
+          try { return json(res, 200, Object.assign({ ok: true }, await ssh.remove(body.id, String(body.path || ''), !!body.dir))) }
+          catch (e) { return json(res, 500, { ok: false, error: errOf(e) }) }
+        }
+
+        if (action === '/ssh-rename' && req.method === 'POST') {
+          const body = await readBody(req)
+          try { return json(res, 200, Object.assign({ ok: true }, await ssh.rename(body.id, String(body.from || ''), String(body.to || '')))) }
+          catch (e) { return json(res, 500, { ok: false, error: errOf(e) }) }
+        }
+
+        if (action === '/ssh-term-open' && req.method === 'POST') {
+          const body = await readBody(req)
+          try {
+            const r = await ssh.openTerm(body.id, {
+              cols: Number(body.cols) || 100, rows: Number(body.rows) || 30,
+              onData: (t, chunk) => sshFeedKeys(body.id, t.id, chunk),
+            })
+            return json(res, 200, Object.assign({ ok: true }, r))
+          } catch (e) { return json(res, 500, { ok: false, error: errOf(e) }) }
+        }
+
+        if (action === '/ssh-term-read' && req.method === 'GET') {
+          const r = ssh.readTerm(q.get('id'), q.get('term'), Number(q.get('since') || 0) | 0)
+          if (!r) return json(res, 404, { ok: false, error: 'no-session' })
+          return json(res, 200, Object.assign({ ok: true }, r))
+        }
+
+        if (action === '/ssh-term-input' && req.method === 'POST') {
+          const body = await readBody(req)
+          const r = ssh.inputTerm(body.id, body.term, String(body.data === undefined ? '' : body.data))
+          return json(res, 200, Object.assign({ ok: true }, r))
+        }
+
+        if (action === '/ssh-term-resize' && req.method === 'POST') {
+          const body = await readBody(req)
+          const r = ssh.resizeTerm(body.id, body.term, Number(body.cols) || 0, Number(body.rows) || 0)
+          return json(res, 200, Object.assign({ ok: true }, r))
+        }
+
+        if (action === '/ssh-term-close' && req.method === 'POST') {
+          const body = await readBody(req)
+          return json(res, 200, Object.assign({ ok: true }, ssh.closeTerm(body.id, body.term, 'client-close')))
+        }
+
+        // ── ㉓ Agent 侧的上下文与审批（2026-10-21）─────────────────────────
+        // 界面把"现在在哪台机器、哪个目录、选中了什么"推过来 ⇒ Agent 不用问路径就能干活。
+        if (action === '/ssh-context' && req.method === 'POST') {
+          const body = await readBody(req)
+          sshCtx.sid = body.id ? String(body.id) : null
+          sshCtx.path = String(body.path || '/')
+          sshCtx.sel = body.sel ? String(body.sel) : null
+          sshCtx.at = Date.now()
+          return json(res, 200, { ok: true })
+        }
+        if (action === '/ssh-approvals' && req.method === 'GET') {
+          const list = [...sshApprovals.values()].map((a) => ({
+            id: a.id, tool: a.entry.tool, target: a.entry.target || '', reason: a.entry.reason || '', detail: a.entry.detail || '',
+          }))
+          return json(res, 200, { ok: true, approvals: list })
+        }
+        if (action === '/ssh-approvals/answer' && req.method === 'POST') {
+          const body = await readBody(req)
+          return json(res, 200, Object.assign({ ok: true }, answerSshApproval(body.id, body.allow === true)))
         }
 
         // ── ⑭-② inline 建议（ghost text）：一次性模型调用 ────────────────────

@@ -170,6 +170,16 @@ window.__ModuleLoader__.load({
       '.dside-tab-close{flex:none;width:16px;height:16px;display:flex;align-items:center;justify-content:center;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1;cursor:pointer;opacity:0;transition:opacity var(--ds-transition-duration-fast) var(--ds-ease-in-out),background var(--ds-transition-duration-fast) var(--ds-ease-in-out);}',
       '.dside-tab:hover .dside-tab-close{opacity:1;}',
       '.dside-tab-close:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+      // 未保存标记挂在关闭按钮上（VSCode 同款，multieditortabscontrol.css:483）：dirty 时按钮常显、
+      // 里面是圆点，指到按钮上才换回 ×；固定标签没有 ×，同一位置的 pin 按钮按同一规则切换。
+      // flex:none 不能省：按钮是 flex 容器，圆点作为子项默认 flex-shrink:1，会被压成 4px 宽的竖条
+      '.dside-tab .glyph{line-height:1;flex:none;}',
+      '.dside-tab .glyph.dot{display:none;width:8px;height:8px;border-radius:50%;background:var(--dsw-alias-state-warn-primary);}',
+      '.dside-tab.dirty .dside-tab-close,.dside-tab.dirty .dside-tab-unpin{opacity:1;}',
+      '.dside-tab.dirty .dside-tab-close .glyph.close,.dside-tab.dirty .dside-tab-unpin .glyph.pin{display:none;}',
+      '.dside-tab.dirty .dside-tab-close .glyph.dot,.dside-tab.dirty .dside-tab-unpin .glyph.dot{display:block;}',
+      '.dside-tab.dirty .dside-tab-close:hover .glyph.close,.dside-tab.dirty .dside-tab-unpin:hover .glyph.pin{display:block;}',
+      '.dside-tab.dirty .dside-tab-close:hover .glyph.dot,.dside-tab.dirty .dside-tab-unpin:hover .glyph.dot{display:none;}',
       // 标签三件套（2026-09-21）：预览标签的名字用斜体（VSCode 同款提示"这只是临时预览"）；
       // 固定标签默认外观与普通标签相同（VSCode 的 pinnedTabSizing='normal'），
       // 只有开了「固定标签收窄成图标」（compact）才只留图标。
@@ -232,7 +242,6 @@ window.__ModuleLoader__.load({
       '.dside-browser-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;}',
       '.dside-browser-empty-big{color:var(--dsw-alias-label-secondary);font-size:13px;}',
       '.dside-browser-empty-sub{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.7;max-width:min(520px,84%);word-break:break-all;}',
-      '.dside-tab-globe{flex:none;font-size:10px;line-height:1;}',
       // ⑥ 外部改动提示条（tab 条下方整条通栏）+ 差异审阅浮层
       '.dside-extbar{flex:none;display:flex;align-items:center;gap:8px;padding:5px 10px;font-size:11px;background:var(--dsw-alias-bg-layer-2);border-bottom:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);}',
       '.dside-extbar.warn{color:var(--dsw-alias-state-warn-primary);}',
@@ -367,6 +376,71 @@ window.__ModuleLoader__.load({
     '.dside-kbwrap{flex:1;min-height:0;display:flex;}',
     '.dside-term-stage{flex:1;min-width:0;min-height:0;position:relative;display:flex;}',
     '.dside-term-slot{position:absolute;inset:0;display:none;flex-direction:column;}',
+    // ── 服务器控制台（2026-10-21）────────────────────────────────────────────
+    // 左 = 服务器清单、中 = 服务器终端（盖在编辑器上、编辑器只藏不卸载）、底 = 资源管理器。
+    '.dside-srv{display:flex;flex-direction:column;min-height:0;height:100%;}',
+    '.dside-srv-row{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--dsw-alias-label-secondary);}',
+    '.dside-srv-row:hover{background:var(--dsw-alias-interactive-bg-hover);}',
+    '.dside-srv-row.on{background:var(--dsw-alias-interactive-bg-active);color:var(--dsw-alias-label-primary);}',
+    '.dside-srv-dot{width:7px;height:7px;border-radius:50%;flex:none;background:#4B5563;}',
+    '.dside-srv-dot.open{background:#22C55E;}',
+    '.dside-srv-dot.connecting{background:#CCA700;}',
+    '.dside-srv-dot.error{background:#F85149;}',
+    '.dside-srv-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+    '.dside-srv-sub{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary);}',
+    // 行上的编辑/删除：悬停才出现（VSCode 的资源管理器同款，平时不占注意力）
+    '.dside-srv-act{flex:none;width:20px;height:20px;padding:0;border:none;border-radius:4px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;font-size:12px;line-height:1;opacity:0;transition:opacity .12s ease;}',
+    // 首次连接/指纹变化时的确认块
+    '.dside-srv-fp{margin:6px 2px;padding:8px 10px;border:1px solid var(--dsw-alias-state-warn-primary);border-radius:8px;background:var(--dsw-alias-bg-layer-2);font-size:11px;}',
+    '.dside-srv-fp .t{color:var(--dsw-alias-label-primary);font-size:12px;margin-bottom:4px;}',
+    '.dside-srv-fp .fp{font-family:var(--ds-font-family-code);word-break:break-all;color:var(--dsw-alias-state-warn-primary);margin:4px 0;}',
+    '.dside-srv-fp .hint{color:var(--dsw-alias-label-tertiary);line-height:1.5;margin-bottom:6px;}',
+    '.dside-srv-fp .acts{display:flex;gap:6px;}',
+    '.dside-srv-row:hover .dside-srv-act{opacity:1;}',
+    '.dside-srv-act:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+    '.dside-srv-form{display:flex;flex-direction:column;gap:6px;padding:8px;border-top:1px solid var(--dsw-alias-border-l1);}',
+    '.dside-srv-form-row{display:flex;gap:6px;}',
+    '.dside-srv-input{width:100%;box-sizing:border-box;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l2);border-radius:6px;color:var(--dsw-alias-label-primary);font:inherit;font-size:11px;padding:4px 8px;outline:none;}',
+    '.dside-srv-input:focus{border-color:var(--dsw-alias-state-business-primary);}',
+    '.dside-srv-actions{display:flex;gap:6px;}',
+    '.dside-ssh{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);min-height:0;}',
+    '.dside-ssh.hidden{display:none;}',
+    '.dside-ssh-head{flex:none;height:30px;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--dsw-alias-border-l1);font-size:11px;color:var(--dsw-alias-label-secondary);}',
+    '.dside-ssh-head .ttl{font-weight:600;color:var(--dsw-alias-label-primary);}',
+    '.dside-ssh-head .st{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);}',
+    '.dside-ssh-body{flex:1;min-height:0;padding:4px 6px;overflow:hidden;}',
+    // 中栏多终端：每个标签一条独立通道，切换只改显隐
+    '.dside-ssh-tabs{flex:none;display:flex;align-items:center;gap:2px;padding:2px 6px;border-bottom:1px solid var(--dsw-alias-border-l1);overflow:auto;}',
+    '.dside-ssh-tab{display:flex;align-items:center;gap:4px;height:22px;padding:0 6px 0 8px;border-radius:4px;cursor:pointer;font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;}',
+    '.dside-ssh-tab:hover{background:var(--dsw-alias-interactive-bg-hover);}',
+    '.dside-ssh-tab.on{background:var(--dsw-alias-interactive-bg-active);color:var(--dsw-alias-label-primary);}',
+    '.dside-ssh-tab .x{width:14px;height:14px;padding:0;border:none;border-radius:3px;background:none;color:inherit;cursor:pointer;font-size:10px;line-height:1;opacity:0;}',
+    '.dside-ssh-tab:hover .x,.dside-ssh-tab.on .x{opacity:.75;}',
+    '.dside-ssh-tab .x:hover{background:var(--dsw-alias-interactive-bg-hover-danger);opacity:1;}',
+    '.dside-ssh-wrap{flex:1;min-height:0;position:relative;display:flex;}',
+    '.dside-ssh-slot{position:absolute;inset:0;display:none;flex-direction:column;}',
+    '.dside-ssh-slot.on{display:flex;}',
+    // Agent 要改/删服务器文件时的确认条（浮在中栏顶部，不挡终端）
+    '.dside-ssh-ask{position:absolute;left:50%;top:8px;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:10px;max-width:min(780px,92%);padding:8px 12px;border-radius:10px;background:var(--dsw-alias-bg-overlay);border:1px solid var(--dsw-alias-state-warn-primary);box-shadow:0 8px 30px rgba(0,0,0,.35);}',
+    '.dside-ssh-ask .txt{min-width:0;flex:1;font-size:12px;color:var(--dsw-alias-label-primary);}',
+    '.dside-ssh-ask .sub{color:var(--dsw-alias-label-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+    '.dside-ssh-empty{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--dsw-alias-label-tertiary);font-size:12px;}',
+    '.dside-files{flex:none;box-sizing:border-box;position:relative;display:flex;flex-direction:column;min-height:0;background:var(--dsw-alias-bg-layer-1);border-top:1px solid var(--dsw-alias-border-l1);}',
+    '.dside-files.hidden{display:none;}',
+    '.dside-files-bar{flex:none;height:28px;display:flex;align-items:center;gap:6px;padding:0 8px;border-bottom:1px solid var(--dsw-alias-border-l1);font-size:11px;}',
+    '.dside-files-path{flex:1;min-width:0;display:flex;align-items:center;gap:1px;overflow:hidden;white-space:nowrap;}',
+    '.dside-files-crumb{color:var(--dsw-alias-label-secondary);cursor:pointer;padding:1px 3px;border-radius:4px;}',
+    '.dside-files-crumb:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+    '.dside-files-sep{color:var(--dsw-alias-label-tertiary);}',
+    '.dside-files-list{flex:1;min-height:0;overflow:auto;font-size:12px;}',
+    '.dside-files-row{display:flex;align-items:center;gap:8px;padding:3px 8px;cursor:pointer;color:var(--dsw-alias-label-secondary);white-space:nowrap;}',
+    '.dside-files-row:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+    '.dside-files-row.on{background:var(--dsw-alias-interactive-bg-active);color:var(--dsw-alias-label-primary);}',
+    '.dside-files-ico{width:16px;flex:none;text-align:center;}',
+    '.dside-files-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;}',
+    '.dside-files-size{flex:none;width:78px;text-align:right;color:var(--dsw-alias-label-tertiary);font-size:11px;}',
+    '.dside-files-time{flex:none;width:132px;text-align:right;color:var(--dsw-alias-label-tertiary);font-size:11px;}',
+    '.dside-files-msg{flex:1;display:flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary);font-size:11px;}',
     '.dside-term-slot.on{display:flex;}',
     '.dside-term-list{flex:none;position:relative;box-sizing:border-box;border-left:1px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-1);min-width:46px;max-width:500px;}',
     '.dside-term-list-body{flex:1;min-height:0;overflow:auto;padding:3px;}',
@@ -488,10 +562,6 @@ window.__ModuleLoader__.load({
       '.dside-agent-select{flex:1;min-width:0;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:3px 6px;font:inherit;}',
       '.dside-badge{flex:none;font-size:11px;padding:2px 10px;border-radius:12px;border:1px solid var(--dsw-alias-border-l2);}',
       '.dside-badge.idle{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);}',
-    // ⑭ 长任务进度条（跑的时候显示：第 N 步 · 已用 · 正在做什么）
-    '.dside-agent-progress{flex:none;display:flex;align-items:center;gap:10px;padding:5px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-2);font-size:11px;color:var(--dsw-alias-label-secondary);}',
-    '.dside-agent-progress .what{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary);}',
-    '.dside-agent-progress .hint{flex:none;color:var(--dsw-alias-label-tertiary);}',
       '.dside-badge.running{background:var(--dsw-alias-state-success-tertiary);color:var(--dsw-alias-state-success-primary);border-color:transparent;}',
       '.dside-agent-messages{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px;min-height:0;}',
       '.dside-msg{max-width:88%;padding:8px 12px;border-radius:14px;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 2px rgba(0,0,0,.12);}',
@@ -1778,6 +1848,429 @@ window.__ModuleLoader__.load({
       }, [props.visible]);
 
       return h('div', { className: 'dside-term-body', ref: hostRef });
+    }
+
+    // ── 服务器控制台 · 服务器终端（SSH 通道）────────────────────────────────
+    // 为什么不直接复用 TermView：本地那套带"页面重载后认领原 PTY / 回放 / 孤儿回收"，
+    // 远端通道没有这些语义；硬塞进去会把本地终端那套已经验过的逻辑一起改坏。
+    function SshTermView(props) {
+      var sid = props.sid;
+      var tid = props.tid;
+      var hostRef = React.useRef(null);
+      var termRef = React.useRef(null);
+      var fitRef = React.useRef(null);
+      var seqRef = React.useRef(0);
+      var timerRef = React.useRef(null);
+      var visibleRef = React.useRef(!!props.visible);
+      visibleRef.current = !!props.visible;
+
+      // 藏着时容器尺寸是 0：这时算出来的 cols/rows 会把远端终端挤坏（本地终端踩过同一个坑），没尺寸就不碰
+      function applyFit() {
+        var host = hostRef.current;
+        if (!host || !host.clientWidth || !host.clientHeight) return;
+        try { if (fitRef.current) fitRef.current.fit() } catch (e) { return }
+        var t = termRef.current;
+        if (t && tid) apiPost('/ssh-term-resize', { id: sid, term: tid, cols: t.cols, rows: t.rows });
+      }
+
+      React.useEffect(function () {
+        var disposed = false;
+        var lastPoll = 0;
+
+        function poll() {
+          if (disposed || !tid) return;
+          lastPoll = Date.now();
+          apiGet('/ssh-term-read', { id: sid, term: tid, since: seqRef.current }).then(function (r) {
+            if (disposed || !r || r.ok === false) return;
+            if (r.reset) { try { termRef.current.clear() } catch (e) { /* 终端还没建好 */ } }
+            if (r.data) { try { termRef.current.write(r.data) } catch (e) { /* 同上 */ } }
+            if (typeof r.seq === 'number') seqRef.current = r.seq;
+            if (r.exited && timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+          });
+        }
+
+        loadXterm().then(function (ns) {
+          if (disposed || !hostRef.current) return;
+          var Terminal = ns && ns.Terminal;
+          if (typeof Terminal !== 'function') return;
+          var term = new Terminal({
+            fontFamily: 'var(--ds-font-family-code), Consolas, "Courier New", monospace',
+            fontSize: 12.5, cursorBlink: true, scrollback: 3000, theme: termTheme(),
+          });
+          var FitCtor = ns && ns.FitAddon;
+          var fit = typeof FitCtor === 'function' ? new FitCtor() : null;
+          if (fit && term.loadAddon) term.loadAddon(fit);
+          term.open(hostRef.current);
+          termRef.current = term;
+          fitRef.current = fit;
+          try { if (fit) fit.fit() } catch (e) { /* 布局尚未完成 */ }
+          term.onData(function (d) { apiPost('/ssh-term-input', { id: sid, term: tid, data: d }); });
+          // 藏着的终端降频拉取（100ms → 350ms）：输出一块不丢，但后台不占满轮询
+          timerRef.current = setInterval(function () {
+            if (!visibleRef.current && Date.now() - lastPoll < 350) return;
+            poll();
+          }, 100);
+          poll();
+          setTimeout(applyFit, 120);
+          setTimeout(applyFit, 400);
+          try { term.focus() } catch (e) { /* ignore */ }
+        });
+
+        var ro = null;
+        if (window.ResizeObserver && hostRef.current) {
+          ro = new ResizeObserver(function () { applyFit() });
+          ro.observe(hostRef.current);
+        }
+
+        return function () {
+          disposed = true;
+          if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+          if (ro) ro.disconnect();
+          // 卸载 = 这个终端标签被关掉（不是切走）；整页卸载时不能发，否则刷新会把通道收掉
+          if (tid && !PAGE_UNLOADING) apiPost('/ssh-term-close', { id: sid, term: tid });
+          var dead = termRef.current;
+          termRef.current = null;
+          fitRef.current = null;
+          if (dead) setTimeout(function () { try { dead.dispose() } catch (e) { /* ignore */ } }, 0);
+        };
+      }, [sid, tid]);
+
+      React.useEffect(function () {
+        if (!props.visible) return;
+        function fitNow() {
+          applyFit();
+          var t = termRef.current;
+          if (t && t.focus) { try { t.focus() } catch (e) { /* ignore */ } }
+        }
+        fitNow();
+        var raf = window.requestAnimationFrame ? window.requestAnimationFrame(fitNow) : 0;
+        var t1 = setTimeout(fitNow, 120);
+        return function () {
+          if (raf && window.cancelAnimationFrame) window.cancelAnimationFrame(raf);
+          clearTimeout(t1);
+        };
+      }, [props.visible]);
+
+      return h('div', { className: 'dside-ssh-body', ref: hostRef });
+    }
+
+    // 中栏：服务器终端区（盖在编辑器上；编辑器只藏不卸载，切回来内容还在）
+    function SshConsole(props) {
+      var hidden = !!props.hidden;
+      var session = props.session || null;
+      var open = !!(session && session.status === 'open');
+      var sid = session ? session.id : null;
+      // 多终端：每个标签一条独立 shell 通道；全挂在这里，切换只改显隐（不重开、不丢输出）
+      var termsState = React.useState([]);        // [{ id, n }]
+      var terms = termsState[0], setTerms = termsState[1];
+      var activeState = React.useState(null);
+      var active = activeState[0], setActive = activeState[1];
+      var errState = React.useState('');
+      var err = errState[0], setErr = errState[1];
+      var seqRef = React.useRef(0);
+
+      function openTerm() {
+        if (!sid) return;
+        apiPost('/ssh-term-open', { id: sid, cols: 100, rows: 30 }).then(function (r) {
+          if (!r || r.ok === false) { setErr((r && (r.error || 'open-failed')) || 'network'); return }
+          seqRef.current += 1;
+          var n = seqRef.current;
+          setTerms(function (prev) { return prev.concat([{ id: r.id, n: n }]) });
+          setActive(r.id);
+          trace('ui', 'info', 'ssh-term-open', { sid: sid, term: r.id, n: n });
+        });
+      }
+
+      React.useEffect(function () {
+        setTerms([]);
+        setActive(null);
+        seqRef.current = 0;
+        setErr('');
+        if (!open || !sid) return;
+        openTerm();
+      }, [open, sid]);
+
+      function closeTerm(id) {
+        apiPost('/ssh-term-close', { id: sid, term: id });
+        setTerms(function (prev) {
+          var next = prev.filter(function (t) { return t.id !== id });
+          setActive(function (cur) {
+            if (cur !== id) return cur;
+            return next.length ? next[next.length - 1].id : null;
+          });
+          return next;
+        });
+      }
+
+      var title = session ? (session.name || session.host) : '服务器控制台';
+      var status = props.connecting
+        ? '连接中…'
+        : (!session
+          ? '从左边选一台服务器'
+          : (session.status === 'open'
+            ? ('已连接 · ' + session.user + '@' + session.host)
+            : ('已断开' + (session.lastError ? ' · ' + session.lastError : ''))));
+
+      return h('div', { className: 'dside-ssh' + (hidden ? ' hidden' : '') },
+        h('div', { className: 'dside-ssh-head' },
+          h('span', { className: 'ttl' }, title),
+          h('span', { className: 'st' }, status),
+          open ? h('button', { className: 'dside-btn small', title: '新开一个终端', onClick: openTerm }, '＋ 终端') : null,
+          open ? h('button', { className: 'dside-btn small', title: '断开这台服务器', onClick: props.onDisconnect }, '断开') : null,
+        ),
+        (open && terms.length)
+          ? h('div', { className: 'dside-ssh-tabs' },
+              terms.map(function (t) {
+                return h('div', {
+                  key: t.id,
+                  className: 'dside-ssh-tab' + (active === t.id ? ' on' : ''),
+                  title: '终端 ' + t.n,
+                  onClick: function () { setActive(t.id) },
+                },
+                  h('span', null, '终端 ' + t.n),
+                  h('button', {
+                    className: 'x', title: '关闭这个终端（会结束里面跑的东西）',
+                    onClick: function (e) { e.stopPropagation(); closeTerm(t.id) },
+                  }, '✕'),
+                );
+              }),
+            )
+          : null,
+        h('div', { className: 'dside-ssh-wrap' },
+          (open && terms.length)
+            ? terms.map(function (t) {
+                return h('div', { key: t.id, className: 'dside-ssh-slot' + (active === t.id ? ' on' : '') },
+                  h(SshTermView, { sid: sid, tid: t.id, visible: !hidden && active === t.id }),
+                );
+              })
+            : h('div', { className: 'dside-ssh-empty' },
+                h('div', {}, props.connecting ? '正在连接…' : (open ? (err ? ('终端打开失败：' + err) : '还没有终端') : (session ? '连接已断开' : '还没有连接'))),
+                (!open && !props.connecting && session) ? h('button', { className: 'dside-btn primary', onClick: props.onConnect }, '重新连接') : null,
+                (open && !err) ? h('button', { className: 'dside-btn primary', onClick: openTerm }, '新建终端') : null,
+              ),
+        ),
+      );
+    }
+
+    // 左栏：服务器清单（点谁连谁；再点已连接的那台 = 切过去看它）
+    function SshServerList(props) {
+      var servers = props.servers || [];
+      var sessions = props.sessions || [];
+      var showState = React.useState(false);
+      var showForm = showState[0], setShowForm = showState[1];
+      var formState = React.useState({ name: '', host: '', port: '22', user: 'root', keyPath: '', password: '' });
+      var form = formState[0], setForm = formState[1];
+      // 编辑态：非空表示这张表单正在改一条已有记录（保存走 onEdit，不是新增）
+      var editState = React.useState(null);
+      var editingId = editState[0], setEditingId = editState[1];
+      function upd(k, v) { setForm(function (p) { var n = Object.assign({}, p); n[k] = v; return n }) }
+      function startEdit(s) {
+        setForm({ name: s.name || '', host: s.host || '', port: String(s.port || 22), user: s.user || 'root', keyPath: s.keyPath || '', password: '' });
+        setEditingId(s.id);
+        setShowForm(true);
+      }
+      function sessionOf(id) {
+        for (var i = 0; i < sessions.length; i++) if (sessions[i].id === id) return sessions[i];
+        return null;
+      }
+      return h('div', { className: 'dside-explorer' },
+        h('div', { className: 'dside-pane-title' }, '服务器控制台'),
+        props.fpPrompt ? h('div', { className: 'dside-srv-fp' },
+          h('div', { className: 't' }, props.fpPrompt.kind === 'changed' ? '这台机器的指纹跟上次记的不一样' : '第一次连这台机器，先对一下指纹'),
+          h('div', { className: 'fp' }, props.fpPrompt.fingerprint),
+          h('div', { className: 'hint' }, props.fpPrompt.kind === 'changed'
+            ? '如果服务器刚重装过 / 换过机器，确认后覆盖就行；否则先别连，先把情况弄清楚。'
+            : '去腾讯云控制台（或在另一台已信任的机器上）核对这一串，一致再点记住。'),
+          h('div', { className: 'acts' },
+            h('button', {
+              className: 'dside-btn primary small',
+              onClick: function () { if (props.onTrustFp) props.onTrustFp(props.fpPrompt.id, props.fpPrompt.fingerprint) },
+            }, props.fpPrompt.kind === 'changed' ? '我确认，覆盖并连接' : '对得上，记住并连接'),
+            h('button', { className: 'dside-btn small', onClick: function () { if (props.onCancelFp) props.onCancelFp() } }, '取消'),
+          ),
+        ) : null,
+        h('div', { style: { flex: '1', minHeight: 0, overflow: 'auto', padding: '0 6px' } },
+          (servers.length === 0 && !showForm) ? h('div', { className: 'dside-files-msg', style: { padding: '10px 4px' } }, '还没有服务器，先添加一台') : null,
+          servers.map(function (s) {
+            var sess = sessionOf(s.id);
+            var st = (props.connecting === s.id) ? 'connecting' : (sess ? sess.status : '');
+            var dotCls = st === 'open' ? 'open' : st === 'connecting' ? 'connecting' : (st === 'error' || st === 'closed') ? 'error' : '';
+            var sub = st === 'open' ? '已连接' : st === 'connecting' ? '连接中' : st === 'error' ? '失败' : st === 'closed' ? '已断开' : '';
+            return h('div', {
+              key: s.id,
+              className: 'dside-srv-row' + (props.selId === s.id ? ' on' : ''),
+              title: (s.user || 'root') + '@' + s.host + (s.port && s.port !== 22 ? ':' + s.port : ''),
+              onClick: function () { props.onPick(s.id) },
+            },
+              h('span', { className: 'dside-srv-dot ' + dotCls }),
+              h('span', { className: 'dside-srv-name' }, s.name || s.host),
+              h('button', { className: 'dside-srv-act', title: '编辑这台', onClick: function (e) { e.stopPropagation(); startEdit(s) } }, '✎'),
+              h('button', { className: 'dside-srv-act', title: '从清单移除', onClick: function (e) { e.stopPropagation(); if (props.onRemove) props.onRemove(s.id) } }, '🗑'),
+              h('span', { className: 'dside-srv-sub' }, sub),
+            );
+          }),
+          props.sshError ? h('div', { className: 'dside-files-msg', style: { padding: '8px 4px', textAlign: 'left' } }, props.sshError) : null,
+        ),
+        showForm
+          ? h('div', { className: 'dside-srv-form' },
+              h('input', { className: 'dside-srv-input', placeholder: '名字（随便起，如 腾讯云）', value: form.name, onChange: function (e) { upd('name', e.target.value) } }),
+              h('input', { className: 'dside-srv-input', placeholder: '地址，如 106.52.222.167', value: form.host, onChange: function (e) { upd('host', e.target.value) } }),
+              h('div', { className: 'dside-srv-form-row' },
+                h('input', { className: 'dside-srv-input', placeholder: '端口 22', value: form.port, onChange: function (e) { upd('port', e.target.value) } }),
+                h('input', { className: 'dside-srv-input', placeholder: '用户 root', value: form.user, onChange: function (e) { upd('user', e.target.value) } }),
+              ),
+              h('input', { className: 'dside-srv-input', placeholder: '密钥文件路径（如 C:\\Users\\你\\.ssh\\id_rsa）', value: form.keyPath, onChange: function (e) { upd('keyPath', e.target.value) } }),
+              h('input', {
+                className: 'dside-srv-input', type: 'password',
+                placeholder: '口令（用密钥登录就留空；口令只留在本机内存里，不落盘）',
+                value: form.password, onChange: function (e) { upd('password', e.target.value) },
+              }),
+              h('div', { className: 'dside-srv-actions' },
+                h('button', {
+                  className: 'dside-btn primary small',
+                  disabled: !form.host.trim(),
+                  onClick: function () {
+                    var payload = {
+                      name: form.name.trim() || form.host.trim(),
+                      host: form.host.trim(),
+                      port: Number(form.port) || 22,
+                      user: form.user.trim() || 'root',
+                      keyPath: form.keyPath.trim(),
+                    };
+                    // 口令只当参数往后端传一次，不进清单文件；保存后表单里也不留
+                    if (editingId && props.onEdit) props.onEdit(editingId, payload, form.password);
+                    else props.onAdd(payload, form.password);
+                    setForm({ name: '', host: '', port: '22', user: 'root', keyPath: '', password: '' });
+                    setEditingId(null);
+                    setShowForm(false);
+                  },
+                }, '保存'),
+                h('button', {
+                  className: 'dside-btn small',
+                  onClick: function () { setEditingId(null); setShowForm(false) },
+                }, '取消'),
+              ),
+            )
+          : h('div', { className: 'dside-srv-actions', style: { padding: '8px' } },
+              h('button', { className: 'dside-btn small', onClick: function () { setShowForm(true) } }, '＋ 添加服务器'),
+            ),
+      );
+    }
+
+    // 底栏：服务器资源管理器（面包屑 + 一栏列表；矮了也就这么高，往上拖只是列表变长）
+    function SshFiles(props) {
+      var sid = props.sid || null;
+      var hidden = !!props.hidden;
+      var pathState = React.useState('/');
+      var path = pathState[0], setPath = pathState[1];
+      var entriesState = React.useState([]);
+      var entries = entriesState[0], setEntries = entriesState[1];
+      var msgState = React.useState('');
+      var msg = msgState[0], setMsg = msgState[1];
+      var selState = React.useState(null);
+      var sel = selState[0], setSel = selState[1];
+
+      function load(p) {
+        if (!sid) { setEntries([]); setMsg('还没有连接'); return }
+        setMsg('读取中…');
+        apiPost('/ssh-ls', { id: sid, path: p }).then(function (r) {
+          if (!r || r.ok === false) { setEntries([]); setMsg('读取失败：' + ((r && r.error) || 'network')); return }
+          setEntries(r.entries || []);
+          setMsg((r.entries || []).length ? '' : '这个目录是空的');
+        });
+      }
+      React.useEffect(function () { if (!hidden) load(path) }, [sid, path, props.reloadTick, hidden]);
+      // 把"现在在哪个目录、选中了谁"报上去（Agent 干活要用）
+      React.useEffect(function () {
+        if (props.onContext) props.onContext({ path: path, sel: sel ? sel.name : null });
+      }, [path, sel, sid]);
+
+      function fmtSize(n) {
+        if (n === null || n === undefined) return '';
+        if (n < 1024) return n + ' B';
+        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+        if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+        return (n / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+      }
+      function fmtTime(ms) {
+        if (!ms) return '';
+        try {
+          var d = new Date(ms);
+          var p = function (x) { return (x < 10 ? '0' : '') + x };
+          return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+        } catch (e) { return '' }
+      }
+      function up() {
+        if (path === '/') return;
+        var i = path.replace(/\/+$/, '').lastIndexOf('/');
+        setPath(i <= 0 ? '/' : path.slice(0, i));
+      }
+      function fullPathOf(name) { return (path === '/' ? '' : path.replace(/\/+$/, '')) + '/' + name }
+      function enter(name) { setPath(fullPathOf(name)) }
+
+      var crumbs = [{ label: '/', path: '/' }];
+      if (path !== '/') {
+        var acc = '';
+        path.split('/').filter(Boolean).forEach(function (seg) { acc += '/' + seg; crumbs.push({ label: seg, path: acc }) });
+      }
+
+      return h('div', { className: 'dside-files' + (hidden ? ' hidden' : ''), style: { height: Math.round(props.height || 260) + 'px' } },
+        h('div', { className: 'dside-files-bar' },
+          h('button', { className: 'dside-pane-act', title: '上一级', disabled: path === '/', onClick: up }, '↑'),
+          h('button', { className: 'dside-pane-act', title: '刷新', onClick: function () { load(path) } }, '⟳'),
+          h('button', { className: 'dside-pane-act', title: '新建目录', onClick: function () { if (props.onNewDir) props.onNewDir(path) } }, '＋'),
+          h('button', { className: 'dside-pane-act', title: '上传文件到当前目录（可多选）', onClick: function () { if (props.onUpload) props.onUpload(path) } }, '⬆'),
+          h('button', { className: 'dside-pane-act', title: '上传整个目录（保留子目录结构）', onClick: function () { if (props.onUploadDir) props.onUploadDir(path) } }, '⇪'),
+          h('button', {
+            className: 'dside-pane-act', title: '下载选中的文件到本机', disabled: !sel || sel.dir,
+            onClick: function () { if (sel && !sel.dir && props.onDownload) props.onDownload(fullPathOf(sel.name)) },
+          }, '⬇'),
+          h('button', { className: 'dside-pane-act', title: '下载当前目录（连同子目录）到本机', onClick: function () { if (props.onDownloadDir) props.onDownloadDir(path) } }, '⇩'),
+          h('button', {
+            className: 'dside-pane-act', title: '重命名', disabled: !sel,
+            onClick: function () { if (sel && props.onRename) props.onRename(fullPathOf(sel.name), sel.name) },
+          }, '✎'),
+          h('button', {
+            className: 'dside-pane-act', title: '删除（不可撤销）', disabled: !sel,
+            onClick: function () { if (sel && props.onDelete) props.onDelete(fullPathOf(sel.name), !!sel.dir) },
+          }, '🗑'),
+          h('div', { className: 'dside-files-path' },
+            crumbs.map(function (c, i) {
+              return h('span', { key: c.path },
+                i ? h('span', { className: 'dside-files-sep' }, '/') : null,
+                h('span', { className: 'dside-files-crumb', onClick: function () { setPath(c.path) } }, c.label),
+              );
+            }),
+          ),
+          props.onBackToTerm ? h('button', { className: 'dside-btn small', title: '回到服务器终端', onClick: props.onBackToTerm }, '🖥 回终端') : null,
+          h('span', { className: 'dside-srv-sub' }, entries.length ? (entries.length + ' 项') : ''),
+        ),
+        msg ? h('div', { className: 'dside-files-msg' }, msg) : null,
+        h('div', { className: 'dside-files-list' },
+          entries.map(function (e) {
+            return h('div', {
+              key: (e.dir ? 'd:' : 'f:') + e.name,
+              className: 'dside-files-row' + (sel && sel.name === e.name ? ' on' : ''),
+              title: e.name,
+              onClick: function () { setSel({ name: e.name, dir: !!e.dir }) },
+              onDoubleClick: function () {
+                if (e.dir) { enter(e.name); return }
+                if (props.onOpenFile) props.onOpenFile(fullPathOf(e.name));
+              },
+            },
+              h('span', { className: 'dside-files-ico' }, e.dir ? '📁' : '📄'),
+              h('span', { className: 'dside-files-name' }, e.name),
+              h('span', { className: 'dside-files-size' }, e.dir ? '' : fmtSize(e.size)),
+              h('span', { className: 'dside-files-time' }, fmtTime(e.mtime)),
+            );
+          }),
+        ),
+        h(Sash, {
+          dir: 'row', edge: 'top',
+          onDrag: function (d) { props.onResize(d) },
+          onReset: props.onResizeReset,
+        }),
+      );
     }
 
     function TermPanel(props) {
@@ -3259,6 +3752,9 @@ window.__ModuleLoader__.load({
     function ActivityBar(props) {
       var top = [
         { id: 'explorer', icon: '📁', label: '资源管理器' },
+        // 2026-10-21：服务器控制台。跟另外三颗同一套交互（点谁切谁、再点收起），
+        // 区别只在于它还把中栏换成服务器终端、底栏换成服务器资源管理器。
+        { id: 'server', icon: '🌐', label: '服务器控制台' },
         { id: 'actions', icon: '⚡', label: '操作' },
         { id: 'plugins', icon: '🧩', label: '插件' },   // 2026-09-21：从右侧面板搬过来的
       ];
@@ -6741,9 +7237,19 @@ window.__ModuleLoader__.load({
       var tabEls = tabs.map(function (t) {
         var active = t.path === activePath;
         var cls = 'dside-tab' + (active ? ' active' : '')
+          // 未保存态落在标签自己身上：圆点/叉的切换全靠这个类（原来是点在圆点元素上，元素撤了就得挪过来）
+          + (t.dirty ? ' dirty' : '')
           + (t.preview ? ' preview' : '')
           + (t.pinned ? ' pinned' : '')
           + (t.pinned && props.pinnedCompact ? ' compact' : '');
+        // 2026-10-21 用户要求：标题左侧就是文件图标（VSCode 的 showIcons 默认开）；
+        // 浏览器 / 差异 / 设置标签用它自己的类型标记，不再与文件图标并列两个图标
+        var tabMark = isBrowserPath(t.path) ? { txt: '🌐', title: '内置浏览器标签' }
+          : isReviewPath(t.path) ? { txt: '⇄', title: '改动差异标签' }
+          : isSettingsPath(t.path) ? { txt: '⚙', title: '设置标签' }
+          : { txt: iconFor({ type: 'file', name: t.name }), title: '' };
+        var tabIconProps = { className: 'dside-tab-icon' };
+        if (tabMark.title) tabIconProps.title = tabMark.title;
         return h('div', {
           key: t.path,
           className: cls,
@@ -6768,26 +7274,24 @@ window.__ModuleLoader__.load({
           // ⑮ 标签右键菜单（VSCode 的 Editor Tab Context：关闭族 / 固定 / 路径族）
           onContextMenu: function (e) { e.preventDefault(); e.stopPropagation(); if (props.onTabContext) props.onTabContext(t.path, e); },
         },
-          h('span', { className: 'dside-dot' + (t.dirty ? ' dirty' : '') }),
-          // 固定标签在「收窄成图标」模式下只显示类型图标
-          (t.pinned && props.pinnedCompact) ? h('span', { className: 'dside-tab-icon' }, iconFor({ type: 'file', name: t.name })) : null,
-          // 内置浏览器标签带个地球标记：它的"路径"是 browser:// 伪协议，光看名字分不出是网页还是文件
-          isBrowserPath(t.path) ? h('span', { className: 'dside-tab-globe', title: '内置浏览器标签' }, '🌐') : null,
-          isReviewPath(t.path) ? h('span', { className: 'dside-tab-globe', title: '改动差异标签' }, '⇄') : null,
-          isSettingsPath(t.path) ? h('span', { className: 'dside-tab-globe', title: '设置标签' }, '⚙') : null,
+          h('span', tabIconProps, tabMark.txt),
           h('span', { className: 'dside-tab-name' }, t.name),
           // VSCode 同款：固定标签上的动作按钮是「取消固定」而不是关闭（其中键/Ctrl+W 也受保护）
           t.pinned
             ? h('button', {
                 className: 'dside-tab-unpin',
-                title: '取消固定',
+                title: t.dirty ? '未保存 · 取消固定' : '取消固定',
                 onClick: function (e) { e.stopPropagation(); if (props.onTogglePin) props.onTogglePin(t.path); },
-              }, '📌')
+              },
+                h('span', { className: 'glyph pin' }, '📌'),
+                h('span', { className: 'glyph dot' }))
             : h('button', {
                 className: 'dside-tab-close',
-                title: '关闭',
+                title: t.dirty ? '未保存 · 关闭' : '关闭',
                 onClick: function (e) { e.stopPropagation(); if (props.onCloseTab) props.onCloseTab(t.path); },
-              }, '×'),
+              },
+                h('span', { className: 'glyph close' }, '×'),
+                h('span', { className: 'glyph dot' })),
         );
       });
 
@@ -7453,25 +7957,6 @@ window.__ModuleLoader__.load({
         body = h('div', { className: 'dside-agent-empty' }, '加载中…');
       }
 
-      var running = !!(conv && conv.running);
-      // ⑭ 长任务进度：跑的时候每秒 tick 一次算"已用时间"；徽标与进度条都读这里
-      var progress = (conv && conv.progress) || null;
-      var nowState = React.useState(Date.now());
-      var nowMs = nowState[0], setNowMs = nowState[1];
-      React.useEffect(function () {
-        if (!running) return undefined;
-        var t = setInterval(function () { setNowMs(Date.now()); }, 1000);
-        return function () { clearInterval(t); };
-      }, [running]);
-      var fmtDur = function (ms) {
-        if (!ms || ms < 0) return '0:00';
-        var s = Math.floor(ms / 1000);
-        return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
-      };
-      var elapsed = progress && progress.turnStart ? Math.max(0, nowMs - progress.turnStart) : 0;
-      var lastEnd = progress && progress.lastTurnEnd;
-      var lastAborted = !!(lastEnd && lastEnd.reason && lastEnd.reason.kind === 'aborted');
-      var lastDur = lastEnd && progress && progress.turnStart ? Math.max(0, lastEnd.time - progress.turnStart) : 0;
       var inputDisabled = !sessionFace || !conv || conv.openState === 'loading' || conv.openState === 'error' || conv.removed;
 
       // ── ⑥ 第二/三刀：改动清单（Agent 改了哪些文件 → 逐个看 / 撤销）──
@@ -7600,20 +8085,12 @@ window.__ModuleLoader__.load({
         return function () { if (mo) { try { mo.disconnect() } catch (e) { /* 忽略 */ } } };
       }, []);
 
-      // 右侧面板 = 自绘的会话列表 + 改动清单/进度（天工自己的东西）
+      // 右侧面板 = 自绘的会话列表 + 改动清单（天工自己的东西）
       //          + **平台原生会话**（消息、工具卡、审批卡、提问卡片、输入框全在里面）
       // 2026-09-20：不再自绘对话与输入框 —— 平台那套是完整的，自绘只会漏（提问卡片就是这么漏掉的）。
       return h('div', { className: 'dside-agent-wrap' },
         sessionsBlock,
         changesBlock,
-        running
-          ? h('div', { className: 'dside-agent-progress' },
-              h('span', { className: 'sp' }, '第 ' + ((progress && progress.step) || 0) + ' 步 · 已用 ' + fmtDur(elapsed)),
-              h('span', { className: 'what' },
-                progress && progress.tool ? ('正在调用 ' + progress.tool + '…') : '等待模型响应…'),
-              h('span', { className: 'hint' }, '点下方 ⏹ 可中断'),
-            )
-          : null,
         h('div', { className: 'dside-agent-platform', ref: platRef },
           props.renderSlot
             ? props.renderSlot('main', {}, { entryKey: 'conversation' })
@@ -8266,6 +8743,308 @@ window.__ModuleLoader__.load({
           revealSeqRef.current += 1;
           setRevealReq({ path: activePath, seq: revealSeqRef.current });
         }
+        // 服务器控制台：第一回切过来才连（连上之后再切来切去都只是显隐，不重连）
+        if (id === 'server') {
+          setSshMounted(true);
+          var target = sshSel || (ssh.servers[0] ? ssh.servers[0].id : null);
+          if (target) {
+            var has = null;
+            for (var i2 = 0; i2 < ssh.sessions.length; i2++) if (ssh.sessions[i2].id === target) has = ssh.sessions[i2];
+            if (!has || has.status !== 'open') sshPickServer(target);
+          }
+        }
+      }
+
+      // ── 服务器控制台（2026-10-21）────────────────────────────────────────
+      // 连接活在**后端进程**里：切到别的左栏视图只是不画，连接与终端输出都留着，
+      // 切回来直接可用（这是用户明确要的"后面就随便切换"）。
+      var sshState = React.useState({ available: null, loadError: null, servers: [], sessions: [] });
+      var ssh = sshState[0], setSsh = sshState[1];
+      var sshSelState = React.useState(null);
+      var sshSel = sshSelState[0], setSshSel = sshSelState[1];
+      var sshBusyState = React.useState('');
+      var sshBusy = sshBusyState[0], setSshBusy = sshBusyState[1];
+      var sshErrState = React.useState('');
+      var sshErr = sshErrState[0], setSshErr = sshErrState[1];
+      // 首次连接 / 指纹变化时待确认的那台：{id, fingerprint, kind}
+      var sshFpState = React.useState(null);
+      var sshFp = sshFpState[0], setSshFp = sshFpState[1];
+      var sshMountedState = React.useState(false);   // 首次切过去之后常驻（只藏不卸）
+      var sshMounted = sshMountedState[0], setSshMounted = sshMountedState[1];
+      // 中/底栏显示哪一套，只看"左栏当前选的是谁"（不做另立一套"形态"状态）
+      var serverMode = activity === 'server';
+      // 服务器形态下中栏显示谁：'term' 服务器终端 / 'editor' 编辑器（打开远端文件时切过来）
+      var sshViewState = React.useState('term');
+      var sshView = sshViewState[0], setSshView = sshViewState[1];
+      function openSshFile(fullPath) {
+        if (!sshSel || !fullPath) return;
+        var name = String(fullPath).split('/').pop();
+        // 远端文件也用伪路径进标签：编辑器的读/写/冲突那套因此原样复用，不需要另一套编辑器
+        openTab({ name: name, path: 'ssh://' + sshSel + fullPath });
+        setCenterView('editor');
+        setSshView('editor');
+        trace('ui', 'info', 'ssh-file-open', { sid: sshSel, path: fullPath });
+      }
+
+      var sshSession = null;
+      for (var si = 0; si < ssh.sessions.length; si++) if (ssh.sessions[si].id === sshSel) { sshSession = ssh.sessions[si]; break }
+
+      function refreshSsh() {
+        apiGet('/ssh-status').then(function (r) {
+          if (!r || r.error) return;
+          setSsh({ available: !!r.available, loadError: r.loadError || null, servers: r.servers || [], sessions: r.sessions || [] });
+        });
+      }
+      React.useEffect(function () { refreshSsh() }, []);
+
+      // 界面上下文推给后端：Agent 因此知道"现在在哪台机器、哪个目录、选中了什么"，不用反问
+      var sshCtxState = React.useState({ path: '/', sel: null });
+      var sshCtx = sshCtxState[0], setSshCtx = sshCtxState[1];
+      React.useEffect(function () {
+        if (!sshSel) return;
+        var t = setTimeout(function () {
+          apiPost('/ssh-context', { id: sshSel, path: sshCtx.path, sel: sshCtx.sel });
+        }, 200);
+        return function () { clearTimeout(t) };
+      }, [sshSel, sshCtx.path, sshCtx.sel]);
+
+      // Agent 的写入/删除审批：进服务器形态才轮询（1.5 秒一次，纯本地请求）
+      var sshAskState = React.useState([]);
+      var sshAsk = sshAskState[0], setSshAsk = sshAskState[1];
+      React.useEffect(function () {
+        if (!serverMode) { setSshAsk([]); return }
+        var alive = true;
+        var busy = false;
+        function tick() {
+          if (busy) return;
+          busy = true;
+          apiGet('/ssh-approvals').then(function (r) {
+            busy = false;
+            if (!alive || !r || r.error) return;
+            setSshAsk(r.approvals || []);
+          });
+        }
+        tick();
+        var timer = setInterval(tick, 1500);
+        return function () { alive = false; clearInterval(timer) };
+      }, [serverMode]);
+      function answerSshAsk(id, allow) {
+        apiPost('/ssh-approvals/answer', { id: id, allow: !!allow }).then(function () {
+          setSshAsk(function (prev) { return prev.filter(function (a) { return a.id !== id }) });
+          refreshSsh();
+        });
+      }
+
+      // 口令只活在这块内存里：不写清单、不写日志、关软件就没了（清单里只存地址与密钥路径）
+      var sshPwRef = React.useRef({});
+      function sshConnect(server, trustFingerprint) {
+        if (!server || !server.host) return;
+        setSshBusy(server.id);
+        setSshErr('');
+        apiPost('/ssh-connect', {
+          id: server.id, host: server.host, port: server.port,
+          user: server.user, keyPath: server.keyPath, name: server.name,
+          password: sshPwRef.current[server.id] || undefined,
+          trustFingerprint: trustFingerprint || undefined,
+        }).then(function (r) {
+          setSshBusy('');
+          setSshFp(null);
+          if (!r || r.ok === false) {
+            var code = String((r && r.code) || '');
+            // 指纹不认识 / 变了：不连，先把指纹摆出来让用户拍板
+            if ((code === 'host-key-unknown' || code === 'host-key-changed') && r.fingerprint) {
+              setSshFp({ id: server.id, fingerprint: String(r.fingerprint), type: String(r.hostKeyType || ''), kind: code === 'host-key-changed' ? 'changed' : 'first' });
+              setSshErr('');
+              trace('ui', 'warn', 'ssh-host-key-ask', { id: server.id, host: server.host, kind: code });
+              return;
+            }
+            setSshErr('连接失败：' + ((r && (r.error || r.detail)) || 'network'));
+          }
+          refreshSsh();
+          trace('ui', (r && r.ok !== false) ? 'info' : 'warn', 'ssh-connect', { id: server.id, host: server.host, ok: !!(r && r.ok !== false) });
+        });
+      }
+      function sshDisconnect(sid) {
+        apiPost('/ssh-disconnect', { id: sid }).then(function () {
+          refreshSsh();
+          trace('ui', 'info', 'ssh-disconnect', { id: sid });
+        });
+      }
+      function sshPickServer(id, serverOpt) {
+        setSshSel(id);
+        setSshMounted(true);
+        var srv = serverOpt || null;
+        if (!srv) for (var a = 0; a < ssh.servers.length; a++) if (ssh.servers[a].id === id) srv = ssh.servers[a];
+        if (!srv) return;
+        var sess = null;
+        for (var b = 0; b < ssh.sessions.length; b++) if (ssh.sessions[b].id === id) sess = ssh.sessions[b];
+        if (!sess || sess.status !== 'open') sshConnect(srv);
+      }
+      function sshSaveServers(next) {
+        setSsh(function (prev) { return Object.assign({}, prev, { servers: next }) });
+        apiPost('/ssh-servers-save', { servers: next }).then(function () { refreshSsh() });
+      }
+      function sshAddServer(srv, pw) {
+        var id = 'srv-' + Date.now().toString(36);
+        if (pw) sshPwRef.current[id] = pw;
+        var next = ssh.servers.concat([Object.assign({ id: id }, srv)]);
+        sshSaveServers(next);
+        sshPickServer(id, Object.assign({ id: id }, srv));   // 加完直接连，省一次点击
+      }
+
+      // 服务器清单的编辑 / 移除：改的是"本机这份清单"，不碰服务器本身
+      function sshEditServer(id, srv, pw) {
+        if (pw) sshPwRef.current[id] = pw; else delete sshPwRef.current[id];
+        var next = ssh.servers.map(function (it) { return it.id === id ? Object.assign({}, it, srv) : it });
+        sshSaveServers(next);
+        setStatusText('已保存「' + (srv.name || srv.host) + '」的设置');
+      }
+      function sshRemoveServer(id) {
+        var srv = null;
+        for (var r = 0; r < ssh.servers.length; r++) if (ssh.servers[r].id === id) srv = ssh.servers[r];
+        var label = srv ? (srv.name || srv.host) : id;
+        if (!window.confirm('从清单里移除「' + label + '」？\n\n只移除本机这条记录，不影响服务器上的任何东西。')) return;
+        try { sshDisconnect(id); } catch (e) { /* 没连着 */ }
+        var next = ssh.servers.filter(function (it) { return it.id !== id });
+        sshSaveServers(next);
+        if (sshSel === id) setSshSel(next.length ? next[0].id : null);
+        setStatusText('已移除「' + label + '」');
+      }
+
+      // ── 服务器资源管理器的写操作（2026-10-21 第二刀）──────────────────────
+      // 删除不可逆 → 一律二次确认；目录只允许删空目录（不做递归删，递归删在远端等于 rm -rf，
+      // 一个手滑就是线上事故，宁可让用户进目录把东西清掉再删）。
+      var sshFilesRevState = React.useState(0);
+      var sshFilesRev = sshFilesRevState[0], setSshFilesRev = sshFilesRevState[1];
+      function sshRefreshFiles() { setSshFilesRev(function (n) { return n + 1 }) }
+      function sshJoin(dir, name) { return (dir === '/' ? '' : String(dir).replace(/\/+$/, '')) + '/' + name }
+      function sshNewDir(dir) {
+        setNameDialog({
+          title: '新建目录', initial: '', placeholder: '目录名',
+          onSubmit: function (name) {
+            setNameDialog(null);
+            if (!name || !sshSel) return;
+            apiPost('/ssh-mkdir', { id: sshSel, path: sshJoin(dir, name) }).then(function (r) {
+              if (!r || r.ok === false) { setStatusText('新建目录失败：' + ((r && r.error) || 'network')); return }
+              setStatusText('已新建 ' + sshJoin(dir, name));
+              sshRefreshFiles();
+            });
+          },
+        });
+      }
+      // 上传：用页内的文件选择框（多选 / 整目录都要），再经壳桥拿每个文件的真实路径。
+      // 为什么不用壳的「打开文件」对话框：它只能选一个，且不支持整目录。
+      var sshFileInputRef = React.useRef(null);
+      var sshDirInputRef = React.useRef(null);
+      var sshUpDirRef = React.useRef('/');
+      function sshUpload(dir) {
+        sshUpDirRef.current = dir || '/';
+        var el = sshFileInputRef.current;
+        if (!el) { setStatusText('上传需要在天工窗口里操作（浏览器里拿不到本机文件的真实路径）'); return }
+        el.value = '';
+        el.click();
+      }
+      function sshUploadDir(dir) {
+        sshUpDirRef.current = dir || '/';
+        var el = sshDirInputRef.current;
+        if (!el) { setStatusText('上传目录需要在天工窗口里操作'); return }
+        el.value = '';
+        el.click();
+      }
+      function sshOnFilesPicked(e, keepTree) {
+        var files = Array.prototype.slice.call((e.target && e.target.files) || []);
+        if (!files.length) return;
+        var shell = window.anzioShell;
+        if (!shell || !shell.getFilePath) { setStatusText('上传需要在天工窗口里操作（浏览器里拿不到本机文件的真实路径）'); return }
+        var baseDir = sshUpDirRef.current || '/';
+        var made = {};
+        (async function () {
+          var okCount = 0;
+          var firstErr = '';
+          for (var i = 0; i < files.length; i++) {
+            var f = files[i];
+            var localPath = shell.getFilePath(f);
+            if (!localPath) { firstErr = firstErr || '拿不到本机文件路径'; continue }
+            var rel = keepTree && f.webkitRelativePath ? f.webkitRelativePath : f.name;
+            var parts = String(rel).split('/');
+            var fileName = parts.pop();
+            var remoteDir = baseDir;
+            for (var j = 0; j < parts.length; j++) {
+              remoteDir = sshJoin(remoteDir, parts[j]);
+              if (!made[remoteDir]) {
+                await apiPost('/ssh-mkdir', { id: sshSel, path: remoteDir });
+                made[remoteDir] = true;
+              }
+            }
+            setStatusText('正在上传 ' + (i + 1) + '/' + files.length + '：' + fileName);
+            var r = await apiPost('/ssh-upload', { id: sshSel, local: localPath, remote: sshJoin(remoteDir, fileName) });
+            if (r && r.ok !== false) okCount += 1;
+            else firstErr = firstErr || String((r && r.error) || 'network');
+          }
+          setStatusText(okCount === files.length
+            ? ('已上传 ' + okCount + ' 个文件到 ' + baseDir)
+            : ('上传完成 ' + okCount + '/' + files.length + '，第一个错误：' + firstErr));
+          sshRefreshFiles();
+        })();
+      }
+      function sshDownloadDir(dir) {
+        var shell = window.anzioShell;
+        if (!shell || !shell.pickDirectory) { setStatusText('整目录下载需要在天工窗口里操作'); return }
+        Promise.resolve(shell.pickDirectory()).then(function (pick) {
+          if (!pick || pick.ok === false || !pick.path) return;
+          setStatusText('正在下载 ' + dir + ' …（按顺序下，不并发）');
+          apiPost('/ssh-download-dir', { id: sshSel, remote: dir, local: pick.path }).then(function (r) {
+            if (!r || r.ok === false) { setStatusText('下载失败：' + ((r && r.error) || 'network')); return }
+            setStatusText('已下载 ' + r.files + ' 个文件到 ' + r.local
+              + (r.skipped ? '（跳过 ' + r.skipped + ' 个符号链接）' : '')
+              + (r.truncated ? '（内容太多，只下了一部分）' : ''));
+          });
+        });
+      }
+      function sshDownload(remote) {
+        if (!sshSel || !remote) return;
+        var shell = window.anzioShell;
+        var name = String(remote).split('/').pop();
+        var ask = (shell && shell.pickSavePath) ? Promise.resolve(shell.pickSavePath(name)) : Promise.resolve('');
+        ask.then(function (local) {
+          if (shell && shell.pickSavePath && !local) return;   // 用户在对话框里取消了
+          apiPost('/ssh-download', { id: sshSel, remote: remote, local: local || '' }).then(function (r) {
+            if (!r || r.ok === false) { setStatusText('下载失败：' + ((r && r.error) || 'network')); return }
+            setStatusText('已下载到 ' + (r.local || ''));
+          });
+        });
+      }
+      function sshRename(remote, name) {
+        setNameDialog({
+          title: '重命名', initial: name, placeholder: '新名字',
+          onSubmit: function (next) {
+            setNameDialog(null);
+            if (!next || next === name || !sshSel) return;
+            var dir = String(remote).slice(0, String(remote).lastIndexOf('/')) || '/';
+            apiPost('/ssh-rename', { id: sshSel, from: remote, to: sshJoin(dir, next) }).then(function (r) {
+              if (!r || r.ok === false) { setStatusText('重命名失败：' + ((r && r.error) || 'network')); return }
+              setStatusText('已改名为 ' + next);
+              sshRefreshFiles();
+            });
+          },
+        });
+      }
+      function sshDelete(remote, isDir) {
+        if (!sshSel || !remote) return;
+        var tip = '删除 ' + remote + '？\n\n'
+          + (isDir ? '目录里还有东西就删不掉（先把内容清空）。\n' : '')
+          + '这个操作不可撤销。';
+        if (!window.confirm(tip)) return;
+        apiPost('/ssh-remove', { id: sshSel, path: remote, dir: !!isDir }).then(function (r) {
+          if (!r || r.ok === false) {
+            var why = String((r && r.error) || 'network');
+            setStatusText('删除失败：' + why + (isDir ? '（目录可能不是空的）' : ''));
+            return;
+          }
+          setStatusText('已删除 ' + remote);
+          sshRefreshFiles();
+          try { closeTab('ssh://' + sshSel + remote); } catch (e) { /* 没开着就算了 */ }
+        });
       }
       var closedTabsState = React.useState([]);        // ④ Ctrl+Shift+T 重开栈（近 10 个）
       var closedTabs = closedTabsState[0], setClosedTabs = closedTabsState[1];
@@ -11223,7 +12002,22 @@ window.__ModuleLoader__.load({
           h(ActivityBar, { active: activity, panelOpen: showExplorer, onPick: pickActivity }),
           showExplorer
             ? h('div', { className: 'dside-leftpanel', style: { width: layout.sideW + 'px' } },
-                (activity === 'explorer'
+                (activity === 'server'
+                ? h(SshServerList, {
+                    servers: ssh.servers, sessions: ssh.sessions, selId: sshSel,
+                    connecting: sshBusy,
+                    sshError: sshErr || (ssh.available === false ? ('SSH 组件没加载起来：' + (ssh.loadError || 'unknown')) : ''),
+                    onPick: sshPickServer, onAdd: sshAddServer,
+                    onEdit: sshEditServer, onRemove: sshRemoveServer,
+                    fpPrompt: sshFp,
+                    onTrustFp: function (id, fingerprint) {
+                      var srv = null;
+                      for (var q = 0; q < ssh.servers.length; q++) if (ssh.servers[q].id === id) srv = ssh.servers[q];
+                      if (srv) sshConnect(srv, fingerprint);
+                    },
+                    onCancelFp: function () { setSshFp(null) },
+                  })
+                : (activity === 'explorer'
                 ? h(Explorer, {
                     root: root,
                     // 选中态 = 当前聚焦的树节点（没点过树就跟随活动标签）—— 文件夹也能被选中
@@ -11251,7 +12045,7 @@ window.__ModuleLoader__.load({
                         ? h('div', { className: 'dside-explorer' },
                             h('div', { className: 'dside-pane-title' }, '插件'),
                             h(PluginPanel, { plugins: plugins, busy: busy, onAction: pluginAction }))
-                        : h(BlocksPanel, { title: '设置', blocks: settingsBlocks() })))),
+                        : h(BlocksPanel, { title: '设置', blocks: settingsBlocks() }))))),
                 // ⑰ 左栏手柄：挂在面板内部、绝对定位压在右边缘（不占布局空间，VSCode 同款）
                 h(Sash, {
                   dir: 'col', edge: 'right',
@@ -11263,7 +12057,7 @@ window.__ModuleLoader__.load({
             // 中面板 = 编辑器 + （可选）快捷键设置页。**编辑器不卸载**：monaco 实例/未保存缓冲区都在
             // 它身上，卸载等于丢用户没保存的编辑 —— 所以这里只是绝对定位藏起来（见 .dside-center-editor.hidden）。
             h('div', { className: 'dside-center-body', onDragEnter: onEditorDragEnter, onDragOver: onEditorDragOver, onDrop: onEditorDrop },
-              h('div', { className: 'dside-center-editor' + (centerView !== 'editor' ? ' hidden' : '') },
+              h('div', { className: 'dside-center-editor' + ((centerView !== 'editor' || (serverMode && sshView !== 'editor')) ? ' hidden' : '') },
                 h(Editor, {
                   // 伪路径标签（差异/设置）的正文要平台内容 → 外壳的 renderSlot 下传（授权跟着注册条目走）
                   renderSlot: props.renderSlot,
@@ -11291,6 +12085,34 @@ window.__ModuleLoader__.load({
                   onSnapshotRestore: restoreSnapshot,
                   keysRev: keysRev,
                 })),
+              // 服务器形态：中栏是服务器终端（盖在编辑器上；编辑器只是藏起来、实例与未保存内容都还在）
+              sshMounted ? h(SshConsole, {
+                hidden: !serverMode || sshView === 'editor',
+                session: sshSession,
+                connecting: sshBusy === sshSel,
+                onConnect: function () { if (sshSel) sshPickServer(sshSel) },
+                onDisconnect: function () { if (sshSel) sshDisconnect(sshSel) },
+              }) : null,
+              // Agent 想写/删服务器文件时的确认条（用户点头它才动，2 分钟不点作废）
+              sshAsk.length ? h('div', { className: 'dside-ssh-ask' },
+                h('div', { className: 'txt' },
+                  h('div', null, sshAsk[0].tool === 'ssh_write' ? 'Agent 想改服务器上的文件' : 'Agent 想删服务器上的东西'),
+                  h('div', { className: 'sub' }, String(sshAsk[0].detail || '') + (sshAsk[0].reason ? ' · ' + sshAsk[0].reason : '')),
+                ),
+                h('button', { className: 'dside-btn small primary', onClick: function () { answerSshAsk(sshAsk[0].id, true) } }, '允许'),
+                h('button', { className: 'dside-btn small', onClick: function () { answerSshAsk(sshAsk[0].id, false) } }, '拒绝'),
+              ) : null,
+              // 上传用的隐藏选择框（多选文件 / 整目录）：壳的原生对话框只能选一个文件
+              h('input', {
+                type: 'file', multiple: true, ref: sshFileInputRef,
+                style: { display: 'none' },
+                onChange: function (e) { sshOnFilesPicked(e, false) },
+              }),
+              h('input', {
+                type: 'file', multiple: true, webkitdirectory: '', ref: sshDirInputRef,
+                style: { display: 'none' },
+                onChange: function (e) { sshOnFilesPicked(e, true) },
+              }),
               // （快捷键页 / 编辑器设置页 2026-10-12 起是中栏标签 settings://keys|editor-prefs，
               //   由 Editor 里的 settingsEl 渲染 —— 不再走 centerView 这套"盖一层、关不掉"的视图）
               // （设置已改成中栏标签 settings://，见 Editor 里的 settingsEl；不再走 centerView 视图）
@@ -11301,7 +12123,7 @@ window.__ModuleLoader__.load({
             //   那样一关面板就卸载组件 → 卸载清理里发 /term-close → 正在跑的进程被一起杀掉。
             //   VSCode 的 Hide Panel 只藏不销毁（panelActions.ts:30-42），这里对齐。
             h(TermPanel, {
-              hidden: !termOpen,
+              hidden: !termOpen || serverMode,
               tabs: termTabs, activeId: termActive,
               onSelect: selectTerminal, onNew: function () { newTerminal(); }, onKill: killTerminal,
               onStatus: onTermStatus, onTitle: onTermTitle, onReady: onTermReady,
@@ -11319,6 +12141,21 @@ window.__ModuleLoader__.load({
               kb: kb,
               kbFlash: kb.flash,
             }),
+            // 服务器形态：底栏是服务器资源管理器。高度与本地终端面板共用同一个值 ——
+            // 两套共用一个布局数，切换时不会一次高一次矮（拖动也是同一手感）。
+            sshMounted ? h(SshFiles, {
+              hidden: !serverMode,
+              sid: (sshSession && sshSession.status === 'open') ? sshSession.id : null,
+              height: layout.termH,
+              reloadTick: sshFilesRev,
+              onNewDir: sshNewDir, onUpload: sshUpload, onUploadDir: sshUploadDir, onDownload: sshDownload, onDownloadDir: sshDownloadDir,
+              onRename: sshRename, onDelete: sshDelete,
+              onContext: setSshCtx,
+              onOpenFile: openSshFile,
+              onBackToTerm: sshView === 'editor' ? function () { setSshView('term'); } : null,
+              onResize: function (d) { nudgeLayout('termH', -d); },
+              onResizeReset: function () { resetLayout('termH'); },
+            }) : null,
           ),
           h('div', { className: 'dside-side', style: { width: layout.rightW + 'px' } },
             // ⑰ 右栏手柄：同样挂在面板内部、压在左边缘
