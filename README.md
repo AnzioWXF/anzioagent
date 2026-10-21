@@ -7,7 +7,7 @@
 ## 仓库结构
 
 ```
-deepseek-harness\  官方引擎原样快照（dsh-v0.2.1-alpha.2 的提交内容，不含 .git，见下节）
+deepseek-harness-origin\  官方引擎原样快照（dsh-v0.2.1-alpha.2 的提交内容，见下节）
 deepseek-harness-mine\
   shell\    Electron 壳：窗口与启动画面、后端管理、内置更新器、内置浏览器、壳桥与幻影驱动
             home-files\ 装机模板（装配单与 AGENTS.md）
@@ -19,18 +19,20 @@ patches\    引擎补丁（我们对官方 checkout 的改动）
 
 ## 引擎：原样快照进仓，改动只走补丁
 
-`deepseek-harness\` 是官方引擎的**原样快照**，来源写死在这里，别再猜：
+`deepseek-harness-origin\` 是官方引擎的**原样快照**，来源写死在这里，别再猜：
 
 | 项 | 值 |
 |---|---|
 | 官方仓 | `https://github.com/deepseek-ai/deepseek-harness.git` |
 | 版本 | tag `dsh-v0.2.1-alpha.2` |
 | 提交 | `d743267388641bc76f17c45ce8b4c231aed1d32c`（2026-10-09） |
-| 快照导出 | 2026-10-21，本机官方检出 `git checkout-index -a` 导出 |
+| 来历 | 2026-10-12 从官方仓 `git clone` 的干净检出（当时的 reflog 只有一条 clone 记录，工作树 0 改动）；**2026-10-21 拆掉它的 `.git` 后进仓**，好让"本地只留两个引擎目录"这条规矩成立 |
 | 规模 | 14,988 个文件 / 约 121 MB（不含 `.git`、不含依赖与构建产物） |
-| 一致性 | 与官方该提交逐文件一致：文件名、内容 blob 哈希、符号链接与可执行位全同（用 `git ls-files -s` 逐行对比为 0 差异） |
+| 一致性 | 与官方该提交逐文件一致：文件名、内容 blob 哈希、符号链接与可执行位全同（进仓时用 `git ls-files -s` 与官方清单逐行对比，0 差异） |
 
-快照里**没有**：`.git`（官方历史 306 MB 不进仓）、`node_modules`（约 2 GB）、`lib/`、`*.tsbuildinfo` 等构建产物。这些都在 `.gitignore` 里挡着，将来在快照目录里装依赖、重建产物也不会污染仓库。
+快照里**没有**：`.git`（官方历史 282 MB 压缩 / 306 MB 工作副本，不进仓）、`node_modules`、`lib/`、`*.tsbuildinfo` 等构建产物。这些都在 `.gitignore` 里挡着，将来在快照目录里装依赖、重建产物也不会污染仓库。
+
+**这个目录从今往后当只读的官方原件用**：别在里面装依赖、别在里面改代码 —— 它一改，跟官方比对和跟版重套就都没了基准。
 
 应用实际跑的是 `D:\99DSH\deepseek-harness-mine\harness`，它 = **这份快照 + 我们的补丁**（补丁改动不提交，永久留在工作区）。
 
@@ -38,7 +40,7 @@ patches\    引擎补丁（我们对官方 checkout 的改动）
 
 ```powershell
 # 1. 把仓里的快照变成应用要跑的那棵
-Copy-Item -Recurse D:\99DSH\deepseek-harness D:\99DSH\deepseek-harness-mine\harness
+Copy-Item -Recurse D:\99DSH\deepseek-harness-origin D:\99DSH\deepseek-harness-mine\harness
 # 2. 套补丁（补丁里的改动：会话与对话节点契约、ui-settings-general 挂主区、快捷键表、host 布局、审批四按钮等）
 cd D:\99DSH\deepseek-harness-mine\harness
 git apply D:\99DSH\patches\engine-0.2.1-alpha.2-ours.patch
@@ -47,9 +49,9 @@ git apply D:\99DSH\patches\engine-0.2.1-alpha.2-ours.patch
 
 想改成"官方 git 仓 + 补丁"的老办法也行：clone 官方、checkout 同一个提交、套同一份补丁 —— 快照就是为"官方仓不可达 / 该提交被删"这种情况留的底，两种做法拿到的树一样。
 
-**跟版**：官方发新版 → 用新提交重新导出一份快照整棵替换 `deepseek-harness\`，把补丁里的改动重放成 `patches\engine-<新版本>-ours.patch`。补丁永远只在最外层，别把改动写进快照里（写进去以后就分不清哪些是官方的、哪些是我们的）。
+**跟版**：官方发新版 → 临时 clone 一份官方（或直接用官方仓），checkout 新提交，用它整棵替换 `deepseek-harness-origin\`，把补丁里的改动重放成 `patches\engine-<新版本>-ours.patch`。补丁永远只在最外层，别把改动写进快照里（写进去以后就分不清哪些是官方的、哪些是我们的）。
 
-**许可**：引擎版权归 DeepSeek，MIT，`deepseek-harness\LICENSE` 随树带；`patches\` 里的改动同为 MIT。
+**许可**：引擎版权归 DeepSeek，MIT，`deepseek-harness-origin\LICENSE` 随树带；`patches\` 里的改动同为 MIT。
 
 改完引擎要重建产物（官方 `build:lib:*` 脚本会被 pnpm 依赖状态检查拦住、无 TTY 直接中止，按下面五步走）：
 

@@ -10,15 +10,15 @@
 !/deepseek-harness-mine/shell/
 !/deepseek-harness-mine/plugin/
 
-# 引擎原样快照（官方 dsh-v0.2.1-alpha.2 的提交内容，不含 .git）。
+# 引擎原样快照（官方 dsh-v0.2.1-alpha.2 的提交内容；2026-10-21 拆掉 .git 后进仓）。
 # 只收官方 git 跟踪的那份源码；装完依赖、重建产物后长出来的东西不进仓。
-!/deepseek-harness/
-/deepseek-harness/node_modules/
-/deepseek-harness/**/lib/
-/deepseek-harness/**/dist/
-/deepseek-harness/**/coverage/
-/deepseek-harness/**/.turbo/
-/deepseek-harness/**/.cache/
+!/deepseek-harness-origin/
+/deepseek-harness-origin/node_modules/
+/deepseek-harness-origin/**/lib/
+/deepseek-harness-origin/**/dist/
+/deepseek-harness-origin/**/coverage/
+/deepseek-harness-origin/**/.turbo/
+/deepseek-harness-origin/**/.cache/
 
 # 依赖与打包产物、缓存、日志
 node_modules/
