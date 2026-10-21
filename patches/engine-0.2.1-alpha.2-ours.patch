@@ -64,6 +64,168 @@ index 07e4aa84c8..8efb0410fe 100644
          portal
          className={css.menuAnchor}
          anchor={(
+diff --git a/packages/client/ui-approval/src/client/ApprovalPanel.module.css b/packages/client/ui-approval/src/client/ApprovalPanel.module.css
+index edf5a7bf79..d3caf5ad0b 100644
+--- a/packages/client/ui-approval/src/client/ApprovalPanel.module.css
++++ b/packages/client/ui-approval/src/client/ApprovalPanel.module.css
+@@ -53,11 +53,19 @@
+   word-break: break-all;
+ }
+ 
++.hint {
++  color: var(--dsw-alias-label-tertiary);
++  font-size: 12px;
++  line-height: 18px;
++}
++
++/* 四颗按钮挤在窄的右栏里：允许换行，仍靠右对齐，别把标签压成省略号 */
+ .actionRow {
+   display: flex;
++  flex-wrap: wrap;
+   justify-content: flex-end;
+   gap: 8px;
+-  padding: 14px 16px;
++  padding: 12px 16px 14px;
+ }
+ 
+ .reject:hover:not(:disabled) {
+diff --git a/packages/client/ui-approval/src/client/ApprovalPanel.tsx b/packages/client/ui-approval/src/client/ApprovalPanel.tsx
+index bdfcba3f02..d67a518bbe 100644
+--- a/packages/client/ui-approval/src/client/ApprovalPanel.tsx
++++ b/packages/client/ui-approval/src/client/ApprovalPanel.tsx
+@@ -1,7 +1,7 @@
+ /** Composer takeover for one pending approval waterfall. */
+ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+ import { Button, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
+-import type { ApprovalComposerProps, PendingApproval } from './contract/slots.ts'
++import type { ApprovalComposerProps, ApprovalDecision, PendingApproval } from './contract/slots.ts'
+ import css from './ApprovalPanel.module.css'
+ 
+ /**
+@@ -33,7 +33,7 @@ function ApprovalFlow({ pending, reason, detail, t }: {
+     active.current = true
+     return () => { active.current = false }
+   }, [])
+-  const answer = (outcome: 'allowed-once' | 'rejected'): void => {
++  const answer = (outcome: ApprovalDecision): void => {
+     if (waiting.current || !pending.answerable) return
+     waiting.current = true
+     setAnswered(true)
+@@ -73,14 +73,21 @@ function ApprovalFlow({ pending, reason, detail, t }: {
+         >
+           <div className={css.headline}>{reason ?? t('escalation', { toolName: pending.toolName })}</div>
+           {detail !== null && <div className={css.command}>{detail}</div>}
++          <div className={css.hint}>{t('grant.hint')}</div>
+         </div>
+         <div className={css.actionRow}>
+-          <Button variant="outline" className={css.reject} disabled={answered} onClick={() => { answer('rejected') }}>
+-            {t('reject')}
+-          </Button>
+           <Button variant="primary" disabled={answered} onClick={() => { answer('allowed-once') }}>
+             {t('allowOnce')}
+           </Button>
++          <Button variant="outline" disabled={answered} onClick={() => { answer('allowed-session') }}>
++            {t('allowSession')}
++          </Button>
++          <Button variant="outline" disabled={answered} onClick={() => { answer('allowed-always') }}>
++            {t('allowAlways')}
++          </Button>
++          <Button variant="outline" className={css.reject} disabled={answered} onClick={() => { answer('rejected') }}>
++            {t('reject')}
++          </Button>
+         </div>
+       </div>
+     </div>
+diff --git a/packages/client/ui-approval/src/client/contract/slots.ts b/packages/client/ui-approval/src/client/contract/slots.ts
+index 2558b40ea4..f247355128 100644
+--- a/packages/client/ui-approval/src/client/contract/slots.ts
++++ b/packages/client/ui-approval/src/client/contract/slots.ts
+@@ -63,7 +63,7 @@ export interface ApprovalPresentationRequest {
+ }
+ 
+ /** Decisions this interactive Client presentation can return. */
+-export type ApprovalDecision = 'allowed-once' | 'rejected'
++export type ApprovalDecision = 'allowed-once' | 'allowed-session' | 'allowed-always' | 'rejected'
+ 
+ let nextApprovalKey = 0
+ 
+diff --git a/packages/client/ui-approval/src/client/index.ts b/packages/client/ui-approval/src/client/index.ts
+index ca6d674e36..f596c71235 100644
+--- a/packages/client/ui-approval/src/client/index.ts
++++ b/packages/client/ui-approval/src/client/index.ts
+@@ -58,7 +58,10 @@ async function answerApproval(
+   })
+   try {
+     try {
+-      return await pending.result
++      // `allowed-session` / `allowed-always` are not in the tool-facing outcome
++      // vocabulary: they ride the wire as plain strings and the Host folds them
++      // into `allowed-once`. Remembering the key belongs to a Host answerer.
++      return await pending.result as ClientApprovalOutcome
+     } catch (error) {
+       if (pending.isDelegation(error)) return await next()
+       throw error
+diff --git a/packages/client/ui-approval/src/client/locales.ts b/packages/client/ui-approval/src/client/locales.ts
+index e28f2ce74a..490a2c0a4c 100644
+--- a/packages/client/ui-approval/src/client/locales.ts
++++ b/packages/client/ui-approval/src/client/locales.ts
+@@ -6,7 +6,10 @@ export const zh = {
+   'detail.aria': '审批详情',
+   escalation: '工具 {toolName} 请求越权执行',
+   reject: '拒绝',
+-  allowOnce: '允许一次',
++  allowOnce: '本次运行',
++  allowSession: '本对话允许',
++  allowAlways: '永久允许',
++  'grant.hint': '后两个按同一类操作记住：同一个工具、同样的权限提升。永久允许会一直放行，可在 Agent 设置里撤销。',
+ } satisfies Record<string, string>
+ 
+ /** Approval dictionary key union. */
+@@ -18,5 +21,8 @@ export const en = {
+   'detail.aria': 'Approval details',
+   escalation: 'Tool {toolName} requests privileged execution',
+   reject: 'Reject',
+-  allowOnce: 'Allow once',
++  allowOnce: 'This run',
++  allowSession: 'This conversation',
++  allowAlways: 'Always',
++  'grant.hint': 'The last two remember the same kind of request (same tool, same widening). “Always” keeps allowing it across restarts; revoke it in Agent settings.',
+ } satisfies Record<ApprovalKey, string>
+diff --git a/packages/client/ui-approval/tests/ui-approval.client.spec.tsx b/packages/client/ui-approval/tests/ui-approval.client.spec.tsx
+index e9edc316a5..fc643658d2 100644
+--- a/packages/client/ui-approval/tests/ui-approval.client.spec.tsx
++++ b/packages/client/ui-approval/tests/ui-approval.client.spec.tsx
+@@ -322,6 +322,9 @@ function panelProps(
+     escalation: `Tool ${pending.toolName} asks`,
+     reject: 'Reject',
+     allowOnce: 'Allow once',
++    allowSession: 'Allow this conversation',
++    allowAlways: 'Always allow',
++    'grant.hint': 'The last two remember this kind of request',
+   }
+   return {
+     matched: pending,
+@@ -370,6 +373,20 @@ describe('ApprovalPanel', () => {
+     await expect(pending.result).resolves.toBe('allowed-once')
+   })
+ 
++  it('offers exactly four decisions and returns the remembered-grant ones', async () => {
++    const labels = ['Allow once', 'Allow this conversation', 'Always allow', 'Reject'] as const
++    for (const [index, label] of labels.entries()) {
++      const pending = new PendingApproval(id('s1'), { toolName: 'bash' })
++      const view = render(<ApprovalPanel {...panelProps(pending)} />)
++      expect(screen.getAllByRole('button').map(button => button.textContent)).toEqual([...labels])
++      fireEvent.click(screen.getByRole('button', { name: label }))
++      await expect(pending.result).resolves.toBe(
++        (['allowed-once', 'allowed-session', 'allowed-always', 'rejected'] as const)[index],
++      )
++      view.unmount()
++    }
++  })
++
+   it('keeps the audit reason intact and follows the UI language for presentation copy', () => {
+     const pending = new PendingApproval(id('s1'), {
+       toolName: 'bash',
 diff --git a/packages/client/ui-chat/src/client/chat/CompactionItem.tsx b/packages/client/ui-chat/src/client/chat/CompactionItem.tsx
 index 006b570557..3db78e8241 100644
 --- a/packages/client/ui-chat/src/client/chat/CompactionItem.tsx
@@ -1271,6 +1433,113 @@ index 6a11c44b56..f766376c7a 100644
  })
  
  it('opens an empty rename draft for unnamed history instead of its directory label', async () => {
+diff --git a/packages/interaction/user-approval/src/index.ts b/packages/interaction/user-approval/src/index.ts
+index 9a14f04d0b..105f53e828 100644
+--- a/packages/interaction/user-approval/src/index.ts
++++ b/packages/interaction/user-approval/src/index.ts
+@@ -49,11 +49,24 @@ import { ApprovalRequestId } from './types.ts'
+ import type { ApprovalOutcome, ApprovalRequestEvent } from './types.ts'
+ 
+ export { ApprovalRequestId } from './types.ts'
+-export type { ApprovalOutcome } from './types.ts'
++export type { ApprovalAnswer, ApprovalOutcome } from './types.ts'
+ 
+ /** Every {@link ApprovalOutcome}, for runtime normalization of answerer returns. */
+ const OUTCOMES: readonly ApprovalOutcome[] = ['allowed-once', 'rejected', 'cancelled', 'unavailable']
+ 
++/**
++ * Fold one answerer return into the closed outcome vocabulary. A remembered
++ * grant (`allowed-session` / `allowed-always`) grants THIS ask — the answerer
++ * that produced it stores the key and short-circuits the next matching ask
++ * itself, so nothing here has to know how long the grant lives.
++ * @param value - the raw answer one answerer returned.
++ * @returns the closed outcome the tools see.
++ */
++function normalizeAnswer(value: unknown): ApprovalOutcome {
++  if (value === 'allowed-session' || value === 'allowed-always') return 'allowed-once'
++  return OUTCOMES.includes(value as ApprovalOutcome) ? value as ApprovalOutcome : 'unavailable'
++}
++
+ /**
+  * A session's approval policy — what happens to an {@link ApprovalService}
+  * ask BEFORE any interactive answerer sees it:
+@@ -208,7 +221,8 @@ export class ApprovalService extends Service {
+    * authoritative append cannot reject the request or suppress its matching
+    * audit event.
+    * @param req - the pending decision (agent, tool identity, reason, signal).
+-   * @returns the closed outcome; `'allowed-once'` is the only grant.
++   * @returns the closed outcome; `'allowed-once'` is the only grant (a
++   *   remembered-grant answer is folded into it here).
+    * @throws when no turn is open or either audit event fails before the session
+    *   append commit point.
+    */
+@@ -285,7 +299,7 @@ export class ApprovalService extends Service {
+     ).then(
+       // Normalize a rogue (non-vocabulary) answerer return to the fail-closed
+       // outcome instead of leaking it into callers' closed-union switches.
+-      outcome => OUTCOMES.includes(outcome) ? outcome : 'unavailable',
++      outcome => normalizeAnswer(outcome),
+       // A throwing answerer must fail the QUESTION closed, not the caller's
+       // tool call open — the seam contains its callbacks.
+       () => 'unavailable',
+diff --git a/packages/interaction/user-approval/src/types.ts b/packages/interaction/user-approval/src/types.ts
+index 12b8106d34..c8841332db 100644
+--- a/packages/interaction/user-approval/src/types.ts
++++ b/packages/interaction/user-approval/src/types.ts
+@@ -31,6 +31,16 @@ export function ApprovalRequestId(id: string): ApprovalRequestId {
+  */
+ export type ApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable'
+ 
++/**
++ * What an interactive answerer may additionally return: the same decision with
++ * a MEMORY attached — `allowed-session` for the rest of this conversation,
++ * `allowed-always` across restarts. Remembering is the answerer's job (it owns
++ * the stored {@link ApprovalRequestEvent.grantKey}); the approval service reads
++ * both as a grant for the current ask only, so the tool-facing vocabulary
++ * stays closed.
++ */
++export type ApprovalAnswer = ApprovalOutcome | 'allowed-session' | 'allowed-always'
++
+ declare module '@deepseek-ai/dsh-session/types' {
+   interface SessionEventMap {
+     /**
+@@ -71,6 +81,13 @@ export interface ApprovalRequestEvent {
+   readonly reason?: string
+   /** Localized presentation only; never persisted in approval audit events. */
+   readonly displayReason?: { readonly en: string; readonly [locale: string]: string }
++  /**
++   * Stable identity of the REPEATED request a remembered grant covers — the
++   * same tool escalating to the same target, e.g.
++   * `escalation:bash:danger-full-access`. Absent when the ask has no repeatable
++   * shape, which makes it unmemorable. Never persisted in audit events.
++   */
++  readonly grantKey?: string
+   /** Cancellation lifetime of the pending request. */
+   readonly signal?: AbortSignal
+ }
+diff --git a/packages/sandbox/sandbox/src/escalation.ts b/packages/sandbox/sandbox/src/escalation.ts
+index 9e01fcbe41..11d2dda480 100644
+--- a/packages/sandbox/sandbox/src/escalation.ts
++++ b/packages/sandbox/sandbox/src/escalation.ts
+@@ -122,6 +122,8 @@ export interface EscalationApprover<A = object, C = string> {
+     callId: C
+     reason: string
+     displayReason?: { readonly en: string; readonly [locale: string]: string }
++    /** Repeatable identity (this tool → this target mode) a remembered grant may key on. */
++    grantKey?: string
+     signal?: AbortSignal
+   }): Promise<EscalationOutcome>
+ }
+@@ -194,6 +196,9 @@ export async function approveEscalation<A, C>(request: EscalationRequest, approv
+       en: `Allow this operation with ${mode} permissions: ${justification}`,
+       zh: `允许本次操作使用 ${mode} 权限：${justification}`,
+     },
++    // The only stable identity a repeated ask shares: the same tool widening to
++    // the same mode. The justification is per-call prose and cannot name a class.
++    grantKey: `escalation:${approval.toolName}:${mode}`,
+     ...approval.signal ? { signal: approval.signal } : {},
+   })
+   switch (outcome) {
 diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
 index dfaa16532d..5690707cd8 100644
 --- a/pnpm-lock.yaml

@@ -221,9 +221,9 @@ window.__ModuleLoader__.load({
       '.dside-browser-btn.on{background:var(--dsw-alias-state-business-primary);color:#fff;}',
       '.dside-browser-url{flex:1;min-width:80px;height:24px;padding:0 10px;border-radius:12px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);font-size:12px;outline:none;}',
       '.dside-browser-url:focus{border-color:var(--dsw-alias-state-business-primary);}',
-      // 原生视图的占位块：视图被浮层压住/标签切走时，这里露出"藏起来之前那张截图"，不至于闪白
+      // 原生视图的地盘：视图被浮层压住/标签切走时这块就是空的（**不铺任何截图替身**：
+      // 替身会截到白图或旧帧，反倒让人以为看到了实时页面 —— 2026-10-20 拆掉）
       '.dside-browser-view{flex:1;min-height:0;position:relative;overflow:hidden;background:var(--dsw-alias-bg-base);}',
-      '.dside-browser-shot{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top left;}',
       '.dside-browser-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:24px;text-align:center;}',
       '.dside-browser-empty-big{color:var(--dsw-alias-label-secondary);font-size:13px;}',
       '.dside-browser-empty-sub{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.7;max-width:min(520px,84%);word-break:break-all;}',
@@ -343,6 +343,10 @@ window.__ModuleLoader__.load({
     '.dside-rules-foot{flex:none;display:flex;align-items:center;gap:10px;padding:8px 2px 0;font-size:11px;color:var(--dsw-alias-label-tertiary);}',
     '.dside-rules-foot .grow{flex:1;min-width:0;}',
     '.dside-rules-foot .dside-btn:disabled{opacity:.45;cursor:default;}',
+    // 【Agent 设置】下半截：放权记录（列表复用 .dside-eset-row，只补空态与分节）
+    '.dside-grants{flex:none;display:flex;flex-direction:column;}',
+    '.dside-grants-empty{font-size:11px;color:var(--dsw-alias-label-tertiary);padding:10px 6px;}',
+    '.dside-grants-sub{font-size:11px;color:var(--dsw-alias-label-tertiary);padding:12px 6px 2px;}',
     '.dside-term{height:260px;flex:none;box-sizing:border-box;position:relative;display:flex;flex-direction:column;border-top:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-base);}',
     '.dside-term-head{height:30px;flex:none;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--dsw-alias-border-l1);font-size:12px;color:var(--dsw-alias-label-secondary);}',
     '.dside-term-head .ttl{font-weight:600;color:var(--dsw-alias-label-primary);flex:none;}',
@@ -509,13 +513,21 @@ window.__ModuleLoader__.load({
       '.dside-session-dot.idle{background:var(--dsw-alias-state-success-primary);}',
       '.dside-session-dot.running{background:var(--dsw-alias-state-warn-primary);}',
       '.dside-session-title{flex:1;overflow:hidden;text-overflow:ellipsis;}',
-      '.dside-session-time{font-size:10px;opacity:.7;}',
+      '.dside-session-time{font-size:10px;opacity:.7;flex:none;}',
+      // 行内动作（重命名 / 删除）：图标按钮挂在时间右边，平时淡着、指到这一行才亮（VSCode 的 hover 动作同一思路）
+      '.dside-session-acts{display:flex;align-items:center;gap:1px;flex:none;opacity:.45;transition:opacity var(--ds-transition-duration-fast) var(--ds-ease-in-out);}',
+      '.dside-session:hover .dside-session-acts,.dside-session.on .dside-session-acts{opacity:1;}',
+      '.dside-session-act{display:flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:none;border-radius:4px;background:none;color:inherit;cursor:pointer;}',
+      '.dside-session-act:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);}',
+      '.dside-session-act.del:hover{color:var(--dsw-alias-state-error-primary);}',
+      '.dside-session-act:disabled{opacity:.3;cursor:default;background:none;color:inherit;}',
       '.dside-session-empty{padding:6px 10px;font-size:11px;color:var(--dsw-alias-label-tertiary);}',
       // 历史对话（2026-09-17 用户要求：默认收起 + 顶部搜索 + 命中片段）
       '.dside-sessions-head{display:flex;align-items:center;gap:6px;padding:2px 4px 7px;}',
       '.dside-sessions-search{flex:1;min-width:0;background:var(--dsw-specific-input-major);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:5px 9px;font:inherit;font-size:11px;outline:none;transition:border-color var(--ds-transition-duration-fast) var(--ds-ease-in-out);}',
       '.dside-sessions-search:focus{border-color:var(--dsw-alias-state-business-primary);}',
-      '.dside-session.res{flex-direction:column;align-items:stretch;gap:2px;}',
+      '.dside-session.res{flex-direction:row;align-items:center;gap:8px;}',
+      '.dside-session-res-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}',
       '.dside-session-snippet{font-size:10px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       // 命中词高亮（历史对话搜索）：绿字 + 浅绿底，随明暗主题自动换色
       '.dside-hit{color:var(--dsw-alias-state-success-primary);background:var(--dsw-alias-state-success-tertiary);border-radius:3px;padding:0 2px;}',
@@ -3321,6 +3333,24 @@ window.__ModuleLoader__.load({
     // ── Agent 设置 · 铁律（2026-10-20）─────────────────────────────────────────
     // 一大段自由文本，存 host 侧（每轮注入在 host 跑，浏览器缓存它读不到）。
     // 保存 = 停手约 1 秒自动落盘；开关只管"注不注入"，不删内容。
+    // 同一页下半截是「放权记录」（审批卡上允许过的类别 + 拒绝过的），记录由 host 落盘。
+    var GRANT_TOOL_LABELS = { pwsh: '命令行', bash: '命令行', write: '写文件', edit: '改文件', read: '读文件' };
+    var GRANT_MODE_LABELS = { 'read-only': '只读权限', 'workspace-write': '工作区写入权限', 'danger-full-access': '完全访问权限' };
+    // 身份 = 引擎 sandbox 定的 `escalation:<工具>:<目标档>`；认不出来就原样显示，别吞掉
+    function grantLabelText(key) {
+      var parts = String(key || '').split(':');
+      if (parts[0] !== 'escalation' || parts.length < 3) return String(key || '');
+      var tool = GRANT_TOOL_LABELS[parts[1]] || parts[1];
+      var mode = GRANT_MODE_LABELS[parts[2]] || parts[2];
+      return tool + ' · 提升到' + mode;
+    }
+    function grantStamp(at) {
+      var n = Number(at);
+      if (!isFinite(n) || n <= 0) return '';
+      var d = new Date(n);
+      function pad(v) { return (v < 10 ? '0' : '') + v; }
+      return (d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+    }
     function AgentRulesView(props) {
       // 用户定的口径（2026-10-20）：手动保存、不做开关、默认恒开。
       // 没有"停用"这回事 —— 想停就清空，清空后不注入。
@@ -3358,6 +3388,73 @@ window.__ModuleLoader__.load({
           if (!aliveRef.current) return;
           if (ok) { setSavedText(body); setStatus('idle'); } else { setStatus('error-save'); }
         });
+      }
+      // ── 放权记录（同一页下半截）：null = 还没读到 ──────────────────────
+      var grantsState = React.useState(null);
+      var grantLists = grantsState[0], setGrantLists = grantsState[1];
+      function loadGrants() {
+        apiGet('/approval-grants').then(function (r) {
+          if (!aliveRef.current) return;
+          if (r && r.ok === true) setGrantLists({ grants: r.grants || [], denials: r.denials || [] });
+          else setGrantLists({ grants: [], denials: [], failed: true });
+        });
+      }
+      function revokeGrant(g) {
+        apiPost('/approval-grants/revoke', { key: g.key, scope: g.scope, sessionId: g.sessionId || '' })
+          .then(function (r) {
+            var ok = !!(r && r.ok === true);
+            trace('ui', ok ? 'info' : 'error', 'approval-grant-revoke', { scope: g.scope });
+            if (!aliveRef.current) return;
+            if (ok) setGrantLists({ grants: r.grants || [], denials: r.denials || [] });
+          });
+      }
+      React.useEffect(function () {
+        aliveRef.current = true;
+        loadGrants();
+        return function () { aliveRef.current = false; };
+      }, []);
+      var grantRows = [];
+      if (grantLists !== null) {
+        var byNewest = function (a, b) { return Number(b.at || 0) - Number(a.at || 0); };
+        (grantLists.grants || []).slice().sort(byNewest).forEach(function (g) {
+          grantRows.push(h('div', {
+            className: 'dside-eset-row',
+            key: 'g-' + g.key + '|' + g.scope + '|' + (g.sessionId || ''),
+          },
+            h('div', { className: 'dside-eset-main' },
+              h('div', { className: 'dside-eset-label' },
+                h('span', { className: 'dside-eset-icon' }, g.scope === 'always' ? '🔓' : '🔑'),
+                grantLabelText(g.key)),
+              h('div', { className: 'dside-eset-desc' },
+                (g.scope === 'always' ? '永久放行' : '本对话放行')
+                + (grantStamp(g.at) ? ' · ' + grantStamp(g.at) : '')),
+            ),
+            h('button', {
+              className: 'dside-btn small',
+              title: '撤销后，同一类请求会重新弹审批卡',
+              onClick: function () { revokeGrant(g); },
+            }, '撤销'),
+          ));
+        });
+        var denials = (grantLists.denials || []).slice().sort(byNewest);
+        if (denials.length) {
+          grantRows.push(h('div', { className: 'dside-grants-sub', key: 'deny-sub' }, '拒绝过的'));
+          denials.forEach(function (d) {
+            grantRows.push(h('div', {
+              className: 'dside-eset-row',
+              key: 'd-' + d.key + '|' + (d.sessionId || '') + '|' + d.at,
+            },
+              h('div', { className: 'dside-eset-main' },
+                h('div', { className: 'dside-eset-label' },
+                  h('span', { className: 'dside-eset-icon' }, '🚫'),
+                  grantLabelText(d.key)),
+                h('div', { className: 'dside-eset-desc' },
+                  '已拒绝' + (Number(d.count) > 1 ? ' ' + Number(d.count) + ' 次' : '')
+                  + (grantStamp(d.at) ? ' · ' + grantStamp(d.at) : '')),
+              ),
+            ));
+          });
+        }
       }
       var dirty = (text || '') !== savedText;
       var statusText = status === 'saving' ? '保存中…'
@@ -3406,6 +3503,19 @@ window.__ModuleLoader__.load({
               onClick: save,
             }, '保存'),
           ),
+          h('div', { className: 'dside-eset-group-title' }, '放权记录'),
+          h('div', { className: 'dside-rules-note' },
+            '审批卡上「本对话允许」只在这一场对话里算数；「永久允许」以后一直放行，重开天工也不再问。'
+            + '放行过的都在下面，随时可以撤销 —— 撤销后同一类请求会重新弹卡。点过「拒绝」的也记一份。'),
+          h('div', { className: 'dside-grants', 'data-agent-grants': '1' },
+            grantLists === null
+              ? h('div', { className: 'dside-grants-empty' }, '读取中…')
+              : (grantLists.failed
+                ? h('div', { className: 'dside-grants-empty' }, '读取失败（细节见轨迹日志）')
+                : (grantRows.length === 0
+                  ? h('div', { className: 'dside-grants-empty' }, '还没有放权记录')
+                  : grantRows)),
+          ),
         ),
       );
     }
@@ -3441,10 +3551,13 @@ window.__ModuleLoader__.load({
         'M11 2C12.103 2 13 2.897 13 4V11C13 12.103 12.103 13 11 13H4C2.897 13 2 12.103 2 11V4C2 2.897 2.897 2 4 2H11ZM4 3C3.449 3 3 3.449 3 4V11C3 11.552 3.449 12 4 12H11C11.551 12 12 11.552 12 11V4C12 3.449 11.551 3 11 3H4Z',
       ],
       'refresh': ['M3 8C3 5.23858 5.23858 3 8 3C9.63527 3 11.0878 3.78495 12.0005 5H10C9.72386 5 9.5 5.22386 9.5 5.5C9.5 5.77614 9.72386 6 10 6H12.8904C12.8973 6.00014 12.9041 6.00014 12.911 6H13C13.2761 6 13.5 5.77614 13.5 5.5V2.5C13.5 2.22386 13.2761 2 13 2C12.7239 2 12.5 2.22386 12.5 2.5V4.03138C11.4009 2.78613 9.79253 2 8 2C4.68629 2 2 4.68629 2 8C2 11.3137 4.68629 14 8 14C11.1301 14 13.6999 11.6035 13.9756 8.54488C14.0003 8.26985 13.7975 8.0268 13.5225 8.00202C13.2474 7.97723 13.0044 8.1801 12.9796 8.45512C12.75 11.003 10.6079 13 8 13C5.23858 13 3 10.7614 3 8Z'],
+      'edit': ['M14.236 1.76386C13.2123 0.740172 11.5525 0.740171 10.5289 1.76386L2.65722 9.63549C2.28304 10.0097 2.01623 10.4775 1.88467 10.99L1.01571 14.3755C0.971767 14.5467 1.02148 14.7284 1.14646 14.8534C1.27144 14.9783 1.45312 15.028 1.62432 14.9841L5.00978 14.1151C5.52234 13.9836 5.99015 13.7168 6.36433 13.3426L14.236 5.47097C15.2596 4.44728 15.2596 2.78755 14.236 1.76386ZM11.236 2.47097C11.8691 1.8378 12.8957 1.8378 13.5288 2.47097C14.162 3.10413 14.162 4.1307 13.5288 4.76386L12.75 5.54269L10.4571 3.24979L11.236 2.47097ZM9.75002 3.9569L12.0429 6.24979L5.65722 12.6355C5.40969 12.883 5.10023 13.0595 4.76117 13.1465L2.19447 13.8053L2.85327 11.2386C2.9403 10.8996 3.1168 10.5901 3.36433 10.3426L9.75002 3.9569Z'],
+      'trash': ['M14 2H10C10 0.897 9.103 0 8 0C6.897 0 6 0.897 6 2H2C1.724 2 1.5 2.224 1.5 2.5C1.5 2.776 1.724 3 2 3H2.54L3.349 12.708C3.456 13.994 4.55 15 5.84 15H10.159C11.449 15 12.543 13.993 12.65 12.708L13.459 3H13.999C14.275 3 14.499 2.776 14.499 2.5C14.499 2.224 14.275 2 13.999 2H14ZM8 1C8.551 1 9 1.449 9 2H7C7 1.449 7.449 1 8 1ZM11.655 12.625C11.591 13.396 10.934 14 10.16 14H5.841C5.067 14 4.41 13.396 4.346 12.625L3.544 3H12.458L11.656 12.625H11.655ZM7 5.5V11.5C7 11.776 6.776 12 6.5 12C6.224 12 6 11.776 6 11.5V5.5C6 5.224 6.224 5 6.5 5C6.776 5 7 5.224 7 5.5ZM10 5.5V11.5C10 11.776 9.776 12 9.5 12C9.224 12 9 11.776 9 11.5V5.5C9 5.224 9.224 5 9.5 5C9.776 5 10 5.224 10 5.5Z'],
     };
-    function codicon(name) {
+    function codicon(name, size) {
       var ds = CODICON_PATHS[name] || [];
-      return h('svg', { width: 16, height: 16, viewBox: '0 0 16 16', fill: 'currentColor', 'aria-hidden': 'true' },
+      var px = size || 16;
+      return h('svg', { width: px, height: px, viewBox: '0 0 16 16', fill: 'currentColor', 'aria-hidden': 'true' },
         ds.map(function (d, i) { return h('path', { key: i, d: d }) }));
     }
 
@@ -4008,7 +4121,7 @@ window.__ModuleLoader__.load({
       var syncRef = React.useRef(null);        // 几何重算入口：壳广播重排时直接调它
       var stState = React.useState({
         url: props.url || '', title: '', canBack: false, canForward: false,
-        loading: false, fail: null, shot: null, addr: props.url || '',
+        loading: false, fail: null, addr: props.url || '',
         phantomOn: true,   // 幻影开关（工具栏那颗 👻）：全局设置，挂载时从壳里读真实值
       });
       var st = stState[0], setSt = stState[1];
@@ -4076,7 +4189,6 @@ window.__ModuleLoader__.load({
             return;
           }
           if (ev.type === 'fail') { a({ fail: ev.message || '页面加载失败', loading: false }); return }
-          if (ev.type === 'placeholder') { a({ shot: ev.dataUrl || null }); return }
         });
         return function () {
           if (off) { try { off(); } catch (e) { /* 忽略 */ } }
@@ -4102,16 +4214,18 @@ window.__ModuleLoader__.load({
           try {
             var box = el.getBoundingClientRect();     // 判定用原始 DOMRect（left/right/top/bottom 都在）
             try { bridge.setBounds(id, rectOf()); } catch (e) { /* 忽略 */ }
-            // 空白标签（还没输网址）不显示原生视图：它永远盖在 DOM 之上，一显示就会把
-            // 界面自己的空白提示整块压住。没地址的视图本来没有内容可看 —— 而且这种标签
-            // **连视图都不建**（见 createdRef），所以这里判 false 不会触发"藏→显"的来回。
-            var want = !!urlRef.current && !rectOccluded(box);
-            if (want && !createdRef.current && urlRef.current) {
-              // 地址是刚有的（地址栏回车 / Agent 导航过来）→ 先把视图建出来，下面再显示它
+            // 视图**按需创建、建了就一直在**：空白标签（还没输网址）不建，有了地址才建；
+            // 建好之后**不再因"地址短暂为空"藏起来** —— 页面跳转那一瞬地址是空的，照空地址藏就会
+            // 把视图摘掉，那正是白屏的来源（2026-10-20 用户口径：删掉这套机制，不修补丁）。
+            if (!createdRef.current) {
+              if (!urlRef.current) return;
               try { bridge.create(id, urlRef.current); createdRef.current = true } catch (e) {
                 trace('ui', 'error', 'browser-create-failed', { id: id, error: String((e && e.message) || e) });
+                return;
               }
             }
+            // 唯一判据：这块矩形有没有被别的东西压住（浮层 / 面板收起 / 标签切走）
+            var want = !rectOccluded(box);
             if (want !== visibleRef.current) {
               visibleRef.current = want;
               trace('ui', 'info', 'browser-view', { id: id, visible: want, url: urlRef.current || '' });
@@ -4119,11 +4233,7 @@ window.__ModuleLoader__.load({
                 Promise.resolve(bridge.setVisible(id, want)).then(function (r) {
                   if (r && r.ok === false) {
                     trace('ui', 'error', 'browser-visible-failed', { id: id, visible: want, result: r });
-                    return;
                   }
-                  // 真显示出来了才撤占位图：那张图只该在"视图藏着"的时候顶班，
-                  // 留着它一旦视图没画出来，用户看到的就是一张冻住的旧画面
-                  if (want) setRef.current({ shot: null });
                 }).catch(function (e) {
                   trace('ui', 'error', 'browser-visible-failed', { id: id, visible: want, error: String((e && e.message) || e) });
                 });
@@ -4237,7 +4347,6 @@ window.__ModuleLoader__.load({
       );
 
       var view = h('div', { className: 'dside-browser-view', ref: viewRef },
-        st.shot ? h('img', { className: 'dside-browser-shot', src: st.shot, alt: '' }) : null,
         st.fail
           ? h('div', { className: 'dside-browser-empty' },
               h('div', { className: 'dside-browser-empty-big' }, '页面打不开'),
@@ -6729,6 +6838,31 @@ window.__ModuleLoader__.load({
       return { added: added, removed: removed };
     }
 
+    // 历史对话每行右侧的动作图标（重命名 / 删除），摆在时间右边。
+    // ⚠ 两个按钮的 onClick 一律 stopPropagation：整行都是"切会话"的点击区，不拦就点完动作又把会话切走了。
+    function sessionActs(sid, title, opts) {
+      opts = opts || {};
+      var why = opts.current ? '当前对话不能删除 —— 先切到别的对话'
+        : (opts.running ? '这个对话正在运行 —— 先停止再删除' : '删除对话');
+      return h('span', { className: 'dside-session-acts' },
+        h('button', {
+          className: 'dside-session-act', title: '重命名对话',
+          onClick: function (e) {
+            e.stopPropagation();
+            if (opts.onRename) opts.onRename(sid, title);
+          },
+        }, codicon('edit', 14)),
+        h('button', {
+          className: 'dside-session-act del', title: why, disabled: !!opts.current || !!opts.running,
+          onClick: function (e) {
+            e.stopPropagation();
+            if (opts.current || opts.running) return;
+            if (opts.onDelete) opts.onDelete(sid, title);
+          },
+        }, codicon('trash', 14)),
+      );
+    }
+
     function AgentPanel(props) {
       var listState = props.listState, current = props.current, conv = props.conv,
         sessionFace = props.sessionFace, onSelectSession = props.onSelectSession,
@@ -6737,6 +6871,8 @@ window.__ModuleLoader__.load({
         historyOpen = !!props.historyOpen, hasMoreChanges = !!props.hasMoreChanges,
         sessionsOpen = !!props.sessionsOpen,
         sesSearch = props.sesSearch || { q: '', items: null, hasMore: false, busy: false },
+        archived = props.archived || {}, onRenameSession = props.onRenameSession,
+        onDeleteSession = props.onDeleteSession,
         onSessionSearch = props.onSessionSearch, onToggleSessions = props.onToggleSessions,
         onReviewGroups = props.onReviewGroups, onToggleHistory = props.onToggleHistory,
         onRollbackChange = props.onRollbackChange, onKeepGroups = props.onKeepGroups,
@@ -6777,6 +6913,9 @@ window.__ModuleLoader__.load({
           var id = listState.ids[i];
           var summary = listState.byId[id];
           if (!summary || summary.blank) continue;
+          // 已归档的会话（= 用户点过"删除"）不再出现在这里：平台归档后 sessions.list 里**仍有**这一行，
+          // 官方侧栏也是拿 workspaces.list.archivedSessionIds 自己过滤的（见注释里的删除实现）。
+          if (archived[id]) continue;
           // 子代理会话（Agent 派出去干活的内部会话）**不成行** —— 与平台自己的侧栏同一判据。
           // 列出来的后果：点开必报 session/agent-busy，因为它只能用"父会话地址"打开，而列表点击只给 id
           //（平台校验见 api/session-controller 的 validateAddress：origin 是 subagent 就拒 kind:'session'）。
@@ -6784,6 +6923,7 @@ window.__ModuleLoader__.load({
           // IIFE 固定循环变量：var id 是函数作用域，直接闭包会让所有行
           // 点击都选最后一个会话（2026-09-02 stale-loop 修复）
           (function (sid) {
+            var rowTitle = shortTitle(summary);
             sessionRows.push(h('div', {
               key: sid,
               className: 'dside-session' + (sid === current ? ' on' : ''),
@@ -6791,8 +6931,12 @@ window.__ModuleLoader__.load({
               title: sid,
             },
               h('span', { className: 'dside-session-dot ' + (summary.running ? 'running' : 'idle') }),
-              h('span', { className: 'dside-session-title' }, shortTitle(summary)),
+              h('span', { className: 'dside-session-title' }, rowTitle),
               h('span', { className: 'dside-session-time' }, formatWhen(summary.updatedAt)),
+              sessionActs(sid, rowTitle, {
+                running: !!summary.running, current: sid === current,
+                onRename: onRenameSession, onDelete: onDeleteSession,
+              }),
             ));
           })(id);
         }
@@ -6838,6 +6982,7 @@ window.__ModuleLoader__.load({
           if (Array.isArray(items)) {
             items = items.filter(function (it) {
               var s0 = listState && listState.byId ? listState.byId[it.sessionId] : null;
+              if (archived[it.sessionId]) return false;      // 已删除（归档）的对话不从搜索这条路漏回来
               return !(s0 && s0.origin === 'subagent');
             });
           }
@@ -6855,8 +7000,14 @@ window.__ModuleLoader__.load({
                 title: title + '\n' + String(it.snippet || ''),
                 onClick: function () { onSelectSession(it.sessionId); },
               },
-                h('span', { className: 'dside-session-title' }, title),
-                h('span', { className: 'dside-session-snippet' }, snippetOf(it.snippet, sesQuery)),
+                h('div', { className: 'dside-session-res-body' },
+                  h('span', { className: 'dside-session-title' }, title),
+                  h('span', { className: 'dside-session-snippet' }, snippetOf(it.snippet, sesQuery)),
+                ),
+                sessionActs(it.sessionId, title, {
+                  running: !!(sum && sum.running), current: it.sessionId === current,
+                  onRename: onRenameSession, onDelete: onDeleteSession,
+                }),
               );
             });
             if (sesSearch.hasMore) listBody.push(h('div', { key: 'more', className: 'dside-session-empty' }, '还有更多匹配，输入更具体的关键词'));
@@ -9375,6 +9526,77 @@ window.__ModuleLoader__.load({
         return sessions.list.subscribe(update);
       }, []);
 
+      // ── 已删除（归档）会话集合 ────────────────────────────────
+      // 平台**没有**"物理删掉一个会话"的能力：能做的只有归档（workspaces.archiveSession），
+      // 归档后 sessions.list 里那一行还在，官方侧栏是自己拿 workspaces.list.archivedSessionIds 滤掉的。
+      // 所以"删除对话"= 归档 + 这里这份集合把行滤掉；会话日志仍留在磁盘上（不是真删）。
+      var archivedState = React.useState({});
+      var archivedSet = archivedState[0], setArchivedSet = archivedState[1];
+      React.useEffect(function () {
+        if (!workspaces || !workspaces.list || !workspaces.list.subscribe) return;
+        var update = function () {
+          var ids = [];
+          try { ids = (workspaces.list.getSnapshot() || {}).archivedSessionIds || []; } catch (e) { ids = []; }
+          setArchivedSet(function (prev) {
+            var n = 0;
+            for (var k in prev) n += 1;
+            if (n === ids.length) {
+              var same = true;
+              for (var i = 0; i < ids.length; i++) if (!prev[ids[i]]) { same = false; break; }
+              if (same) return prev;           // 没变就不换对象，省一次全列表重渲染
+            }
+            var map = {};
+            for (var j = 0; j < ids.length; j++) map[ids[j]] = true;
+            return map;
+          });
+        };
+        update();
+        return workspaces.list.subscribe(update);
+      }, []);
+
+      // 重命名对话：走平台会话面（官方侧栏同一条路 —— sessions.using 借出绑定再 rename，
+      // 标题由 host 规范化，写进会话日志的 title 事件）。用 'workspaceOperation' 这个来源名，
+      // 与官方列表的重命名同一顶帽子，别自己造 source。
+      function renameSessionTitle(sid, title) {
+        if (!sessions || typeof sessions.using !== 'function') { setStatusText('会话服务不可用，无法重命名'); return Promise.resolve(false); }
+        trace('ui', 'info', 'session-rename', { sessionId: String(sid), len: String(title).length });
+        return sessions.using(sid, { source: 'workspaceOperation' }, function (ref) {
+          return ref.binding.session.rename(title);
+        }).then(function (r) {
+          if (r && r.ok === false) {
+            var msg = (r.error && r.error.message) || '未知错误';
+            setStatusText('重命名失败：' + msg);
+            trace('ui', 'error', 'session-rename-failed', { sessionId: String(sid), error: String(msg) });
+            return false;
+          }
+          setStatusText('已重命名为「' + title + '」');
+          trace('ui', 'info', 'session-rename-ok', { sessionId: String(sid) });
+          return true;
+        }).catch(function (e) {
+          var m = String((e && e.message) || e);
+          setStatusText('重命名失败：' + m);
+          trace('ui', 'error', 'session-rename-failed', { sessionId: String(sid), error: m });
+          return false;
+        });
+      }
+
+      // 删除对话 = 归档（见上面注释）。不带 stopActivity：会话还在跑的时候平台会拒绝，
+      // 这正是我们要的 —— 别静默把用户的 Agent 掐掉。
+      function deleteSessionRow(sid, title) {
+        if (!workspaces || typeof workspaces.archiveSession !== 'function') { setStatusText('工作空间服务不可用，无法删除'); return Promise.resolve(false); }
+        trace('ui', 'info', 'session-delete', { sessionId: String(sid) });
+        return workspaces.archiveSession(sid).then(function () {
+          setStatusText('已删除对话「' + title + '」');
+          trace('ui', 'info', 'session-delete-ok', { sessionId: String(sid) });
+          return true;
+        }).catch(function (e) {
+          var m = String((e && e.message) || e);
+          setStatusText('删除失败：' + m);
+          trace('ui', 'error', 'session-delete-failed', { sessionId: String(sid), error: m });
+          return false;
+        });
+      }
+
       // ── 当前会话绑定订阅（对话快照：nodes + partial 流式）──
       React.useEffect(function () {
         setConv(null);
@@ -10456,6 +10678,20 @@ window.__ModuleLoader__.load({
             h(AgentPanel, {
                   listState: listState, current: current, conv: conv, sessionFace: sessionFace,
                   sessionsOpen: sessionsOpen, sesSearch: sesSearch,
+                  archived: archivedSet,
+                  onRenameSession: function (sid, title) {
+                    setNameDialog({
+                      title: '重命名对话',
+                      initial: title,
+                      placeholder: '新的对话名称',
+                      onSubmit: function (name) { setNameDialog(null); renameSessionTitle(sid, name); },
+                    });
+                  },
+                  onDeleteSession: function (sid, title) {
+                    var ok = window.confirm('删除对话「' + title + '」？\n删除后它不再出现在历史对话列表里。');
+                    if (!ok) return;
+                    deleteSessionRow(sid, title);
+                  },
                   onSessionSearch: onSessionSearch,
                   onToggleSessions: function () { setSessionsOpen(function (v) { return !v; }); },
                   rounds: roundList, pendingGroups: pendingGroups, allGroups: allGroups,

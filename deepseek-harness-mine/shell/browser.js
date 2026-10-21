@@ -176,44 +176,36 @@ function installBrowserHost(win) {
     return raw
   }
 
-  // 藏起来之前先截图：原生视图一消失，页面那块会露出下面的 DOM（往往是空白的编辑器区），
-  // 截图交给渲染层铺一层占位图，视觉上就没有"闪一下"。VSCode 是同一套做法。
-  async function capture(entry) {
-    try {
-      const image = await entry.view.webContents.capturePage()
-      if (!image || image.isEmpty()) return { dataUrl: null, error: 'empty' }
-      return { dataUrl: image.toDataURL(), error: null }
-    } catch (e) {
-      // ⚠ 失败原因必须带出去：截图失败的表现只是"少了一张占位图"，静默吞掉就永远查不出为什么
-      return { dataUrl: null, error: String((e && e.message) || e) }
-    }
-  }
-
+  // 藏起来时**什么都不铺**：以前的做法是藏之前截一张图交给渲染层当替身，那张图正是白屏的来源
+  // （跳转途中截到白图、视图藏过再显没重绘就一直是那张白图）。宁可让用户看到"这块没在跑"，
+  // 也不给一张可能过期的假画面。（2026-10-20 用户口径：删掉这套机制，不做补丁）
   async function setVisible(id, visible) {
     const entry = entries.get(String(id))
     if (!entry) return { ok: false }
     const want = !!visible
-    if (want === entry.visible) return { ok: true, visible: entry.visible, captured: false }   // 状态没变就别重复截图
-    let captured = false
-    let captureError = null
-    if (!want) {
-      const shot = await capture(entry)
-      if (shot.dataUrl) { captured = true; send({ type: 'placeholder', id: entry.id, dataUrl: shot.dataUrl }) }
-      else captureError = shot.error
-    }
+    if (want === entry.visible) return { ok: true, visible: entry.visible }
     // ⚠ setVisible 失败必须报出去：原生层调用一旦静默失败，表现就是"视图还在那儿盖着"，
     //   而 DOM 侧一切正常 —— 查起来极难（别把它塞进 try/catch 吞掉）
     try { entry.view.setVisible(want) } catch (e) {
       return { ok: false, code: 'set-visible-failed', message: String((e && e.message) || e) }
     }
     entry.visible = want
-    return { ok: true, visible: entry.visible, captured, captureError }
+    if (want) repaint(entry)
+    return { ok: true, visible: entry.visible }
+  }
+
+  // 视图藏过再显示，Electron 会停在旧帧不重绘（屏幕上就是一张旧画面或空白）→ 显式让它整帧重画。
+  // 这条是兜 Electron 自己的底，跟业务判断无关。
+  function repaint(entry) {
+    try {
+      const wc = entry.view.webContents
+      if (typeof wc.invalidate === 'function') wc.invalidate()
+    } catch { /* 忽略 */ }
+    if (entry.rect) applyBounds(entry, entry.rect)
   }
 
   // 缩放换算只在这一处做（VSCode 一样只在一个地方乘）
-  function setBounds(id, rect) {
-    const entry = entries.get(String(id))
-    if (!entry || !rect) return { ok: false }
+  function applyBounds(entry, rect) {
     const zoom = (() => { try { return win.webContents.getZoomFactor() || 1 } catch { return 1 } })()
     entry.rect = rect
     const applied = {
@@ -223,9 +215,16 @@ function installBrowserHost(win) {
       height: Math.max(1, Math.round(Number(rect.height || 0) * zoom)),
     }
     entry.view.setBounds(applied)
+    return { applied, zoom }
+  }
+
+  function setBounds(id, rect) {
+    const entry = entries.get(String(id))
+    if (!entry || !rect) return { ok: false }
+    const r = applyBounds(entry, rect)
     // 把**真正落下去**的矩形回给渲染层：错位/发虚这类问题只有拿它和 DOM 的矩形对比才能定位
     // （探针/回归也靠这个断言"几何同步生效"，别删）
-    return { ok: true, applied, zoom }
+    return { ok: true, applied: r.applied, zoom: r.zoom }
   }
 
   function toggleDevTools(entry) {

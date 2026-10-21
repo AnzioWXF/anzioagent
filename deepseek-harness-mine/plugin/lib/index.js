@@ -3871,6 +3871,34 @@ export default {
           }
         }
 
+        // ── 审批放权记录（「Agent 设置」页读写）──────────────────────────────
+        if (action === '/approval-grants' && req.method === 'GET') {
+          const state = readGrants()
+          return json(res, 200, { ok: true, grants: state.grants, denials: state.denials })
+        }
+        if (action === '/approval-grants/revoke' && req.method === 'POST') {
+          const body = await readBody(req)
+          const target = body !== null && typeof body === 'object' ? body : {}
+          const key = String(target.key || '')
+          const scope = String(target.scope || '')
+          const sessionId = String(target.sessionId || '')
+          if (key === '' || scope === '') return json(res, 200, { ok: false, error: 'bad-target' })
+          try {
+            const state = await queueGrants((current) => {
+              const kept = current.grants.filter((g) => !(g.key === key && g.scope === scope
+                && String(g.sessionId || '') === sessionId))
+              return kept.length === current.grants.length
+                ? null                       // 没这条：别白写一次盘
+                : { grants: kept, denials: current.denials }
+            })
+            trace({ level: 'info', kind: 'approval', msg: 'revoke', meta: { key, scope } })
+            return json(res, 200, { ok: true, grants: state.grants, denials: state.denials })
+          } catch (err) {
+            trace({ level: 'error', kind: 'approval', msg: 'revoke-failed', error: errOf(err) })
+            return json(res, 200, { ok: false, error: errOf(err) })
+          }
+        }
+
         if (action === '/trace' && req.method === 'POST') {
           const body = await readBody(req)
           // client 一批最多攒 100 条：这里必须收得下（旧值 50 会把后半批静默丢掉）
@@ -3946,6 +3974,126 @@ export default {
       } catch { ironRulesCache = { key: '', text: next.text } }
       return { ok: true, text: next.text }
     }
+
+    // ── 审批放权记录（2026-10-20）────────────────────────────────────────────
+    // 引擎审批卡回四种答案，其中「本对话允许」「永久允许」要**记住**才谈得上"不再问"。
+    // 记住这件事放在这里、不放引擎：记录要显示在「Agent 设置」页，而那是本插件的地盘；
+    // 引擎那边只把这两答案当成"这一次放行"（user-approval 的 normalizeAnswer）。
+    // 命中记录的请求在本监听里直接放行 —— 卡片根本不弹，所以撤销当场生效、不用重开。
+    // 身份（grantKey）= 同一个工具 + 同样的权限提升（形态见 sandbox 的 approveEscalation）。
+    const GRANTS_PATH = process.env.DSH_HOME === undefined
+      ? null
+      : path.join(process.env.DSH_HOME, 'approval-grants.json')
+    const GRANT_CAP = 50
+    const DENIAL_CAP = 100
+    const GRANT_SCOPES = { 'allowed-session': 'session', 'allowed-always': 'always' }
+    let grantsCache = { key: '', grants: [], denials: [] }
+    let grantsQueue = Promise.resolve()
+
+    const grantRecords = (value) => (Array.isArray(value)
+      ? value.filter((x) => x !== null && typeof x === 'object' && typeof x.key === 'string')
+      : [])
+
+    function readGrants() {
+      if (GRANTS_PATH === null) return grantsCache
+      try {
+        const st = statSync(GRANTS_PATH)
+        const key = st.mtimeMs + ':' + st.size
+        if (key === grantsCache.key) return grantsCache
+        const raw = JSON.parse(readFileSync(GRANTS_PATH, 'utf8'))
+        grantsCache = {
+          key,
+          grants: grantRecords(raw && raw.grants),
+          denials: grantRecords(raw && raw.denials),
+        }
+        return grantsCache
+      } catch {
+        // 没写过 / 文件坏了：都当"没有任何放权记录"，绝不让它拖累审批
+        grantsCache = { key: '', grants: [], denials: [] }
+        return grantsCache
+      }
+    }
+
+    async function saveGrants(state) {
+      if (GRANTS_PATH === null) return
+      const next = {
+        grants: state.grants.slice(-GRANT_CAP),
+        denials: state.denials.slice(-DENIAL_CAP),
+      }
+      await mkdir(path.dirname(GRANTS_PATH), { recursive: true })
+      await writeFile(GRANTS_PATH, JSON.stringify(next, null, 2), 'utf8')
+      try {
+        const st = statSync(GRANTS_PATH)
+        grantsCache = { key: st.mtimeMs + ':' + st.size, grants: next.grants, denials: next.denials }
+      } catch { grantsCache = { key: '', grants: next.grants, denials: next.denials } }
+    }
+
+    // 串行写盘：撤销连点、两条审批几乎同时落记录时，别互相盖掉
+    function queueGrants(mutate) {
+      const run = grantsQueue.then(async () => {
+        const current = readGrants()
+        const next = mutate({ grants: current.grants.slice(), denials: current.denials.slice() })
+        if (next !== null) await saveGrants(next)
+        return readGrants()
+      })
+      grantsQueue = run.catch(() => {})
+      return run
+    }
+
+    // 同一类、同一档只留一行（再点一次 = 刷新时间，不是堆两行）
+    function upsertGrant(list, entry) {
+      const kept = list.filter((g) => !(g.key === entry.key && g.scope === entry.scope
+        && String(g.sessionId || '') === String(entry.sessionId || '')))
+      kept.push(entry)
+      return kept
+    }
+
+    function sessionIdOf(req) {
+      const agent = req !== null && typeof req === 'object' ? req.agent : null
+      const session = agent !== null && typeof agent === 'object' ? agent.session : null
+      return session !== null && typeof session === 'object' && typeof session.id === 'string' ? session.id : ''
+    }
+
+    function grantCovers(grants, key, sessionId) {
+      for (const g of grants) {
+        if (g.key !== key) continue
+        if (g.scope === 'always') return g
+        // 会话档必须两边都有会话 id 才算命中（无会话的请求不许被任何会话档吃掉）
+        if (g.scope === 'session' && sessionId !== '' && String(g.sessionId || '') === sessionId) return g
+      }
+      return null
+    }
+
+    // prepend：抢在"把请求转发给浏览器"那个答复者之前，所以命中记录时卡片不会弹
+    ctx.effect(() => ctx.on('approval/request', async (req, next) => {
+      const key = req !== null && typeof req === 'object' && typeof req.grantKey === 'string' ? req.grantKey : ''
+      if (key === '') return next()        // 没有可重复的身份：原样交给后面的答复者
+      const sessionId = sessionIdOf(req)
+      if (grantCovers(readGrants().grants, key, sessionId) !== null) {
+        trace({ level: 'info', kind: 'approval', msg: 'auto-allow', meta: { key, session: sessionId } })
+        return 'allowed-once'
+      }
+      const outcome = await next()
+      if (outcome === 'allowed-session' || outcome === 'allowed-always') {
+        const scope = GRANT_SCOPES[outcome]
+        await queueGrants((state) => {
+          state.grants = upsertGrant(state.grants, { key, scope, sessionId, at: Date.now() })
+          return state
+        })
+        trace({ level: 'info', kind: 'approval', msg: 'grant', meta: { key, scope, session: sessionId } })
+        return 'allowed-once'
+      }
+      if (outcome === 'rejected') {
+        await queueGrants((state) => {
+          const hit = state.denials.find((d) => d.key === key && String(d.sessionId || '') === sessionId)
+          state.denials = state.denials.filter((d) => d !== hit)
+          state.denials.push({ key, sessionId, at: Date.now(), count: (hit ? Number(hit.count) || 1 : 0) + 1 })
+          return state
+        })
+        trace({ level: 'info', kind: 'approval', msg: 'deny', meta: { key, session: sessionId } })
+      }
+      return outcome
+    }, { prepend: true }), 'dsh-ide: approval grants')
 
     // 挂 `agent/pre-step`（引擎每步请求前唯一能改上下文的地方；请求内容随后由会话日志推导，
     // 事后改请求数组无效）。返回的消息形状必须满足会话落盘校验：id/role/source.kind/content。
