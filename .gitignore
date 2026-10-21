@@ -1,5 +1,5 @@
-# 本仓只收天工自己的源码：先整体忽略，再逐个放开。
-# 数据目录（会话 / 凭证 / 日志）、官方引擎全树、临时垃圾一律不进仓。
+# 本仓收天工自己的源码 + 一份官方引擎的原样快照：先整体忽略，再逐个放开。
+# 数据目录（会话 / 凭证 / 日志）、依赖、重建产物、临时垃圾一律不进仓。
 /*
 !/.gitignore
 !/README.md
@@ -10,13 +10,25 @@
 !/deepseek-harness-mine/shell/
 !/deepseek-harness-mine/plugin/
 
+# 引擎原样快照（官方 dsh-v0.2.1-alpha.2 的提交内容，不含 .git）。
+# 只收官方 git 跟踪的那份源码；装完依赖、重建产物后长出来的东西不进仓。
+!/deepseek-harness/
+/deepseek-harness/node_modules/
+/deepseek-harness/**/lib/
+/deepseek-harness/**/dist/
+/deepseek-harness/**/coverage/
+/deepseek-harness/**/.turbo/
+/deepseek-harness/**/.cache/
+
 # 依赖与打包产物、缓存、日志
 node_modules/
-release/
+# 只挡壳的打包产物：别写成全局 release/，引擎里有 scripts/release/ 源码
+/deepseek-harness-mine/shell/release/
 dist/
 .local-appdata/
 .builder-cache/
 *.log
+*.tsbuildinfo
 
 # 探针跑完留下的截图不是源码
 tools/.probe-*.png

@@ -2,11 +2,12 @@
 
 一个独立拥有的桌面 IDE：外形按 VSCode 的手感做，内核由 DSH 引擎直接驱动，Agent 是它原生的大脑，用来取代 VSCode 内置的 Copilot Chat。
 
-本仓只放**天工自己的源码**：Electron 壳、IDE 插件、辅助工具脚本，以及我们对引擎所作的改动补丁。引擎源码本身不进仓（见下）。
+本仓放两样东西：**天工自己的源码**（Electron 壳、IDE 插件、辅助工具脚本），以及**一份官方引擎的原样快照** + 我们对引擎所作的改动补丁。两者分开摆：快照永远保持官方原样，我们的改动永远是独立补丁（见下）。
 
 ## 仓库结构
 
 ```
+deepseek-harness\  官方引擎原样快照（dsh-v0.2.1-alpha.2 的提交内容，不含 .git，见下节）
 deepseek-harness-mine\
   shell\    Electron 壳：窗口与启动画面、后端管理、内置更新器、内置浏览器、壳桥与幻影驱动
             home-files\ 装机模板（装配单与 AGENTS.md）
@@ -16,18 +17,39 @@ tools\      开发台启动、装机、发包、E2E 与各种探针脚本
 patches\    引擎补丁（我们对官方 checkout 的改动）
 ```
 
-## 引擎：不随仓走，靠补丁重套
+## 引擎：原样快照进仓，改动只走补丁
 
-引擎用官方仓库的检出：
+`deepseek-harness\` 是官方引擎的**原样快照**，来源写死在这里，别再猜：
+
+| 项 | 值 |
+|---|---|
+| 官方仓 | `https://github.com/deepseek-ai/deepseek-harness.git` |
+| 版本 | tag `dsh-v0.2.1-alpha.2` |
+| 提交 | `d743267388641bc76f17c45ce8b4c231aed1d32c`（2026-10-09） |
+| 快照导出 | 2026-10-21，本机官方检出 `git checkout-index -a` 导出 |
+| 规模 | 14,988 个文件 / 约 121 MB（不含 `.git`、不含依赖与构建产物） |
+| 一致性 | 与官方该提交逐文件一致：文件名、内容 blob 哈希、符号链接与可执行位全同（用 `git ls-files -s` 逐行对比为 0 差异） |
+
+快照里**没有**：`.git`（官方历史 306 MB 不进仓）、`node_modules`（约 2 GB）、`lib/`、`*.tsbuildinfo` 等构建产物。这些都在 `.gitignore` 里挡着，将来在快照目录里装依赖、重建产物也不会污染仓库。
+
+应用实际跑的是 `D:\99DSH\deepseek-harness-mine\harness`，它 = **这份快照 + 我们的补丁**（补丁改动不提交，永久留在工作区）。
+
+**换机 / 重建顺序**：
 
 ```powershell
-git clone https://github.com/deepseek-ai/deepseek-harness.git D:\99DSH\deepseek-harness-mine\harness
+# 1. 把仓里的快照变成应用要跑的那棵
+Copy-Item -Recurse D:\99DSH\deepseek-harness D:\99DSH\deepseek-harness-mine\harness
+# 2. 套补丁（补丁里的改动：会话与对话节点契约、ui-settings-general 挂主区、快捷键表、host 布局、审批四按钮等）
 cd D:\99DSH\deepseek-harness-mine\harness
-git checkout d743267388641bc76f17c45ce8b4c231aed1d32c   # 0.2.1-alpha.2
 git apply D:\99DSH\patches\engine-0.2.1-alpha.2-ours.patch
+# 3. 装依赖 + 重建产物（见下）
 ```
 
-补丁里的改动是**引擎侧的必要改动**（会话与对话节点契约、`ui-settings-general` 挂主区、快捷键表、host 布局等）。改动在引擎检出里**不提交**，永远以补丁形式跟版重套：官方发新版就重新检出、重套这份补丁。
+想改成"官方 git 仓 + 补丁"的老办法也行：clone 官方、checkout 同一个提交、套同一份补丁 —— 快照就是为"官方仓不可达 / 该提交被删"这种情况留的底，两种做法拿到的树一样。
+
+**跟版**：官方发新版 → 用新提交重新导出一份快照整棵替换 `deepseek-harness\`，把补丁里的改动重放成 `patches\engine-<新版本>-ours.patch`。补丁永远只在最外层，别把改动写进快照里（写进去以后就分不清哪些是官方的、哪些是我们的）。
+
+**许可**：引擎版权归 DeepSeek，MIT，`deepseek-harness\LICENSE` 随树带；`patches\` 里的改动同为 MIT。
 
 改完引擎要重建产物（官方 `build:lib:*` 脚本会被 pnpm 依赖状态检查拦住、无 TTY 直接中止，按下面五步走）：
 
