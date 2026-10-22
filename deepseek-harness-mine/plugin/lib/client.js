@@ -414,6 +414,8 @@ window.__ModuleLoader__.load({
     '.dside-ssh-tab{display:flex;align-items:center;gap:4px;height:22px;padding:0 6px 0 8px;border-radius:4px;cursor:pointer;font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap;}',
     '.dside-ssh-tab:hover{background:var(--dsw-alias-interactive-bg-hover);}',
     '.dside-ssh-tab.on{background:var(--dsw-alias-interactive-bg-active);color:var(--dsw-alias-label-primary);}',
+    // Agent 自己开的终端：跟"未保存圆点"同一档告警色，扫一眼就知道哪条是它在用
+    '.dside-ssh-tab.agent{color:var(--dsw-alias-state-warn-primary);}',
     '.dside-ssh-tab .x{width:14px;height:14px;padding:0;border:none;border-radius:3px;background:none;color:inherit;cursor:pointer;font-size:10px;line-height:1;opacity:0;}',
     '.dside-ssh-tab:hover .x,.dside-ssh-tab.on .x{opacity:.75;}',
     '.dside-ssh-tab .x:hover{background:var(--dsw-alias-interactive-bg-hover-danger);opacity:1;}',
@@ -1961,37 +1963,83 @@ window.__ModuleLoader__.load({
       var open = !!(session && session.status === 'open');
       var sid = session ? session.id : null;
       // 多终端：每个标签一条独立 shell 通道；全挂在这里，切换只改显隐（不重开、不丢输出）
-      var termsState = React.useState([]);        // [{ id, n }]
+      // 真源在后端（session.terms）：后端还活着的终端一条不少地接回来 —— 刷新页面不该把终端弄丢，
+      // 更不能让 Agent 正在跑的那条变成没人认领的孤儿。
+      var termsState = React.useState([]);        // [{ id, n, owner, title }]
       var terms = termsState[0], setTerms = termsState[1];
       var activeState = React.useState(null);
       var active = activeState[0], setActive = activeState[1];
       var errState = React.useState('');
       var err = errState[0], setErr = errState[1];
-      var seqRef = React.useRef(0);
+      var liveKey = ((session && session.terms) ? session.terms : [])
+        .map(function (t) { return t.id + ':' + (t.exited ? 1 : 0) + ':' + (t.lastRunAt || 0) }).join(',');
 
+      // 防重入：加载与 3 秒对账可能同时反映"没有终端"，不去重会一次开出两条
+      var openingRef = React.useRef(false);
       function openTerm() {
-        if (!sid) return;
-        apiPost('/ssh-term-open', { id: sid, cols: 100, rows: 30 }).then(function (r) {
+        if (!sid || openingRef.current) return;
+        openingRef.current = true;
+        apiPost('/ssh-term-open', { id: sid, cols: 100, rows: 30, owner: 'user' }).then(function (r) {
+          openingRef.current = false;
           if (!r || r.ok === false) { setErr((r && (r.error || 'open-failed')) || 'network'); return }
-          seqRef.current += 1;
-          var n = seqRef.current;
-          setTerms(function (prev) { return prev.concat([{ id: r.id, n: n }]) });
-          setActive(r.id);
-          trace('ui', 'info', 'ssh-term-open', { sid: sid, term: r.id, n: n });
+          trace('ui', 'info', 'ssh-term-open', { sid: sid, term: r.id });
+          if (props.onRefresh) props.onRefresh();
+        }, function () {
+          openingRef.current = false;
+          setErr('network');
         });
       }
 
       React.useEffect(function () {
-        setTerms([]);
-        setActive(null);
-        seqRef.current = 0;
         setErr('');
-        if (!open || !sid) return;
-        openTerm();
-      }, [open, sid]);
+        var live = (session && session.terms) ? session.terms : [];
+        var next = [];
+        for (var i = 0; i < live.length; i++) {
+          next.push({ id: live[i].id, n: i + 1, owner: live[i].owner || 'user', title: live[i].title || '' });
+        }
+        setTerms(next);
+        setActive(function (cur) {
+          for (var k = 0; k < next.length; k++) if (next[k].id === cur) return cur;
+          if (!next.length) return null;
+          // 优先落在用户自己那条上：Agent 那条自己冒出来时不抢画面
+          for (var j = 0; j < next.length; j++) if (next[j].owner !== 'agent') return next[j].id;
+          return next[0].id;
+        });
+        if (open && sid && !next.length) openTerm();
+      }, [open, sid, liveKey]);
+
+      // Agent 一开始干活就把画面切到它那条：它敲什么要当场看得见（用户点名要的）。
+      // 用「最近执行时刻」判断而不是「正在执行」—— 一条命令往往一两百毫秒就跑完，
+      // 轮询根本抓不到那个窗口，时间戳变了就说明它刚刚动过手。
+      var seenTermRef = React.useRef({});
+      var ranRef = React.useRef({});
+      React.useEffect(function () {
+        var live = (session && session.terms) ? session.terms : [];
+        var jump = null;
+        for (var i = 0; i < live.length; i++) {
+          var t = live[i];
+          if (t.owner !== 'agent') continue;
+          var ranAt = t.lastRunAt || 0;
+          if (!seenTermRef.current[t.id]) {
+            seenTermRef.current[t.id] = true;
+            if (!jump) jump = t.id;
+          } else if (ranAt > (ranRef.current[t.id] || 0) && !jump) {
+            jump = t.id;
+          }
+          ranRef.current[t.id] = ranAt;
+        }
+        if (jump) setActive(jump);
+      }, [liveKey]);
+
+      // 「用户此刻在看哪个终端」要告诉后端：Agent 不点名读终端时，读的就是这一条
+      React.useEffect(function () {
+        if (props.onActiveTerm) props.onActiveTerm(active || null);
+      }, [active, sid]);
 
       function closeTerm(id) {
-        apiPost('/ssh-term-close', { id: sid, term: id });
+        apiPost('/ssh-term-close', { id: sid, term: id }).then(function () {
+          if (props.onRefresh) props.onRefresh();
+        });
         setTerms(function (prev) {
           var next = prev.filter(function (t) { return t.id !== id });
           setActive(function (cur) {
@@ -2021,13 +2069,16 @@ window.__ModuleLoader__.load({
         (open && terms.length)
           ? h('div', { className: 'dside-ssh-tabs' },
               terms.map(function (t) {
+                var label = t.owner === 'agent' ? '⚡ Agent' : ('终端 ' + t.n);
                 return h('div', {
                   key: t.id,
-                  className: 'dside-ssh-tab' + (active === t.id ? ' on' : ''),
-                  title: '终端 ' + t.n,
+                  className: 'dside-ssh-tab' + (active === t.id ? ' on' : '') + (t.owner === 'agent' ? ' agent' : ''),
+                  title: t.owner === 'agent'
+                    ? 'Agent 用的终端：它敲的命令和输出都在这里，你可以直接接管'
+                    : ('终端 ' + t.n),
                   onClick: function () { setActive(t.id) },
                 },
-                  h('span', null, '终端 ' + t.n),
+                  h('span', null, label),
                   h('button', {
                     className: 'x', title: '关闭这个终端（会结束里面跑的东西）',
                     onClick: function (e) { e.stopPropagation(); closeTerm(t.id) },
@@ -7317,7 +7368,6 @@ window.__ModuleLoader__.load({
                   onClick: function () { if (props.onToggleMdPreview) props.onToggleMdPreview(); },
                 }, mdPreviewOn ? '⟨⟩ 源码' : '📖 预览')
               : null,
-            dirty && !saving ? '● 未保存' : (saving ? '保存中…' : ''),
           ),
           // ⚠ 这里曾有一个「保存 (Ctrl+S)」按钮 —— 2026-09-21 用户看截图后点名去掉
           // （"中面板右上角那个保存按钮去掉"）。保存能力一处没少：Ctrl+S（monaco 侧）、
@@ -8796,17 +8846,23 @@ window.__ModuleLoader__.load({
         });
       }
       React.useEffect(function () { refreshSsh() }, []);
+      // 终端的真源在后端，Agent 也会自己开终端：只要服务器形态用过，就定时对账一次标签
+      React.useEffect(function () {
+        if (!sshMounted) return;
+        var timer = setInterval(function () { refreshSsh() }, 3000);
+        return function () { clearInterval(timer) };
+      }, [sshMounted]);
 
       // 界面上下文推给后端：Agent 因此知道"现在在哪台机器、哪个目录、选中了什么"，不用反问
-      var sshCtxState = React.useState({ path: '/', sel: null });
+      var sshCtxState = React.useState({ path: '/', sel: null, term: null });
       var sshCtx = sshCtxState[0], setSshCtx = sshCtxState[1];
       React.useEffect(function () {
         if (!sshSel) return;
         var t = setTimeout(function () {
-          apiPost('/ssh-context', { id: sshSel, path: sshCtx.path, sel: sshCtx.sel });
+          apiPost('/ssh-context', { id: sshSel, path: sshCtx.path, sel: sshCtx.sel, term: sshCtx.term || undefined });
         }, 200);
         return function () { clearTimeout(t) };
-      }, [sshSel, sshCtx.path, sshCtx.sel]);
+      }, [sshSel, sshCtx.path, sshCtx.sel, sshCtx.term]);
 
       // Agent 的写入/删除审批：进服务器形态才轮询（1.5 秒一次，纯本地请求）
       var sshAskState = React.useState([]);
@@ -12092,6 +12148,10 @@ window.__ModuleLoader__.load({
                 connecting: sshBusy === sshSel,
                 onConnect: function () { if (sshSel) sshPickServer(sshSel) },
                 onDisconnect: function () { if (sshSel) sshDisconnect(sshSel) },
+                onRefresh: refreshSsh,
+                onActiveTerm: function (tid) {
+                  setSshCtx(function (p) { return p.term === tid ? p : Object.assign({}, p, { term: tid }) });
+                },
               }) : null,
               // Agent 想写/删服务器文件时的确认条（用户点头它才动，2 分钟不点作废）
               sshAsk.length ? h('div', { className: 'dside-ssh-ask' },

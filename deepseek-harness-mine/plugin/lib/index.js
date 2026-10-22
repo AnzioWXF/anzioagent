@@ -1229,7 +1229,7 @@ export default {
 
     // SSH 终端里敲了什么也要留痕（与本地终端同一口径：只记回车那一刻，口令打码）
     const sshCmdBuf = new Map()
-    const sshFeedKeys = (sid, tid, chunk) => {
+    const sshFeedKeys = (sid, tid, chunk, owner) => {
       const s = String(chunk || '')
       const st = sshCmdBuf.get(tid) || { buf: '', esc: false, secret: false }
       for (let i = 0; i < s.length; i++) {
@@ -1242,7 +1242,7 @@ export default {
           if (line) {
             trace({
               level: 'info', kind: 'ssh-terminal', msg: 'command',
-              meta: { sid, term: tid, line: st.secret ? '***' : maskTermLine(line), secret: st.secret || undefined },
+              meta: { sid, term: tid, by: owner === 'agent' ? 'agent' : 'user', line: st.secret ? '***' : maskTermLine(line), secret: st.secret || undefined },
             })
           }
           st.secret = false
@@ -1280,7 +1280,7 @@ export default {
     // 差别只在闸门：读与执行直接做；写、删先要在界面上点「允许」。
     // 为什么不用引擎的审批卡：那套只认沙箱升权，自定义工具挂不上去（baseline §D.5）。
     // 界面上下文（哪台机器、当前目录、选中项）由前端随时推进来，Agent 不用问路径。
-    const sshCtx = { sid: null, path: '/', sel: null, at: 0 }
+    const sshCtx = { sid: null, path: '/', sel: null, term: null, at: 0 }
     const sshApprovals = new Map()
     let sshApprovalSeq = 0
     const askSshApproval = (entry) => new Promise((resolve) => {
@@ -1332,28 +1332,154 @@ export default {
       }
       const reg = (tool) => ctx.tools.register(tool)
 
+      // Agent 干活用的那条终端：一个连接只养一条，跑完留着不关 —— 用户往上翻就能看到每一步干了什么。
+      // 指定别的终端 id 就写进那条（用户的终端），但默认不动用户的。
+      const ensureAgentTerm = async (sid, want) => {
+        const pick = String(want || '').trim()
+        if (pick && pick !== 'agent') {
+          const rec = ssh.get(sid)
+          const t = rec && rec.terms ? rec.terms.get(pick) : null
+          if (!t) throw new Error('没有 ' + pick + ' 这条终端（可能已关掉，用 ssh_term_list 看现存的）')
+          if (t.exited) throw new Error(pick + ' 这条终端已经结束了，别往死终端里写')
+          return pick
+        }
+        const live = ssh.agentTerm(sid)
+        if (live) return live.id
+        // 挂同一路留痕：Agent 在终端里敲的命令也进 ide-trace，标 by=agent
+        const r = await ssh.openTerm(sid, {
+          cols: 120, rows: 32, owner: 'agent', title: 'Agent',
+          onData: (t, chunk) => sshFeedKeys(sid, t.id, chunk, 'agent'),
+        })
+        trace({ level: 'info', kind: 'ssh-tool', msg: 'term-open', meta: { sid, term: r.id } })
+        return r.id
+      }
+
       reg(defineTool({
         name: 'ssh_run',
-        description: '在「服务器控制台」当前连接的那台服务器上执行一条 shell 命令，返回退出码与输出。'
+        description: '在「服务器控制台」的终端里执行一条 shell 命令，返回退出码与输出。'
+          + '**命令会真的敲进界面上那条终端里跑，用户当场看得见**（这是设计：没有背后的暗箱操作）。'
           + '适合看日志、看进程、看服务状态、重启服务。**改动线上文件请用 ssh_write（要用户点允许）**；'
-          + '这里跑什么都会立刻生效，别拿它做不可逆的删除/覆盖。',
+          + '这里跑什么都会立刻生效，别拿它做不可逆的删除/覆盖。'
+          + '**想知道终端里已经发生过什么（用户敲过什么、刚才那个报错是什么），不要用 history、'
+          + '不要读 ~/.bash_history、不要 cat 日志 —— 那是往终端里塞新命令，会打断正在跑的东西、污染命令历史。'
+          + '这类「看」一律用 ssh_read_term（纯读，不产生任何输入）。**'
+          + '另外本次执行的返回里已经附带了这条终端之前的画面，多数情况不用再单独读。',
         parameters: {
           cmd: { type: 'string', required: true, description: '要执行的命令（在服务器上跑）' },
-          cwd: { type: 'string', description: '在哪個目录下执行（省略 = 上次登录的目录）' },
+          cwd: { type: 'string', description: '先在哪个目录下 cd 过去再执行（省略 = 终端当前目录）' },
+          term: { type: 'string', description: '在哪个终端里跑：省略 = Agent 自己那条；填用户终端的 id 就写进用户那条' },
+          timeoutSec: { type: 'integer', description: '等多久算超时（秒，默认 60，最多 600）；超时后命令可能还在跑，可再用 ssh_read_term 看后续输出' },
           server: { type: 'string', description: '服务器（名字/地址/连接 id），省略 = 界面当前这台' },
         },
         output: textOutput,
         async execute(args) {
           const sid = needSid(args)
-          const cmd = args.cwd ? ('cd ' + shQuote(args.cwd) + ' && ' + String(args.cmd)) : String(args.cmd)
-          const r = await ssh.exec(sid, cmd, { timeoutMs: 60000 })
-          trace({ level: 'info', kind: 'ssh-tool', msg: 'run', meta: { sid, code: r.code, ms: r.ms, line: maskTermLine(String(args.cmd)).slice(0, 200) } })
+          const tid = await ensureAgentTerm(sid, args.term)
+          const cmd = String(args.cmd)
+          const sec = Number(args.timeoutSec)
+          const timeoutMs = Math.max(5000, Math.min(600000, Number.isFinite(sec) && sec > 0 ? sec * 1000 : 60000))
+          const r = await ssh.runInTerm(sid, tid, cmd, {
+            timeoutMs,
+            cwd: args.cwd ? String(args.cwd) : '',
+          })
+          trace({
+            level: 'info', kind: 'ssh-tool', msg: 'run',
+            meta: { sid, term: tid, code: r.code, ms: r.ms, timeout: r.timeout || undefined, line: maskTermLine(cmd).slice(0, 200) },
+          })
           const parts = []
-          parts.push('退出码：' + (r.code === null ? '未知（超时或被杀）' : r.code) + '（' + r.ms + 'ms）')
-          if (r.stdout) parts.push('输出：\n' + r.stdout.trim().slice(-8000))
-          if (r.stderr) parts.push('错误输出：\n' + r.stderr.trim().slice(-4000))
-          if (!r.stdout && !r.stderr) parts.push('（没有任何输出）')
+          parts.push('终端：' + tid + '（界面上可见）')
+          parts.push('退出码：' + (r.code === null ? '未知（还没跑完或终端已断）' : r.code) + '（' + r.ms + 'ms）')
+          const out = String(r.output || '').trim()
+          // 留 20000 字给这一轮；要全文就让 Agent 自己用 ssh_read_term 读那条终端
+          if (out) parts.push('输出：\n' + out.slice(-20000) + (out.length > 20000 ? '\n…（前面还有 ' + (out.length - 20000) + ' 字，要全量用 ssh_read_term 读终端 ' + tid + '）' : ''))
+          else if (!r.timeout) parts.push('（没有任何输出）')
+          // 终端在本次执行之前的样子：用户手打的命令与报错都在这里，省得它再去敲 history 看
+          const priorText = String(r.prior || '').trim()
+          if (priorText) {
+            const priorLines = priorText.split('\n')
+            const priorTail = priorLines.slice(-15).join('\n').trim()
+            if (priorTail) {
+              parts.push('--- 这条终端在本次执行之前的内容（只读快照' + (priorLines.length > 15 ? '，这里只给最后 15 行' : '') + '）---')
+              parts.push(priorTail)
+            }
+          }
+          if (r.timeout) {
+            parts.push('⚠ 到 ' + Math.round(timeoutMs / 1000) + ' 秒还没跑完：命令可能还在跑。'
+              + '输出可能继续增长，用 ssh_read_term（term=' + tid + '）看后续；要中断就在终端里按 Ctrl+C。')
+          }
+          if (r.exited) parts.push('（这条终端随之结束了）')
           return { ok: r.code === 0, detail: parts.join('\n') }
+        },
+      }))
+
+      reg(defineTool({
+        name: 'ssh_read_term',
+        description: '只读快照：直接取终端缓冲里已经有的内容（用户手打的命令、Agent 跑的命令、以及输出），'
+          + '**不在终端里输入任何字符，也不打断正在跑的命令**。'
+          + '想知道终端里发生过什么、或者用户说的「刚才那个报错」指什么，就用它 ——'
+          + '不要用 history / ~/.bash_history / tail 日志去查，那是往终端里塞新命令，会干扰。'
+          + '不指定 term 就读界面当前正在看的那条终端。',
+        parameters: {
+          term: { type: 'string', description: '终端 id；省略 = 界面当前正开着的那条；填 agent = Agent 自己那条' },
+          tailLines: { type: 'integer', description: '只取末尾多少行（默认 200，最多 2000）' },
+          server: { type: 'string', description: '服务器（名字/地址/连接 id），省略 = 界面当前这台' },
+        },
+        output: textOutput,
+        async execute(args) {
+          const sid = needSid(args)
+          let tid = String(args.term || '').trim()
+          if (tid === 'agent') {
+            const t = ssh.agentTerm(sid)
+            if (!t) throw new Error('这台连接上 Agent 还没开过终端（先 ssh_run 跑一条就有）')
+            tid = t.id
+          }
+          if (!tid && sshCtx.sid === sid) tid = String(sshCtx.term || '')
+          if (!tid) {
+            // 界面没在看任何终端（用户切去编辑器了之类）：退到 Agent 那条，再退到最近活跃的一条。
+            // 这里宁可多猜一步也别报错 —— 报错就把模型逼回"敲 history 去看"的老路。
+            const rec = ssh.get(sid)
+            const all = (rec && rec.terms) ? [...rec.terms.values()] : []
+            const mine = ssh.agentTerm(sid)
+            if (mine) tid = mine.id
+            else if (all.length) {
+              const latest = all.slice().sort((a, b) => (b.lastRunAt || b.startedAt || 0) - (a.lastRunAt || a.startedAt || 0))[0]
+              tid = latest.id
+            }
+          }
+          if (!tid) throw new Error('这台连接上还没有任何终端：先用 ssh_run 跑一条，或让用户在界面上开一条')
+          const text = ssh.termText(sid, tid)
+          if (text === null) throw new Error('没有 ' + tid + ' 这条终端')
+          const n = Math.max(1, Math.min(2000, Number(args.tailLines) || 200))
+          const lines = text.split('\n')
+          const body = lines.slice(-n).join('\n')
+          trace({ level: 'info', kind: 'ssh-tool', msg: 'read-term', meta: { sid, term: tid, chars: text.length, lines: lines.length } })
+          const head = '终端 ' + tid + '：共 ' + lines.length + ' 行 / ' + text.length + ' 字'
+            + (lines.length > n ? '，这里给最后 ' + n + ' 行' : '')
+          return { ok: true, detail: head + '\n\n' + (body.trim() || '（这条终端还没有任何输出）') }
+        },
+      }))
+
+      reg(defineTool({
+        name: 'ssh_term_list',
+        description: '列出「服务器控制台」里这台服务器上的所有终端（是谁开的、还活着吗、多少输出），用来决定读哪一条。',
+        parameters: {
+          server: { type: 'string', description: '服务器（名字/地址/连接 id），省略 = 界面当前这台' },
+        },
+        output: textOutput,
+        async execute(args) {
+          const sid = needSid(args)
+          const rec = ssh.get(sid)
+          const terms = (rec && rec.terms) ? [...rec.terms.values()] : []
+          if (!terms.length) return { ok: true, detail: '这台连接上还没有终端。' }
+          const active = sshCtx.sid === sid ? String(sshCtx.term || '') : ''
+          const lines = terms.map((t) => {
+            const mark = t.id === active ? ' ←界面正在看' : ''
+            return t.id + '  ' + (t.owner === 'agent' ? 'Agent' : '你')
+              + (t.title ? '（' + t.title + '）' : '')
+              + (t.exited ? '  已结束' + (t.exitCode === null ? '' : '（退出码 ' + t.exitCode + '）') : '  在跑')
+              + '  ' + Math.round(t.bytes / 1024) + 'KB' + mark
+          })
+          return { ok: true, detail: '终端：\n' + lines.join('\n') }
         },
       }))
 
@@ -3415,7 +3541,9 @@ export default {
           try {
             const r = await ssh.openTerm(body.id, {
               cols: Number(body.cols) || 100, rows: Number(body.rows) || 30,
-              onData: (t, chunk) => sshFeedKeys(body.id, t.id, chunk),
+              owner: body.owner === 'agent' ? 'agent' : 'user',
+              title: String(body.title || ''),
+              onData: (t, chunk) => sshFeedKeys(body.id, t.id, chunk, t.owner),
             })
             return json(res, 200, Object.assign({ ok: true }, r))
           } catch (e) { return json(res, 500, { ok: false, error: errOf(e) }) }
@@ -3451,6 +3579,8 @@ export default {
           sshCtx.sid = body.id ? String(body.id) : null
           sshCtx.path = String(body.path || '/')
           sshCtx.sel = body.sel ? String(body.sel) : null
+          // 界面上正在看的那个终端：Agent 不点名时就读它（要读自己的那条会显式说 agent）
+          sshCtx.term = body.term ? String(body.term) : null
           sshCtx.at = Date.now()
           return json(res, 200, { ok: true })
         }

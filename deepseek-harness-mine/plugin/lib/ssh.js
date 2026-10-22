@@ -347,7 +347,7 @@ export function createSshManager({ trace } = {}) {
 
   // ── 交互式 shell 通道（中栏的服务器终端）──────────────────────────────
   // 与本地终端同形：按块缓冲、seq 递增、超限丢最老并给 reset 标识。
-  function openTerm(id, { cols = 100, rows = 30, onData = null } = {}) {
+  function openTerm(id, { cols = 100, rows = 30, onData = null, owner = 'user', title = '' } = {}) {
     return new Promise((resolve, reject) => {
       let rec
       try { rec = require_(id) } catch (e) { return reject(e) }
@@ -359,6 +359,13 @@ export function createSshManager({ trace } = {}) {
           cols, rows, seq: 0, bytes: 0, chunks: [], droppedUntil: 0,
           exited: false, exitCode: null, startedAt: Date.now(), lastRead: Date.now(),
           tail: '', buf: '',
+          // 谁开的这条终端：user = 界面按钮开的，agent = 工具自己开的（标签上要区分）
+          owner: owner === 'agent' ? 'agent' : 'user',
+          title: String(title || ''),
+          busy: false,
+          // 最近一次被 Agent 用来执行命令的时刻：界面靠它把画面自动切过去
+          // （busy 只在一两百毫秒内为真，轮询抓不住，时间戳才抓得住）
+          lastRunAt: 0,
         }
         stream.on('data', (d) => {
           const s = d.toString('utf8')
@@ -383,8 +390,8 @@ export function createSshManager({ trace } = {}) {
           note('info', 'ssh', 'term-exit', { id: t.id, sid: rec.id, code: t.exitCode })
         })
         rec.terms.set(t.id, t)
-        note('info', 'ssh', 'term-open', { id: t.id, sid: rec.id, cols, rows })
-        resolve({ id: t.id, sid: rec.id, cols, rows })
+        note('info', 'ssh', 'term-open', { id: t.id, sid: rec.id, cols, rows, owner: t.owner })
+        resolve({ id: t.id, sid: rec.id, cols, rows, owner: t.owner, title: t.title })
       })
     })
   }
@@ -434,6 +441,144 @@ export function createSshManager({ trace } = {}) {
     return { ok: true }
   }
 
+  // ── 让 Agent 在真终端里干活（2026-10-21）────────────────────────────────
+  // 为什么不再单用 exec：exec 是另一条通道，界面上看不见 Agent 敲了什么都看不到；
+  // 写进真终端才是"你看到的就是真实回显"。代价是要自己判一条命令什么时候结束，
+  // 现成的 PTY 没有命令边界（没有 shell 集成），所以写入时补一行哨兵读 `$?`。
+  const quoteSh = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'"
+
+  const stripAnsi = (s) => String(s)
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
+    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
+    .replace(/\x1b[()][A-Z0-9]/g, '')
+    .replace(/\x1b[=>]/g, '')
+
+  // 终端是画布：提示符、进度条都靠 `\r` 回行首重画来"覆盖"，屏幕上只看得见一份。
+  // 直接删掉 `\r` 等于把覆盖变成并排 —— 同一行提示符会并出两份（2026-10-21 实测：
+  // `root@host:~# root@host:~# echo ...`）。所以按终端语义行内覆盖：后写的段压在
+  // 前面的内容上，超出前段长度的尾巴保留。
+  function applyCr(text) {
+    if (text.indexOf('\r') < 0) return text
+    const out = []
+    for (const line of text.split('\n')) {
+      let cur = ''
+      for (const seg of line.split('\r')) cur = seg + cur.slice(seg.length)
+      out.push(cur)
+    }
+    return out.join('\n')
+  }
+
+  /** Terminal bytes → the plain text a person would see on screen. */
+  function plainTermText(raw) {
+    return applyCr(stripAnsi(raw).replace(/\r\n/g, '\n'))
+  }
+
+  // 终端里读到的是"给人看的画面"：命令回显、ANSI、\r 覆盖都混在里面。交给人看别动，
+  // 交给模型（或当命令输出回填）要摘干净，否则模型会把转义序列当成内容。
+  // 回显前面可能还挂着上一轮的提示符或噪声，所以按"写入的脚本行"去定位，不靠"第一行"猜。
+  function cleanTermText(raw, script) {
+    const lines = plainTermText(raw).split('\n')
+    // 每条写入的行最多删一次（按出现顺序消耗）：回显总在最前面，所以先删的是回显；
+    // 输出里恰好有一行和命令一样时，那条不会被当成回显删掉。
+    const pending = String(script).split('\n').map((l) => l.trim()).filter(Boolean)
+    const hit = (line, target) => {
+      const head = line.trim()
+      return head === target || (target !== '' && head.endsWith(target.slice(0, 80)))
+    }
+    const kept = []
+    for (const line of lines) {
+      let matched = -1
+      for (let i = 0; i < pending.length; i++) if (hit(line, pending[i])) { matched = i; break }
+      if (matched >= 0) { pending.splice(matched, 1); continue }
+      kept.push(line)
+    }
+    return kept.join('\n').replace(/\n{3,}$/, '\n').trimEnd()
+  }
+
+  /** The terminal currently held by the Agent on this connection, if any. */
+  function agentTerm(id) {
+    const rec = get(String(id))
+    if (!rec) return null
+    for (const t of rec.terms.values()) if (t.owner === 'agent' && !t.exited) return t
+    return null
+  }
+
+  /**
+   * Run one command inside an already-open interactive terminal and wait for it
+   * to finish. The command, its prompt echo, and its output all reach the same
+   * PTY the user is watching, which is the whole point: nothing happens off-screen.
+   * @param id - connection id.
+   * @param tid - terminal id on that connection.
+   * @param cmd - shell command line(s) to type.
+   * @param opts - timeout, optional working directory, chunk observer.
+   * @returns exit code plus the cleaned output, or `timeout: true` with what arrived.
+   */
+  async function runInTerm(id, tid, cmd, { timeoutMs = EXEC_TIMEOUT, cwd = '', onChunk = null } = {}) {
+    const t = termOf(id, tid)
+    if (!t) throw new Error('no-term: ' + tid)
+    if (t.exited) throw new Error('term-exited: ' + tid)
+    if (t.busy) throw new Error('term-busy: ' + tid)
+    // 跑之前这条终端上已经发生过什么（用户敲过什么、出过什么错）：随结果一起带回去，
+    // 这样 Agent 不必靠敲 history 去"看"终端 —— 看是读，不该产生新的输入。
+    const prior = termText(id, tid) || ''
+    t.busy = true
+    const nonce = Math.random().toString(16).slice(2, 8)
+    const started = Date.now()
+    try {
+      // 写入的原文留着：命令回显要按它对账剔除，别拿"第一行"猜。
+      // cd 与命令串成一行并加 &&：目录进不去就整条不跑（和旧的 exec 语义一致，
+      // 别出现"cd 失败还照跑、结果删错目录"这种事）。
+      const sentinel = "printf '\\n__DSH_DONE_" + nonce + "__%s\\n' \"$?\""
+      const written = cwd ? ('cd ' + quoteSh(cwd) + ' && ' + String(cmd)) : String(cmd)
+      const script = written + '\n' + sentinel
+      t.stream.write(written + '\n')
+      t.stream.write(sentinel + '\n')
+      let since = t.seq
+      let acc = ''
+      // 行尾是硬条件：命令回显里也带着这串标记（后面跟的是 %s），不认行尾会把回显当跑完。
+      // 退出码留可空：远端不是 bash/zsh 时（fish 用 $status）`$?` 展开为空，哨兵照样到 ——
+      // 有输出就先交出去，别为一个数字把整条命令判死。
+      const done = new RegExp('__DSH_DONE_' + nonce + '__(-?\\d*)\\r?\\n')
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 80))
+        const snap = readTerm(id, tid, since)
+        if (!snap) throw new Error('no-term: ' + tid)
+        since = snap.seq
+        if (snap.data) {
+          acc += snap.data
+          if (onChunk) { try { onChunk(snap.data) } catch { /* 观察者失败不影响执行 */ } }
+        }
+        const m = acc.match(done)
+        if (m) {
+          const ms = Date.now() - started
+          const code = m[1] === '' ? null : Number(m[1])
+          note('info', 'ssh', 'term-run', { id: t.id, sid: t.sid, code, ms })
+          return { code, output: cleanTermText(acc.slice(0, m.index), script), prior, ms, timeout: false }
+        }
+        if (snap.exited) {
+          const ms = Date.now() - started
+          return { code: snap.exitCode, output: cleanTermText(acc, script), prior, ms, timeout: false, exited: true }
+        }
+        if (Date.now() - started > timeoutMs) {
+          // 超时不等于命令停了：终端里它还在跑，后续输出可以接着读
+          const ms = Date.now() - started
+          note('warn', 'ssh', 'term-run-timeout', { id: t.id, sid: t.sid, ms })
+          return { code: null, output: cleanTermText(acc, script), prior, ms, timeout: true }
+        }
+      }
+    } finally {
+      t.busy = false
+      t.lastRunAt = Date.now()
+    }
+  }
+
+  /** Text a terminal already printed, oldest first, as a person would see it on screen. */
+  function termText(sid, tid) {
+    const t = termOf(sid, tid)
+    if (!t) return null
+    return plainTermText(t.chunks.map((c) => c.data).join(''))
+  }
+
   function disconnect(id) {
     const rec = get(String(id))
     if (!rec) return { ok: false, error: 'no-session' }
@@ -449,7 +594,13 @@ export function createSshManager({ trace } = {}) {
     return [...sessions.values()].map((r) => ({
       id: r.id, name: r.name, host: r.host, port: r.port, user: r.user,
       status: r.status, fingerprint: r.fingerprint, connectedAt: r.connectedAt,
-      terms: [...r.terms.values()].map((t) => ({ id: t.id, cols: t.cols, rows: t.rows, exited: t.exited, exitCode: t.exitCode })),
+      terms: [...r.terms.values()].map((t) => ({
+        id: t.id, cols: t.cols, rows: t.rows, exited: t.exited, exitCode: t.exitCode,
+        owner: t.owner, title: t.title, bytes: t.bytes, startedAt: t.startedAt,
+        // 正在跑命令 / 最近一次执行的时刻：界面据此把画面自动切到这条（Agent 干活要看得见）
+        busy: !!t.busy,
+        lastRunAt: t.lastRunAt || 0,
+      })),
       lastError: r.lastError,
     }))
   }
@@ -461,6 +612,7 @@ export function createSshManager({ trace } = {}) {
   return {
     connect, exec, ls, stat, readText, writeText, upload, download, downloadDir, mkdirp, remove, rename,
     openTerm, readTerm, inputTerm, resizeTerm, closeTerm,
+    runInTerm, termText, agentTerm,
     disconnect, list, disposeAll, get,
   }
 }

@@ -359,10 +359,10 @@ index 9005150af0..b458e43e1a 100644
  /** Correlated retry-chain keyed Chat renderer. */
 diff --git a/packages/client/ui-chat/src/client/chat/TurnCostPill.tsx b/packages/client/ui-chat/src/client/chat/TurnCostPill.tsx
 new file mode 100644
-index 0000000000..d357d1a1e2
+index 0000000000..ba5a0fa77a
 --- /dev/null
 +++ b/packages/client/ui-chat/src/client/chat/TurnCostPill.tsx
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,36 @@
 +/** Estimated per-Turn charge, seated beside the Turn-usage pill. */
 +
 +import type { TurnTokenUsage } from '../contract/chat-nodes.ts'
@@ -374,6 +374,8 @@ index 0000000000..d357d1a1e2
 +  readonly usage: TurnTokenUsage
 +  /** This Turn's tail time, which picks the peak/off-peak rate. */
 +  readonly time: number
++  /** Billed server-side search calls in this Turn. */
++  readonly searches?: number
 +  /** The owning view's locale seat, passed down as a plain prop. */
 +  readonly t: ChatViewSlotProps['t']
 +}
@@ -384,8 +386,8 @@ index 0000000000..d357d1a1e2
 + * @param props - Turn usage, tail time, locale seat.
 + * @returns the pill, or null when the Turn cannot be priced.
 + */
-+export function TurnCostPill({ usage, time, t }: TurnCostPillProps) {
-+  const estimate = estimateTurnCost(usage, time)
++export function TurnCostPill({ usage, time, searches = 0, t }: TurnCostPillProps) {
++  const estimate = estimateTurnCost(usage, time, searches)
 +  if (estimate === null) return null
 +  return (
 +    <span className={`${css.root} ${css.costRoot}`} data-turn-cost={estimate.peak ? 'peak' : 'off-peak'}>
@@ -398,7 +400,7 @@ index 0000000000..d357d1a1e2
 +  )
 +}
 diff --git a/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx b/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx
-index a3d58a8cfe..474ec827d9 100644
+index a3d58a8cfe..8f276c01e1 100644
 --- a/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx
 +++ b/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx
 @@ -3,6 +3,7 @@ import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-sl
@@ -417,7 +419,7 @@ index a3d58a8cfe..474ec827d9 100644
 +          ? (
 +            <>
 +              <TurnUsagePanel usage={data.tokenUsage} t={t} />
-+              <TurnCostPill usage={data.tokenUsage} time={data.time} t={t} />
++              <TurnCostPill usage={data.tokenUsage} time={data.time} searches={data.searchCalls ?? 0} t={t} />
 +            </>
 +          )
            : null}
@@ -491,19 +493,20 @@ index 460d1092a2..5933906780 100644
                {formatExactCount(usage.outputTokens, t)}
 diff --git a/packages/client/ui-chat/src/client/chat/turn-cost.ts b/packages/client/ui-chat/src/client/chat/turn-cost.ts
 new file mode 100644
-index 0000000000..de99c69a7c
+index 0000000000..e941e5268f
 --- /dev/null
 +++ b/packages/client/ui-chat/src/client/chat/turn-cost.ts
-@@ -0,0 +1,104 @@
+@@ -0,0 +1,122 @@
 +/**
 + * Turn cost estimate from provider-reported tokens and DeepSeek's published
-+ * price table. There is no per-request billing API (the account balance
-+ * endpoint is the only official money-related endpoint), so a turn's cost can
-+ * only be priced locally: exact tokens × the published per-million rate.
++ * price table, plus the per-call charge for server-side web search. There is no
++ * per-request billing API (the account balance endpoint is the only official
++ * money-related endpoint), so a turn's cost can only be priced locally: exact
++ * tokens × the published per-million rate, plus billed searches × per-call rate.
 + *
-+ * Prices are CNY per million tokens, copied from
++ * Prices are CNY, copied from
 + * https://api-docs.deepseek.com/zh-cn/quick_start/pricing on 2026-10-21.
-+ * When DeepSeek changes its table this constant is the one place to edit.
++ * When DeepSeek changes its table these constants are the one place to edit.
 + */
 +
 +import type { TurnTokenUsage } from '../contract/chat-nodes.ts'
@@ -540,6 +543,16 @@ index 0000000000..de99c69a7c
 +
 +const BEIJING_OFFSET_MS = 8 * 3_600_000
 +
++/** Server-side `Search` calls: CNY per successful request (5元 per 1,000). */
++const SEARCH_CNY_PER_CALL = 0.005
++
++/**
++ * Harness-driven server-side search only starts billing at 2026-11-01 00:00
++ * Beijing time; before that the official table charges nothing for it, so
++ * pricing it early would over-report every search-heavy Turn.
++ */
++const SEARCH_BILLING_START_MS = Date.UTC(2026, 10, 1) - BEIJING_OFFSET_MS
++
 +/**
 + * Peak billing runs on Beijing-time weekdays 09:00–12:00 and 14:00–18:00.
 + * Chinese public holidays bill off-peak but no holiday calendar is available
@@ -557,19 +570,23 @@ index 0000000000..de99c69a7c
 +}
 +
 +export interface TurnCostEstimate {
-+  /** Estimated charge in CNY. */
++  /** Estimated charge in CNY, tokens plus billed searches. */
 +  readonly cny: number
 +  readonly peak: boolean
++  /** The search-call part of {@link cny}; 0 when none were billed. */
++  readonly searchCny: number
 +}
 +
 +/**
 + * Price one Turn.
 + * @param usage - exact provider-reported buckets for the whole Turn.
-+ * @param time - epoch ms used to pick the peak/off-peak rate.
++ * @param time - epoch ms used to pick the peak/off-peak rate and to decide
++ *   whether search billing has started.
++ * @param searches - billed server-side search calls in this Turn (0 when none).
 + * @returns the estimate, or null when the model is unknown to the table or the
 + * Turn mixes models (its tokens cannot be split across rates).
 + */
-+export function estimateTurnCost(usage: TurnTokenUsage, time: number): TurnCostEstimate | null {
++export function estimateTurnCost(usage: TurnTokenUsage, time: number, searches = 0): TurnCostEstimate | null {
 +  const routes = usage.routes
 +  const first = routes?.[0]
 +  if (routes === undefined || first === undefined) return null
@@ -583,8 +600,11 @@ index 0000000000..de99c69a7c
 +  // Cache writes are billed as plain misses: DeepSeek reports no such bucket,
 +  // but another provider on the same model would count toward input.
 +  const input = usage.uncachedInputTokens + (usage.cacheWriteTokens ?? 0)
-+  const cny = (cacheRead * rate.cacheRead + input * rate.input + usage.outputTokens * rate.output) / 1_000_000
-+  return { cny, peak }
++  const tokenCny = (cacheRead * rate.cacheRead + input * rate.input + usage.outputTokens * rate.output) / 1_000_000
++  const searchCny = time >= SEARCH_BILLING_START_MS
++    ? Math.max(0, searches) * SEARCH_CNY_PER_CALL
++    : 0
++  return { cny: tokenCny + searchCny, peak, searchCny }
 +}
 +
 +/**
@@ -600,7 +620,7 @@ index 0000000000..de99c69a7c
 +  return '<0.0001'
 +}
 diff --git a/packages/client/ui-chat/src/client/contract/chat-nodes.ts b/packages/client/ui-chat/src/client/contract/chat-nodes.ts
-index cade646b1c..0ce50c0f00 100644
+index cade646b1c..bda447f09a 100644
 --- a/packages/client/ui-chat/src/client/contract/chat-nodes.ts
 +++ b/packages/client/ui-chat/src/client/contract/chat-nodes.ts
 @@ -4,12 +4,31 @@ import type {
@@ -635,6 +655,15 @@ index cade646b1c..0ce50c0f00 100644
  }
  
  /** Merge-extensible payload registry keyed by final Chat renderer kind. */
+@@ -93,6 +112,8 @@ export interface TurnTailChatData {
+   readonly branchUnavailable: boolean
+   /** Exact per-Turn accounting; absent when the loaded evidence is incomplete. */
+   readonly tokenUsage?: TurnTokenUsage
++  /** Web-search calls this Turn was billed for; absent when none were reported. */
++  readonly searchCalls?: number
+ }
+ 
+ /** Turn-level process disclosure projected before the finalized answer. */
 diff --git a/packages/client/ui-chat/src/client/conversation-nodes/chat-snapshot-builder.ts b/packages/client/ui-chat/src/client/conversation-nodes/chat-snapshot-builder.ts
 index 0423e1ff20..ea74e6565d 100644
 --- a/packages/client/ui-chat/src/client/conversation-nodes/chat-snapshot-builder.ts
@@ -840,6 +869,64 @@ index ddfffb0cca..6f3e49831e 100644
      }
      return null
    },
+diff --git a/packages/client/ui-chat/src/client/conversation-nodes/turn-tail.ts b/packages/client/ui-chat/src/client/conversation-nodes/turn-tail.ts
+index c1bfdd0c4d..fe42c9d3b6 100644
+--- a/packages/client/ui-chat/src/client/conversation-nodes/turn-tail.ts
++++ b/packages/client/ui-chat/src/client/conversation-nodes/turn-tail.ts
+@@ -60,6 +60,35 @@ function hasText(data: AssistantChatData): data is FinalAssistantChatData {
+     && data.blocks.some(block => block.kind === 'text' && block.text.trim() !== '')
+ }
+ 
++/**
++ * Sum the search calls this Turn's `web_search` results reported as billed.
++ * The count rides in the tool-private `meta`; a failed or unreported call adds
++ * nothing, because the provider bills only successful searches.
++ * @param matches - Turn-local durable events, already matched to this Turn.
++ * @returns the total billable search calls (0 when none were reported).
++ */
++function countSearchCalls(matches: readonly ConversationMatch[]): number {
++  const names = new Map<string, string>()
++  let total = 0
++  for (const match of matches) {
++    const event = match.event
++    if (event.type === 'tool/call') {
++      names.set(event.data.callId, event.data.name)
++      continue
++    }
++    if (event.type !== 'tool/result') continue
++    // A truncated window can lose the call while keeping its result; an absent
++    // name then still counts, because only the search tool writes `searches`.
++    const name = names.get(event.data.message.toolCallId)
++    if (name !== undefined && name !== 'web_search') continue
++    const meta = event.data.meta
++    if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) continue
++    const searches = (meta as Record<string, unknown>).searches
++    if (typeof searches === 'number' && Number.isSafeInteger(searches) && searches > 0) total += searches
++  }
++  return total
++}
++
+ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChatData | null {
+   const end = context.state === undefined
+     ? context.matches.find(match => match.event.type === 'turn/end')
+@@ -90,6 +119,9 @@ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChat
+   const tokenUsage = context.start?.event.type === 'turn/start'
+     ? deriveTurnTokenUsage(context.matches.map(match => match.event).filter(isSessionEvent))
+     : undefined
++  const searchCalls = context.start?.event.type === 'turn/start'
++    ? countSearchCalls(context.matches)
++    : undefined
+   return {
+     turn: end.event.data.turn,
+     seq: end.event.seq,
+@@ -97,6 +129,7 @@ function tailData(context: ConversationNodeContext<TurnTailState>): TurnTailChat
+     closing,
+     branchUnavailable: closing === null || latestTranscriptSeq !== closing.finalNode.seq,
+     ...tokenUsage === undefined ? {} : { tokenUsage },
++    ...searchCalls === undefined || searchCalls === 0 ? {} : { searchCalls },
+   }
+ }
+ 
 diff --git a/packages/client/ui-chat/src/client/locale.ts b/packages/client/ui-chat/src/client/locale.ts
 index 5d24261ad8..93165a99eb 100644
 --- a/packages/client/ui-chat/src/client/locale.ts
@@ -1804,6 +1891,113 @@ index 9e01fcbe41..11d2dda480 100644
      ...approval.signal ? { signal: approval.signal } : {},
    })
    switch (outcome) {
+diff --git a/packages/web/tool-web/src/search.ts b/packages/web/tool-web/src/search.ts
+index deaad1b48d..211b0ae01e 100644
+--- a/packages/web/tool-web/src/search.ts
++++ b/packages/web/tool-web/src/search.ts
+@@ -119,6 +119,8 @@ export interface WebSearchMeta {
+   truncated: boolean
+   /** The provider-generated answer text, when any. */
+   answer?: string
++  /** Search calls the backend billed; absent when it cannot report them. */
++  searches?: number
+ }
+ 
+ /**
+@@ -155,6 +157,7 @@ export function searchMetaFromValue(value: WebSearchResult): JsonValue {
+     sources: value.sources.map(projectSource),
+     truncated: value.truncated,
+     ...value.content !== undefined ? { answer: value.content } : {},
++    ...value.searches !== undefined ? { searches: value.searches } : {},
+   }
+ }
+ 
+@@ -178,14 +181,18 @@ function isWebSource(value: unknown): value is WebSource {
+  */
+ export function searchMetaFromResult(meta: unknown): WebSearchMeta | undefined {
+   if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) return undefined
+-  const { sources, truncated, answer } = meta as Record<string, unknown>
++  const { sources, truncated, answer, searches } = meta as Record<string, unknown>
+   if (!Array.isArray(sources) || !sources.every(isWebSource)) return undefined
+   if (typeof truncated !== 'boolean') return undefined
+   if (answer !== undefined && typeof answer !== 'string') return undefined
++  if (searches !== undefined && (typeof searches !== 'number' || !Number.isSafeInteger(searches) || searches < 0)) {
++    return undefined
++  }
+   return {
+     sources,
+     truncated,
+     ...answer !== undefined ? { answer } : {},
++    ...searches !== undefined ? { searches } : {},
+   }
+ }
+ 
+@@ -285,10 +292,17 @@ function mergeSearchResults(
+     if (result.content === undefined || result.content.length === 0) return []
+     return [`### ${queries[index]}\n\n${result.content}`]
+   })
++  // Billing adds up across queries, but only when every query reported: a
++  // partial sum would under-report the charge, which is worse than "unknown".
++  const billed = results.map(result => result.searches)
++  const searches = billed.every((count): count is number => count !== undefined)
++    ? billed.reduce((sum, count) => sum + count, 0)
++    : undefined
+   return {
+     ...contents.length > 0 ? { content: contents.join('\n\n') } : {},
+     sources,
+     truncated: results.some(result => result.truncated) || droppedSource,
++    ...searches === undefined ? {} : { searches },
+   }
+ }
+ 
+@@ -354,6 +368,7 @@ export function applyWebSearchTool(
+             },
+           },
+           truncated: { type: 'boolean', required: true },
++          searches: { type: 'number' },
+         },
+       },
+       render: (_args, value) => [{ type: 'text', text: formatSearchOutput(value) }],
+@@ -369,6 +384,7 @@ export function applyWebSearchTool(
+         ...result.content !== undefined ? { content: result.content } : {},
+         sources: result.sources.map(projectSource),
+         truncated: result.truncated,
++        ...result.searches === undefined ? {} : { searches: result.searches },
+       }
+     },
+     presentCall: presentSearchCall,
+diff --git a/packages/web/web-search-deepseek/src/provider.ts b/packages/web/web-search-deepseek/src/provider.ts
+index b6c87f6929..ca7a5a4e76 100644
+--- a/packages/web/web-search-deepseek/src/provider.ts
++++ b/packages/web/web-search-deepseek/src/provider.ts
+@@ -175,7 +175,9 @@ export function mapAnthropicResponse(response: AnthropicResponse): WebSearchResu
+       })
+     }
+   }
+-  return { sources, truncated: false }
++  // Each `web_search_tool_result` block answers one server-side search, so the
++  // block count is what the provider bills for this request.
++  return { sources, truncated: false, searches: resultBlocks.length }
+ }
+ 
+ /** Authentication headers for one search, tagged by the credential that produced them. */
+diff --git a/packages/web/web/src/types.ts b/packages/web/web/src/types.ts
+index 9e94bac46b..5b0b750e01 100644
+--- a/packages/web/web/src/types.ts
++++ b/packages/web/web/src/types.ts
+@@ -39,6 +39,12 @@ export interface WebSearchResult {
+   readonly sources: readonly WebSearchSource[]
+   /** True when the seam dropped sources to honor `maxResults`. */
+   readonly truncated: boolean
++  /**
++   * Search calls the backend actually executed and billed for this request
++   * (one backend request may run several searches). Absent when the provider
++   * cannot report it, which reads as "unknown", not as zero.
++   */
++  readonly searches?: number
+ }
+ 
+ /**
 diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
 index dfaa16532d..5690707cd8 100644
 --- a/pnpm-lock.yaml
