@@ -129,7 +129,9 @@ window.__ModuleLoader__.load({
     '.dside-node-new .dside-inline-input{flex:1;min-width:0;height:20px;padding:0 5px;border:1px solid var(--dsw-alias-state-business-primary);border-radius:3px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-size:12px;font-family:inherit;outline:none;}',
     '.dside-node-new .dside-inline-hint{margin-left:8px;flex:none;font-size:11px;color:var(--dsw-alias-label-tertiary);}',
       '.dside-explorer-body{flex:1;overflow:auto;padding:2px 6px 12px;}',
-      '.dside-node{display:flex;align-items:center;gap:6px;padding:4px 8px;margin:1px 0;cursor:pointer;white-space:nowrap;user-select:none;border-radius:6px;transition:background var(--ds-transition-duration-fast) var(--ds-ease-in-out);}',
+      // 悬停/选中背景**不加过渡**：VSCode 的列表行是裸背景色，划到即到位。
+      // 加 0.1s 缓动时前 40ms 几乎无色，实测体感"鼠标到了颜色没跟上"（2026-10-22 用户报障）。
+      '.dside-node{display:flex;align-items:center;gap:6px;padding:4px 8px;margin:1px 0;cursor:pointer;white-space:nowrap;user-select:none;border-radius:6px;}',
       '.dside-node:hover{background:var(--dsw-alias-interactive-bg-hover);}',
       '.dside-node.sel{background:var(--dsw-alias-interactive-bg-active);color:var(--dsw-alias-label-primary);}',
       '.dside-node-icon{flex:none;font-size:13px;}',
@@ -605,6 +607,15 @@ window.__ModuleLoader__.load({
       '.dside-agent-platform [data-phase="hero"] [data-composer-seat]{margin-top:auto;}',
       // hero 的那 32px 是"居中悬浮"用的，贴底后跟 active 阶段的下边距对齐（12px，与输入卡自身下沿一致）
       '.dside-agent-platform [data-phase="hero"] [data-composer-seat] > *{padding-bottom:12px;}',
+      // ⑰ 会话内容列吃满 chat 面板（2026-10-22 用户报障"对话区域和边缘距离过大"）。
+      // 平台的内容列 = 面板宽×0.64，且硬夹在 680~920px（ConversationRoot.module.css 的
+      // --dsh-chat-content-width + ConversationWidthControls 的 resolveContentWidth）⇒ 929px 的面板里
+      // 两侧各空 88~124px。天工这边面板宽度本来就比官方右栏宽，再夹一道等于白丢四分之一。
+      // 同时藏掉平台那对拖宽手柄（data-width-handle）：宽度已由天工自己的面板拖拽条负责，
+      // 平台那 10px 竖条留着只会多一条吞点击、改光标的隐形条。
+      // 选择器只用平台自己的属性，不碰 CSS-module 哈希（跟版哈希必变）。
+      '.dside-agent-platform [data-width-handle]{display:none !important;}',
+      '.dside-agent-platform div:has(> [data-conversation-scroll]){--dsh-chat-content-width: calc(100% - 48px) !important;}',
       // 平台的 frame-wide 浮层：click-through 层，条目自己 opt-in（照 AppFrame.overlayLayer）
       '.dside-overlay-layer{position:fixed;inset:0;z-index:20;pointer-events:none;}',
       '.dside-overlay-layer > *{pointer-events:auto;}',
@@ -4566,7 +4577,8 @@ window.__ModuleLoader__.load({
         title: node.path,
       },
         h('span', { className: 'dside-lead' }, lead),
-        h('span', { className: 'dside-node-icon' }, isDir ? (expanded ? '📂' : '📁') : iconFor(node)),
+        // 文件夹不画图标：左边的折叠箭头已经表明它是目录（2026-10-22 用户要求），文件仍留图标
+        isDir ? null : h('span', { className: 'dside-node-icon' }, iconFor(node)),
         h('span', { className: 'dside-node-name' }, node.name),
       );
 
@@ -4624,7 +4636,7 @@ window.__ModuleLoader__.load({
       }
       return h('div', { className: 'dside-node dside-node-new' },
         h('span', { className: 'dside-lead' }, lead),
-        h('span', { className: 'dside-node-icon' }, props.kind === 'dir' ? '📁' : '📄'),
+        props.kind === 'dir' ? null : h('span', { className: 'dside-node-icon' }, '📄'),
         h('input', {
           ref: ref,
           className: 'dside-inline-input',
