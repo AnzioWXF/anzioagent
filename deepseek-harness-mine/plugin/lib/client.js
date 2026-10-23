@@ -46,10 +46,10 @@ window.__ModuleLoader__.load({
       // 标题栏品牌标记（工作空间路径左边那一小块，2026-09-20 用户要求）
       '.dside-titlebar-logo{width:18px;height:18px;flex:none;border-radius:5px;display:block;user-select:none;-webkit-user-drag:none;}',
       // 版本徽标 / 更新入口（AnzioAgent 壳内可见）
-      '.dside-upd{flex:none;border:1px solid transparent;background:none;border-radius:8px;padding:5px 9px;font:inherit;font-size:11px;color:var(--dsw-alias-label-tertiary);cursor:pointer;}',
+      '.dside-upd{display:inline-flex;align-items:center;gap:5px;flex:none;border:1px solid transparent;background:none;border-radius:8px;padding:5px 9px;font:inherit;font-size:11px;color:var(--dsw-alias-label-tertiary);cursor:pointer;}',
       '.dside-upd:hover{background:var(--dsw-alias-interactive-bg-hover);}',
       '.dside-upd.has{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-state-business-primary);font-weight:600;}',
-      '.dside-btn{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:4px 12px;font:inherit;font-size:12px;cursor:pointer;transition:background var(--ds-transition-duration-fast) var(--ds-ease-in-out),border-color var(--ds-transition-duration-fast) var(--ds-ease-in-out);}',
+      '.dside-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:4px 12px;font:inherit;font-size:12px;cursor:pointer;transition:background var(--ds-transition-duration-fast) var(--ds-ease-in-out),border-color var(--ds-transition-duration-fast) var(--ds-ease-in-out);}',
       '.dside-btn:hover{background:var(--dsw-alias-interactive-bg-hover);border-color:var(--dsw-alias-border-l3);}',
       // 白字写死，不吃 label-primary-foreground：那个 token 是"贴在反色块上的前景色"，
       // 深色主题下官方值近黑（见下面 token 块的说明）——跟着它会变成蓝底黑字。
@@ -58,6 +58,12 @@ window.__ModuleLoader__.load({
       '.dside-btn.danger{background:transparent;border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary);}',
       '.dside-btn.danger:hover{background:var(--dsw-alias-interactive-bg-hover-danger);}',
       '.dside-btn.small{padding:2px 10px;font-size:11px;border-radius:6px;}',
+      // 纯图标按钮（2026-10-23 用户要求：右栏顶部「新对话 / 历史对话」去掉文字，跟 CodeBuddy 右上角一样）。
+      // 24px 是 CodeBuddy 那排的实测手感：再小点不准、再大就跟下方的会话选择器抢视线。
+      // 常态无底色无边框，hover / 展开态才出底色 —— 常驻边框会让标题栏看着碎。
+      '.dside-iconbtn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;background:transparent;color:var(--dsw-alias-label-secondary);border:none;border-radius:6px;cursor:pointer;transition:background var(--ds-transition-duration-fast) var(--ds-ease-in-out),color var(--ds-transition-duration-fast) var(--ds-ease-in-out);}',
+      '.dside-iconbtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+      '.dside-iconbtn.on{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-state-business-primary);}',
       '.dside-main{flex:1;display:flex;min-height:0;}',
       // ── 底部整行（2026-10-12「路二」第一步）：官方右栏（终端 / 预览 / 浏览器 / 改动审阅）摆这儿 ──
       // 高度先写死（验证阶段），几何/可拖拽等观感定了再按 layout 那套做。
@@ -87,12 +93,20 @@ window.__ModuleLoader__.load({
       'body.dside-resizing-row *{cursor:ns-resize !important;}',
       // ⑰ 左侧面板外层（宽度由拖拽状态给，内层三种面板都撑满它）+ 右侧面板与终端都要当手柄的定位父级
       '.dside-leftpanel{flex:none;position:relative;display:flex;flex-direction:column;min-height:0;}',
-      '.dside-explorer{width:100%;flex:1;min-width:0;background:var(--dsw-alias-bg-layer-1);border-right:1px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;min-height:0;}',
+      // 左面板右边界（2026-10-23 用户报"没有分隔线、中面板黑了分不清"）。
+    // ⚠ box-sizing 必须是 border-box：content-box 下 `width:100%` + 1px 右边框 = 比父容器宽 1px，
+    //   那 1px 正好落进右边中面板的地盘、被它盖住 —— 线上一直在样式表里，画出来却看不见（量像素才确认）。
+    // 颜色同时从 l1 提到 l3：面板底 #0D0D0F 与编辑器/终端的纯黑太近，l1(#242428) 本来也不够分。
+    '.dside-explorer{box-sizing:border-box;width:100%;flex:1;min-width:0;background:var(--dsw-alias-bg-layer-1);border-right:1px solid var(--dsw-alias-border-l3);display:flex;flex-direction:column;min-height:0;}',
       // ── 左侧活动栏（VSCode activity bar）+ 「操作 / 设置」面板的区块（2026-09-20 用户要求）──
       '.dside-activitybar{width:48px;flex:none;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;background:var(--dsw-alias-bg-layer-1);border-right:1px solid var(--dsw-alias-border-l1);}',
+      '.dside-root{--dside-accent:#29B6F6;}',
+      // SVG 默认按基线对齐会偏上；vertical-align:middle 不是居中（它对齐的是「基线 + 半个 x-height」），
+      // 中文行里会偏下。用负 em 值做基准微调，图标库通行的做法。
+      '.dside-root svg{vertical-align:-0.22em;}',
       '.dside-actbtn{position:relative;width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:none;border:none;border-radius:8px;cursor:pointer;font-size:18px;line-height:1;color:var(--dsw-alias-label-secondary);transition:background var(--ds-transition-duration-fast) var(--ds-ease-in-out);}',
       '.dside-actbtn:hover{background:var(--dsw-alias-interactive-bg-hover);}',
-      '.dside-actbtn.on{color:var(--dsw-alias-label-primary);}',
+      '.dside-actbtn.on{color:var(--dside-accent);}',
       '.dside-actbtn.on::before{content:"";position:absolute;left:-8px;top:9px;bottom:9px;width:2px;border-radius:1px;background:var(--dsw-alias-state-business-primary);}',
       '.dside-activitybar .sp{flex:1;}',
       '.dside-block{padding:2px 10px 10px;}',
@@ -101,7 +115,7 @@ window.__ModuleLoader__.load({
       '.dside-block-row:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
       '.dside-block-row.off{opacity:.45;cursor:default;}',
       '.dside-block-row.off:hover{background:none;color:var(--dsw-alias-label-secondary);}',
-      '.dside-block-icon{flex:none;width:16px;text-align:center;font-size:13px;}',
+      '.dside-block-icon{flex:none;width:18px;display:flex;align-items:center;justify-content:center;}',
       '.dside-block-label{flex:1;overflow:hidden;text-overflow:ellipsis;}',
       '.dside-block-keys{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary);font-family:var(--ds-font-family-code);}',
       '.dside-fontbtn{flex:none;width:20px;height:20px;padding:0;border-radius:5px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);cursor:pointer;font-size:12px;line-height:1;}',
@@ -134,7 +148,7 @@ window.__ModuleLoader__.load({
       '.dside-node{display:flex;align-items:center;gap:6px;padding:4px 8px;margin:1px 0;cursor:pointer;white-space:nowrap;user-select:none;border-radius:6px;}',
       '.dside-node:hover{background:var(--dsw-alias-interactive-bg-hover);}',
       '.dside-node.sel{background:var(--dsw-alias-interactive-bg-active);color:var(--dsw-alias-label-primary);}',
-      '.dside-node-icon{flex:none;font-size:13px;}',
+      '.dside-node-icon{flex:none;width:22px;font-size:10px;font-weight:600;letter-spacing:-.02em;text-align:center;display:flex;align-items:center;justify-content:center;font-family:Consolas,"Cascadia Mono",monospace;}',
       '.dside-node-name{overflow:hidden;text-overflow:ellipsis;}',
       '.dside-node-loading{color:var(--dsw-alias-label-tertiary);padding:3px 8px;font-size:12px;}',
       // ── 反悔药：工作区快照面板（列表行 / 状态栏入口）──
@@ -189,7 +203,8 @@ window.__ModuleLoader__.load({
       '.dside-tab.pinned .dside-tab-name{}',
       '.dside-tab.pinned.compact{max-width:60px;padding:0 6px;gap:4px;}',
       '.dside-tab.pinned.compact .dside-tab-name{display:none;}',
-      '.dside-tab-icon{flex:none;font-size:12px;line-height:1;}',
+      '.dside-tab-icon{flex:none;font-size:12px;line-height:1;display:flex;align-items:center;}',
+      '.dside-tab-icon svg,.dside-actbtn svg{display:block;}',
       '.dside-tab-unpin{flex:none;width:16px;height:16px;display:flex;align-items:center;justify-content:center;border:none;border-radius:4px;background:transparent;font-size:10px;line-height:1;cursor:pointer;opacity:0;transition:opacity var(--ds-transition-duration-fast) var(--ds-ease-in-out);}',
       '.dside-tab:hover .dside-tab-unpin{opacity:1;}',
       '.dside-tab-unpin:hover{background:var(--dsw-alias-interactive-bg-hover);}',
@@ -317,7 +332,7 @@ window.__ModuleLoader__.load({
     '.dside-mdpane-msg{padding:24px;color:var(--dsw-alias-label-tertiary);font-size:13px;}',
     '.dside-mdpane-toc-empty{padding:10px 12px;color:var(--dsw-alias-label-quaternary);font-size:12px;line-height:1.7;}',
     '.dside-keys-head{flex:none;display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);}',
-    '.dside-keys-title{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);flex:none;}',
+    '.dside-keys-title{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);flex:none;}',
     '.dside-keys-search{flex:1;min-width:80px;max-width:420px;height:26px;padding:0 9px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-size:12px;outline:none;}',
     '.dside-keys-search:focus{border-color:var(--dsw-alias-state-business-primary);}',
     '.dside-keys-tip{flex:none;padding:6px 12px;font-size:11px;color:var(--dsw-alias-label-tertiary);border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-2);}',
@@ -561,7 +576,7 @@ window.__ModuleLoader__.load({
       '.dside-side{width:704px;flex:none;box-sizing:border-box;position:relative;background:var(--dsw-alias-bg-layer-1);border-left:1px solid var(--dsw-alias-border-l1);display:flex;flex-direction:column;min-height:0;}',
       // 2026-09-21 用户要求：右侧不再有「Agent 助手 / 插件」标签栏，永远 Agent 面板（插件搬到左侧活动栏）
       // 标签栏下方的操作栏（2026-09-17 用户要求：「新对话」按钮放这儿）
-      '.dside-side-actions{flex:none;display:flex;align-items:center;gap:8px;padding:7px 10px;border-bottom:1px solid var(--dsw-alias-border-l1);}',
+      '.dside-side-actions{flex:none;display:flex;align-items:center;justify-content:flex-end;gap:4px;padding:4px 8px;border-bottom:1px solid var(--dsw-alias-border-l1);}',
       '.dside-side-actions-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--dsw-alias-label-tertiary);text-align:right;}',
       '.dside-agent-head{flex:none;display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--dsw-alias-border-l1);}',
       '.dside-agent-select{flex:1;min-width:0;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:3px 6px;font:inherit;}',
@@ -649,14 +664,14 @@ window.__ModuleLoader__.load({
       '.dside-hit{color:var(--dsw-alias-state-success-primary);background:var(--dsw-alias-state-success-tertiary);border-radius:3px;padding:0 2px;}',
       '.dside-session.res:hover .dside-session-snippet{color:var(--dsw-alias-label-secondary);}',
       // ── 工具行 / 思考折叠 / 停止标记 ────────────────────────
-      '.dside-toolrow{padding:2px 12px;font-size:10px;color:var(--dsw-alias-label-tertiary);font-family:var(--ds-font-family-code);}',
+      '.dside-toolrow{display:flex;align-items:center;gap:4px;padding:2px 12px;font-size:10px;color:var(--dsw-alias-label-tertiary);font-family:var(--ds-font-family-code);}',
       '.dside-toolrow.err{color:var(--dsw-alias-state-error-primary);}',
-      '.dside-reason-toggle{border:none;background:none;color:var(--dsw-alias-label-tertiary);font-size:10px;cursor:pointer;padding:2px 0;}',
+      '.dside-reason-toggle{display:inline-flex;align-items:center;gap:4px;border:none;background:none;color:var(--dsw-alias-label-tertiary);font-size:10px;cursor:pointer;padding:2px 0;}',
       '.dside-reason-toggle:hover{color:var(--dsw-alias-label-secondary);}',
       '.dside-reason-body{margin:4px 0;padding:6px 8px;background:var(--dsw-alias-bg-base);border-left:2px solid var(--dsw-alias-border-l3);border-radius:4px;font-size:11px;color:var(--dsw-alias-label-secondary);white-space:pre-wrap;word-break:break-word;max-height:160px;overflow:auto;}',
       '.dside-msg.stopped{opacity:.75;border:1px dashed var(--dsw-alias-border-l3);}',
       '.dside-older{align-self:center;margin-bottom:8px;opacity:.8;}',
-      '.dside-stop-note{display:block;margin-top:4px;font-size:10px;color:var(--dsw-alias-label-tertiary);}',
+      '.dside-stop-note{display:flex;align-items:center;gap:4px;margin-top:4px;font-size:10px;color:var(--dsw-alias-label-tertiary);}',
       '.dside-msg.partial{opacity:.85;}',
       '.dside-plugins{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px;min-height:0;}',
       '.dside-plugin{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 12px;box-shadow:0 1px 2px rgba(0,0,0,.06);}',
@@ -683,6 +698,7 @@ window.__ModuleLoader__.load({
       '.dside-plugin-badge.client{background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-state-business-primary);border-color:transparent;}',
       // 设置 → 代码导航：原来那张卡片（.dside-codenav-*）已撤（会闪，见 settingsBlocks 注释），
       // 现在这格是一行静态说明；「装了哪些语言组件」搬到【编辑器设置】页用 .dside-eset-* 样式显示。
+      '.dside-prob{display:inline-flex;align-items:center;gap:4px;border:0;background:none;color:inherit;font:inherit;cursor:pointer;padding:0;}',
       '.dside-statusbar{height:26px;flex:none;display:flex;align-items:center;gap:16px;padding:0 14px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:11px;border-top:1px solid var(--dsw-alias-border-l1);}',
       '.dside-statusbar .sp{color:var(--dsw-alias-label-tertiary);}',
       // ── ③ 命令面板 / 快速打开 / 全局搜索（overlay）────────────
@@ -791,6 +807,32 @@ window.__ModuleLoader__.load({
       '.dside-dialog-text{font-size:12px;color:var(--dsw-alias-label-secondary);line-height:1.6;}',
       '.dside-dialog-list{margin-top:8px;max-height:150px;overflow:auto;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:6px 8px;background:var(--dsw-alias-bg-base);}',
       '.dside-dialog-file{font-family:var(--ds-font-family-code);font-size:11px;color:var(--dsw-alias-label-secondary);line-height:1.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+
+      // ── 平台原生界面圆角对齐天工口径（2026-10-23 用户拍板 B 档）──────────────
+      // 平台输入卡 28px、发送/附件是正圆、对话流大卡 16~20px —— 配色早被我方变量接管了，
+      // "圆"是输入框跟天工最不搭的唯一原因。范围只到「输入区 + 对话流大卡」，平台弹窗/浮层/菜单、
+      // 对话流小控件（提问选项行 12px、几个正圆小钮）一律不碰。调研与取舍见 00memory 天工 baseline §I。
+      // 挂点只认平台 data 属性（类名带构建哈希，跟版会变）；[class*=] 只当卡片兜底 ——
+      // 平台 CSS Modules 保留 local 名，变的只是哈希，所以兜底跟版后仍命中同一批元素。
+      // 输入区改的是**卡片上的变量**而不是全局 token：只影响卡片子树，不会连带平台弹窗一起变方。
+      '[data-composer-card]{--dsw-radius-panel:8px;border-radius:8px !important;}',
+      '[data-composer-card] button{border-radius:6px !important;}',
+      '[data-composer-dock]{border-radius:8px !important;}',
+      // 对话流 · 用户消息气泡 / 附件文件卡（20px）
+      '[data-chat-flow-kind="user"] [class*="bubble"],[data-chat-flow-kind="steering"] [class*="bubble"],'
+        + '[data-chat-flow-kind="user"] [class*="fileCard"]{border-radius:8px !important;}',
+      // 对话流 · 回合「过程折叠」卡（20px，0.5px 描边那整块）
+      '[data-turn-trigger]{border-radius:8px !important;}',
+      // 对话流 · 工具调用卡与其内部详情卡 / 工具内提问卡 / bash 报错块（16px）
+      '[data-tool],[data-tool] [class*="root"],[data-tool] [class*="card"],[data-tool] [class*="ioCard"]'
+        + '{border-radius:8px !important;}',
+      // 对话流 · 斜杠命令输出卡（16px）、上下文注入展开块（12px）；助手正文无背景，命中也不变样
+      '[data-chat-flow-kind] [class*="body"]{border-radius:8px !important;}',
+      // 对话流 · 用户提问（接管卡 20px、自由作答块 16px、已回答回显气泡 20px）
+      '[data-question-key] [class*="card"],[data-question-key] [class*="customBlock"],'
+        + '[data-question-reply] [class*="bubble"]{border-radius:8px !important;}',
+      // 对话流 · 计划评审卡（20px）
+      '[data-plan-review-key] [class*="card"]{border-radius:8px !important;}',
     ].join('\n');
     // 注入：标签已存在则覆盖内容 —— 插件热重载（改样式/回滚样式）后页面能自动跟随，不必手动刷新
     if (typeof document !== 'undefined') {
@@ -1250,20 +1292,44 @@ window.__ModuleLoader__.load({
 
     // ── 工具 ─────────────────────────────────────────────────────
     var ICONS = {
-      js: 'JS', ts: 'TS', json: '{}', md: 'M↓', yml: 'YM', yaml: 'YM',
-      css: '#', html: '<>', txt: 'TX', py: 'PY', toml: 'TM',
+      js: 'JS', mjs: 'JS', cjs: 'JS', jsx: 'JSX', ts: 'TS', tsx: 'TSX', vue: 'VUE',
+      json: '{}', jsonc: '{}', md: 'M↓', markdown: 'M↓', txt: 'TX', log: 'LOG',
+      yml: 'YM', yaml: 'YM', toml: 'TM', ini: 'INI', env: 'ENV', conf: 'CFG', cfg: 'CFG',
+      css: '#', scss: '#', less: '#',
+      html: '<>', htm: '<>', xml: 'XML', svg: 'SVG',
+      sh: 'SH', bash: 'SH', bat: 'BAT', cmd: 'BAT', ps1: 'PS',
+      py: 'PY', go: 'GO', rs: 'RS', java: 'JV', rb: 'RB', php: 'PHP', lua: 'LUA',
+      c: 'C', h: 'H', cpp: 'C++', hpp: 'C++', cs: 'CS', swift: 'SW', kt: 'KT',
+      sql: 'SQL', lock: 'LCK', zip: 'ZIP', tar: 'TAR', gz: 'GZ',
     };
+    // 文件类型标记用文字码而不是图标：统一宽度后一列对得齐，也不会跟线条图标抢注意力。
+    // 不认识 / 没有扩展名的统一给一个中性点，不猜它是文本还是二进制。
     function iconFor(node) {
-      if (node.type === 'directory') return '📁';
-      if (node.type !== 'file') return '❔';
+      if (node.type === 'directory') return '';
+      if (node.type !== 'file') return '·';
       var mk = mediaKindOf(node.name);
-      if (mk === 'image') return '🖼';
-      if (mk === 'audio') return '🎵';
-      if (mk === 'video') return '🎬';
+      if (mk === 'image') return 'IMG';
+      if (mk === 'audio') return '♪';
+      if (mk === 'video') return '▶';
       var dot = node.name.lastIndexOf('.');
-      if (dot <= 0) return '📄';
-      return ICONS[node.name.slice(dot + 1).toLowerCase()] || '📄';
+      if (dot <= 0) return '·';
+      return ICONS[node.name.slice(dot + 1).toLowerCase()] || '·';
     }
+    // 文件树/标签用的带色标记：能用一个短记号说清类型就用字母，说不清的用图标（SQL、压缩包、音视频）
+    function fileMarkOf(node) {
+      if (!node || node.type !== 'file') return FILE_MARK_FALLBACK;
+      var dot = node.name.lastIndexOf('.');
+      if (dot <= 0) return FILE_MARK_FALLBACK;
+      return FILE_MARK[node.name.slice(dot + 1).toLowerCase()] || FILE_MARK_FALLBACK;
+    }
+    function markNode(m, size, cls) {
+      return h('span', { className: cls || 'dside-node-icon', style: { color: m.c } },
+        m.i ? ticon(m.i, size || 14) : m.t);
+    }
+    function fileMarkNode(node, size, cls) {
+      return markNode(fileMarkOf(node), size, cls);
+    }
+
     function formatTime(t) {
       if (typeof t !== 'number') return '';
       var d = new Date(t);
@@ -1448,7 +1514,11 @@ window.__ModuleLoader__.load({
               onMouseEnter: function () { setSel(index); },
               onClick: function () { if (props.onPick) props.onPick(item); },
             },
-              h('span', { className: 'dside-palette-item-icon' }, d.icon || ''),
+              // 三种来源共用这一格：文件标记（带色）、图标键（Tabler）、还顺手兼容没换掉的裸字符
+          h('span', { className: 'dside-palette-item-icon', style: d.mark ? { color: d.mark.c } : null },
+            d.mark
+              ? (d.mark.i ? ticon(d.mark.i, 13) : d.mark.t)
+              : (d.icon ? (TABLER_PATHS[d.icon] ? ticon(d.icon, 14) : d.icon) : '')),
               h('span', { className: 'dside-palette-item-title' }, d.title),
               d.detail ? h('span', { className: 'dside-palette-item-detail' }, d.detail) : null,
             ));
@@ -2075,13 +2145,13 @@ window.__ModuleLoader__.load({
         h('div', { className: 'dside-ssh-head' },
           h('span', { className: 'ttl' }, title),
           h('span', { className: 'st' }, status),
-          open ? h('button', { className: 'dside-btn small', title: '新开一个终端', onClick: openTerm }, '＋ 终端') : null,
+          open ? h('button', { className: 'dside-btn small', title: '新开一个终端', onClick: openTerm }, ticon('plus', 13), '终端') : null,
           open ? h('button', { className: 'dside-btn small', title: '断开这台服务器', onClick: props.onDisconnect }, '断开') : null,
         ),
         (open && terms.length)
           ? h('div', { className: 'dside-ssh-tabs' },
               terms.map(function (t) {
-                var label = t.owner === 'agent' ? '⚡ Agent' : ('终端 ' + t.n);
+                var label = t.owner === 'agent' ? 'Agent' : ('终端 ' + t.n);
                 return h('div', {
                   key: t.id,
                   className: 'dside-ssh-tab' + (active === t.id ? ' on' : '') + (t.owner === 'agent' ? ' agent' : ''),
@@ -2094,7 +2164,7 @@ window.__ModuleLoader__.load({
                   h('button', {
                     className: 'x', title: '关闭这个终端（会结束里面跑的东西）',
                     onClick: function (e) { e.stopPropagation(); closeTerm(t.id) },
-                  }, '✕'),
+                  }, ticon('close', 11)),
                 );
               }),
             )
@@ -2167,8 +2237,8 @@ window.__ModuleLoader__.load({
             },
               h('span', { className: 'dside-srv-dot ' + dotCls }),
               h('span', { className: 'dside-srv-name' }, s.name || s.host),
-              h('button', { className: 'dside-srv-act', title: '编辑这台', onClick: function (e) { e.stopPropagation(); startEdit(s) } }, '✎'),
-              h('button', { className: 'dside-srv-act', title: '从清单移除', onClick: function (e) { e.stopPropagation(); if (props.onRemove) props.onRemove(s.id) } }, '🗑'),
+              h('button', { className: 'dside-srv-act', title: '编辑这台', onClick: function (e) { e.stopPropagation(); startEdit(s) } }, ticon('edit', 13)),
+              h('button', { className: 'dside-srv-act', title: '从清单移除', onClick: function (e) { e.stopPropagation(); if (props.onRemove) props.onRemove(s.id) } }, ticon('trash', 13)),
               h('span', { className: 'dside-srv-sub' }, sub),
             );
           }),
@@ -2216,7 +2286,7 @@ window.__ModuleLoader__.load({
               ),
             )
           : h('div', { className: 'dside-srv-actions', style: { padding: '8px' } },
-              h('button', { className: 'dside-btn small', onClick: function () { setShowForm(true) } }, '＋ 添加服务器'),
+              h('button', { className: 'dside-btn small', onClick: function () { setShowForm(true) } }, ticon('plus', 13), '添加服务器'),
             ),
       );
     }
@@ -2280,24 +2350,24 @@ window.__ModuleLoader__.load({
 
       return h('div', { className: 'dside-files' + (hidden ? ' hidden' : ''), style: { height: Math.round(props.height || 260) + 'px' } },
         h('div', { className: 'dside-files-bar' },
-          h('button', { className: 'dside-pane-act', title: '上一级', disabled: path === '/', onClick: up }, '↑'),
-          h('button', { className: 'dside-pane-act', title: '刷新', onClick: function () { load(path) } }, '⟳'),
-          h('button', { className: 'dside-pane-act', title: '新建目录', onClick: function () { if (props.onNewDir) props.onNewDir(path) } }, '＋'),
-          h('button', { className: 'dside-pane-act', title: '上传文件到当前目录（可多选）', onClick: function () { if (props.onUpload) props.onUpload(path) } }, '⬆'),
-          h('button', { className: 'dside-pane-act', title: '上传整个目录（保留子目录结构）', onClick: function () { if (props.onUploadDir) props.onUploadDir(path) } }, '⇪'),
+          h('button', { className: 'dside-pane-act', title: '上一级', disabled: path === '/', onClick: up }, ticon('arrow-up', 14)),
+          h('button', { className: 'dside-pane-act', title: '刷新', onClick: function () { load(path) } }, ticon('refresh', 14)),
+          h('button', { className: 'dside-pane-act', title: '新建目录', onClick: function () { if (props.onNewDir) props.onNewDir(path) } }, ticon('plus', 14)),
+          h('button', { className: 'dside-pane-act', title: '上传文件到当前目录（可多选）', onClick: function () { if (props.onUpload) props.onUpload(path) } }, ticon('upload', 14)),
+          h('button', { className: 'dside-pane-act', title: '上传整个目录（保留子目录结构）', onClick: function () { if (props.onUploadDir) props.onUploadDir(path) } }, ticon('upload', 14)),
           h('button', {
             className: 'dside-pane-act', title: '下载选中的文件到本机', disabled: !sel || sel.dir,
             onClick: function () { if (sel && !sel.dir && props.onDownload) props.onDownload(fullPathOf(sel.name)) },
-          }, '⬇'),
-          h('button', { className: 'dside-pane-act', title: '下载当前目录（连同子目录）到本机', onClick: function () { if (props.onDownloadDir) props.onDownloadDir(path) } }, '⇩'),
+          }, ticon('download', 14)),
+          h('button', { className: 'dside-pane-act', title: '下载当前目录（连同子目录）到本机', onClick: function () { if (props.onDownloadDir) props.onDownloadDir(path) } }, ticon('download', 14)),
           h('button', {
             className: 'dside-pane-act', title: '重命名', disabled: !sel,
             onClick: function () { if (sel && props.onRename) props.onRename(fullPathOf(sel.name), sel.name) },
-          }, '✎'),
+          }, ticon('edit', 14)),
           h('button', {
             className: 'dside-pane-act', title: '删除（不可撤销）', disabled: !sel,
             onClick: function () { if (sel && props.onDelete) props.onDelete(fullPathOf(sel.name), !!sel.dir) },
-          }, '🗑'),
+          }, ticon('trash', 14)),
           h('div', { className: 'dside-files-path' },
             crumbs.map(function (c, i) {
               return h('span', { key: c.path },
@@ -2306,7 +2376,7 @@ window.__ModuleLoader__.load({
               );
             }),
           ),
-          props.onBackToTerm ? h('button', { className: 'dside-btn small', title: '回到服务器终端', onClick: props.onBackToTerm }, '🖥 回终端') : null,
+          props.onBackToTerm ? h('button', { className: 'dside-btn small', title: '回到服务器终端', onClick: props.onBackToTerm }, ticon('terminal', 13), '回终端') : null,
           h('span', { className: 'dside-srv-sub' }, entries.length ? (entries.length + ' 项') : ''),
         ),
         msg ? h('div', { className: 'dside-files-msg' }, msg) : null,
@@ -2322,7 +2392,7 @@ window.__ModuleLoader__.load({
                 if (props.onOpenFile) props.onOpenFile(fullPathOf(e.name));
               },
             },
-              h('span', { className: 'dside-files-ico' }, e.dir ? '📁' : '📄'),
+              h('span', { className: 'dside-files-ico' }, e.dir ? ticon('folder', 14) : ticon('file', 14)),
               h('span', { className: 'dside-files-name' }, e.name),
               h('span', { className: 'dside-files-size' }, e.dir ? '' : fmtSize(e.size)),
               h('span', { className: 'dside-files-time' }, fmtTime(e.mtime)),
@@ -2392,7 +2462,7 @@ window.__ModuleLoader__.load({
               className: 'dside-term-li-kill',
               title: '结束这个终端（会杀掉里面正在跑的进程）',
               onClick: function (e) { e.stopPropagation(); if (props.onKill) props.onKill(t.tid); },
-            }, '🗑'),
+            }, ticon('trash', 14)),
           ));
         })(tabs[i]);
       }
@@ -2411,13 +2481,13 @@ window.__ModuleLoader__.load({
             h('button', {
               className: 'dside-term-tab' + (pane === 'term' ? ' on' : ''),
               onClick: function () { if (props.onPane) props.onPane('term'); },
-            }, '🖥 终端'),
+            }, ticon('terminal', 13), '终端'),
             h('button', {
               className: 'dside-term-tab' + (pane === 'keys' ? ' on' : ''),
               title: 'Agent 键盘映射：Agent 在内置浏览器里打字时，这里实时亮键',
               onClick: function () { if (props.onPane) props.onPane('keys'); },
             },
-              '⌨ 键盘',
+              ticon('keyboard', 13), '键盘',
               (props.kbFlash && pane !== 'keys') ? h('span', { className: 'dside-dot dirty' }) : null),
           ),
           h('span', { className: 'st' }, statusText),
@@ -2426,7 +2496,7 @@ window.__ModuleLoader__.load({
           h('button', {
             className: 'dside-btn', title: '隐藏面板（终端继续在后台跑）',
             onClick: function () { if (props.onHide) props.onHide(); },
-          }, '✕'),
+          }, ticon('close', 14)),
         ),
         // ⚠ 两页都常驻、只切显示：切到「⌨ 键盘」时若把终端那一坨卸载，所有 PTY 会被连带关掉
         //   （这正是这次要修的病）。键盘页同理，别让它反复重建。
@@ -2446,7 +2516,7 @@ window.__ModuleLoader__.load({
                       }));
                     })
                   : h('div', { className: 'dside-term-empty' },
-                      props.restoring ? '正在接回上次的终端…' : '还没有终端 —— 点右下角「＋ 新建终端」'),
+                      props.restoring ? '正在接回上次的终端…' : '还没有终端 —— 点右下角「新建终端」'),
               ),
               h('div', { className: 'dside-term-list', style: { width: Math.round(listW) + 'px' } },
                 h('div', {
@@ -2458,7 +2528,7 @@ window.__ModuleLoader__.load({
                 h('button', {
                   className: 'dside-term-new', title: '新建终端（Ctrl+Shift+`）',
                   onClick: function () { if (props.onNew) props.onNew(); },
-                }, '＋ 新建终端'),
+                }, ticon('plus', 13), '新建终端'),
               ),
             ),
         h('div', { className: 'dside-kbwrap' + (pane === 'keys' ? '' : ' hidden') }, h(KeyboardPanel, { kb: props.kb })),
@@ -2663,7 +2733,7 @@ window.__ModuleLoader__.load({
             return function () { if (props.onJump) props.onJump(p, l, c); };
           })(it.path, it.line, it.col),
         },
-          h('span', { className: 'dside-problem-sev' }, it.sev === 'error' ? '✕' : '⚠'),
+          h('span', { className: 'dside-problem-sev' }, it.sev === 'error' ? ticon('close', 11) : ticon('alert', 11)),
           h('span', { className: 'dside-problem-pos' }, it.line + ':' + it.col),
           h('span', { className: 'dside-problem-msg' }, it.msg),
         ));
@@ -2676,7 +2746,7 @@ window.__ModuleLoader__.load({
             h('span', { className: 'dside-palette-hint' },
               (scan.loading ? '正在扫描整个项目…' : (scan.done ? '全项目已扫 ' + scan.files + ' 个文件 · ' : ''))
               + 'Esc 关闭 · 点条目跳转'),
-            h('button', { className: 'dside-btn', onClick: runScan, disabled: scan.loading }, '⟳ 重扫'),
+            h('button', { className: 'dside-btn', onClick: runScan, disabled: scan.loading }, ticon('refresh', 13), '重扫'),
           ),
           h('div', { className: 'dside-problems-list' },
             rows.length ? rows : h('div', { className: 'dside-node-loading' }, '没有错误或警告'),
@@ -2873,7 +2943,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'dside-overlay', onClick: function () { if (props.onClose) props.onClose(); } },
         h('div', { className: 'dside-search-card', onClick: function (e) { e.stopPropagation(); } },
           h('div', { className: 'dside-search-head' },
-            h('span', null, '🔍'),
+            h('span', null, ticon('search', 14)),
             h('input', {
               ref: inputRef, className: 'dside-search-input',
               placeholder: '搜索工作空间全部文件…',
@@ -2991,7 +3061,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'dside-overlay', onClick: function (e) { if (e.target === e.currentTarget) props.onClose(); } },
         h('div', { className: 'dside-search-card' },
           h('div', { className: 'dside-search-head' },
-            h('span', null, '⏱'),
+            h('span', null, ticon('clock', 14)),
             h('b', null, '工作区快照 · 回撤 / 还原'),
             h('span', { className: 'dside-snap-store' }, storeText),
             h('button', { className: 'dside-btn small primary', disabled: busy, onClick: takeNow }, busy ? '保存中…' : '立即快照'),
@@ -3815,12 +3885,12 @@ window.__ModuleLoader__.load({
 
     function ActivityBar(props) {
       var top = [
-        { id: 'explorer', icon: '📁', label: '资源管理器' },
+        { id: 'explorer', icon: 'explorer', label: '资源管理器' },
         // 2026-10-21：服务器控制台。跟另外三颗同一套交互（点谁切谁、再点收起），
         // 区别只在于它还把中栏换成服务器终端、底栏换成服务器资源管理器。
-        { id: 'server', icon: '🌐', label: '服务器控制台' },
-        { id: 'actions', icon: '⚡', label: '操作' },
-        { id: 'plugins', icon: '🧩', label: '插件' },   // 2026-09-21：从右侧面板搬过来的
+        { id: 'server', icon: 'server', label: '服务器控制台' },
+        { id: 'actions', icon: 'run', label: '操作' },
+        { id: 'plugins', icon: 'plugins', label: '插件' },   // 2026-09-21：从右侧面板搬过来的
       ];
       function btn(it) {
         var on = props.active === it.id && props.panelOpen;
@@ -3829,12 +3899,12 @@ window.__ModuleLoader__.load({
           className: 'dside-actbtn' + (on ? ' on' : ''),
           title: it.label + (on ? '（再点一次收起）' : ''),
           onClick: function () { props.onPick(it.id); },
-        }, it.icon);
+        }, ticon(it.icon, 20));
       }
       return h('div', { className: 'dside-activitybar' },
         top.map(btn),
         h('span', { className: 'sp' }),
-        btn({ id: 'settings', icon: '⚙️', label: '设置' }),
+        btn({ id: 'settings', icon: 'settings', label: '设置' }),
       );
     }
 
@@ -3852,7 +3922,8 @@ window.__ModuleLoader__.load({
                 title: it.title || it.label || '',
                 onClick: function () { if (!it.disabled && it.run) it.run(); },
               },
-                h('span', { className: 'dside-block-icon' }, it.icon || ''),
+                h('span', { className: 'dside-block-icon' },
+            it.icon ? (TABLER_PATHS[it.icon] ? ticon(it.icon, 15) : it.icon) : ''),
                 h('span', { className: 'dside-block-label' }, it.label),
                 it.keys ? h('span', { className: 'dside-block-keys' }, it.keys) : null,
               );
@@ -3932,7 +4003,7 @@ window.__ModuleLoader__.load({
 
       return h('div', { className: 'dside-keys' },
         h('div', { className: 'dside-keys-head' },
-          h('span', { className: 'dside-keys-title' }, '⌨ 快捷键'),
+          h('span', { className: 'dside-keys-title' }, ticon('keyboard', 14), '快捷键'),
           h('input', {
             className: 'dside-keys-search', placeholder: '搜索命令 / 键位…', value: q,
             onChange: function (ev) { setQ(ev.target.value); },
@@ -3942,7 +4013,7 @@ window.__ModuleLoader__.load({
             title: '把所有改过的键位恢复成默认值',
             onClick: function () { resetAllKeyBindings(); changed(); },
           }, '全部恢复默认' + (overCount ? '（' + overCount + '）' : '')),
-          h('button', { className: 'dside-btn small', title: '回到编辑器（Esc 也能关）', onClick: function () { if (props.onClose) props.onClose(); } }, '✕ 关闭'),
+          h('button', { className: 'dside-btn small', title: '回到编辑器（Esc 也能关）', onClick: function () { if (props.onClose) props.onClose(); } }, ticon('close', 13), '关闭'),
         ),
         h('div', { className: 'dside-keys-tip' },
           rec
@@ -4009,11 +4080,11 @@ window.__ModuleLoader__.load({
         if (props.onApply) props.onApply(v);
       }
       return h('div', { className: 'dside-block-row' },
-        h('span', { className: 'dside-block-icon' }, '🔤'),
+        h('span', { className: 'dside-block-icon' }, ticon('text-size', 14)),
         h('span', { className: 'dside-block-label' }, '编辑器字号'),
         h('span', { className: 'dside-block-keys' }, String(size)),
         h('button', { className: 'dside-fontbtn', title: '减小', onClick: function () { apply(size - 1); } }, '−'),
-        h('button', { className: 'dside-fontbtn', title: '增大', onClick: function () { apply(size + 1); } }, '＋'),
+        h('button', { className: 'dside-fontbtn', title: '增大', onClick: function () { apply(size + 1); } }, ticon('plus', 12)),
       );
     }
 
@@ -4028,7 +4099,7 @@ window.__ModuleLoader__.load({
         }, label);
       }
       return h('div', { className: 'dside-block-row' },
-        h('span', { className: 'dside-block-icon' }, '🔗'),
+        h('span', { className: 'dside-block-icon' }, ticon('link', 14)),
         h('span', { className: 'dside-block-label' }, '点链接时用'),
         h('span', { className: 'dside-lor-opts' },
           opt('system', '系统浏览器', '用 Windows 默认浏览器打开（默认）'),
@@ -4041,7 +4112,7 @@ window.__ModuleLoader__.load({
     function ToggleRow(props) {
       var on = !!props.value;
       return h('div', { className: 'dside-block-row' + (props.disabled ? ' disabled' : ''), title: props.title || null },
-        h('span', { className: 'dside-block-icon' }, props.icon || '⚙️'),
+        h('span', { className: 'dside-block-icon' }, ticon(props.icon || 'settings', 14)),
         h('span', { className: 'dside-block-label' }, props.label),
         h('button', {
           className: 'dside-toggle' + (on ? ' on' : ''),
@@ -4062,27 +4133,27 @@ window.__ModuleLoader__.load({
     // editorPrefsToMonacoOptions 里翻译成 monaco 选项，三处齐了才算接上。
     var EDITOR_PREF_ROWS = [
       { group: '特殊字符提醒（monaco 叫 unicode 高亮）', rows: [
-        { key: 'ambiguousCharacters', icon: '❓', label: '易混淆字符',
+        { key: 'ambiguousCharacters', icon: 'help', label: '易混淆字符',
           desc: '与 ASCII 长得像的字符（中文全角括号））、全角逗号，中文标点等）画黄色提示框。'
             + 'monaco / VSCode 默认开；中文项目里它几乎每行都报，天工默认关，你要就自己打开。',
           monacoKey: 'editor.unicodeHighlight.ambiguousCharacters' },
-        { key: 'invisibleCharacters', icon: '👻', label: '看不见的字符',
+        { key: 'invisibleCharacters', icon: 'ghost', label: '看不见的字符',
           desc: '零宽空格、方向控制符这类肉眼看不见的字符画提示框。它们会真的坑人（复制来的代码里混一个，'
             + '编译报错都找不到原因），天工默认开。',
           monacoKey: 'editor.unicodeHighlight.invisibleCharacters' },
-        { key: 'nonBasicASCII', icon: '🔤', label: '所有非 ASCII 字符',
+        { key: 'nonBasicASCII', icon: 'text-size', label: '所有非 ASCII 字符',
           desc: '连中文汉字一起全部标出来（= 高亮 U+0020–U+007E 之外的一切）。中文项目里等于满屏标记，'
             + 'monaco / VSCode 默认关，天工也默认关。',
           monacoKey: 'editor.unicodeHighlight.nonBasicASCII' },
-        { key: 'includeComments', icon: '💬', label: '注释里也算',
+        { key: 'includeComments', icon: 'message', label: '注释里也算',
           desc: '上面三项的适用范围之一：注释里的字符也提醒（默认开）。',
           monacoKey: 'editor.unicodeHighlight.includeComments' },
-        { key: 'includeStrings', icon: '🔠', label: '字符串里也算',
+        { key: 'includeStrings', icon: 'text-size', label: '字符串里也算',
           desc: '上面三项的适用范围之一：字符串字面量里的字符也提醒（默认开）。',
           monacoKey: 'editor.unicodeHighlight.includeStrings' },
       ] },
       { group: '输入提示（monaco 叫 suggest）', rows: [
-        { key: 'wordSuggest', icon: '🔡', label: '单词建议',
+        { key: 'wordSuggest', icon: 'text-size', label: '单词建议',
           desc: '打字时自动弹出下拉，候选是当前文件里已经出现过的词（不是语言服务的智能补全），按 Enter 会直接打上。'
             + 'monaco / VSCode 默认开；嫌它吵就关掉 —— 关它不影响语言服务的真补全，也不影响 Enter 换行。',
           monacoKey: 'editor.wordBasedSuggestions' },
@@ -4147,9 +4218,9 @@ window.__ModuleLoader__.load({
       }
       return h('div', { className: 'dside-eset' },
         h('div', { className: 'dside-keys-head' },
-          h('span', { className: 'dside-keys-title' }, '⚙️ 编辑器设置'),
+          h('span', { className: 'dside-keys-title' }, ticon('settings', 14), '编辑器设置'),
           h('button', { className: 'dside-btn small', title: '把这一页的所有设置恢复成默认值', onClick: resetAll }, '全部恢复默认'),
-          h('button', { className: 'dside-btn small', title: '回到编辑器（Esc 也能关）', onClick: function () { if (props.onClose) props.onClose(); } }, '✕ 关闭'),
+          h('button', { className: 'dside-btn small', title: '回到编辑器（Esc 也能关）', onClick: function () { if (props.onClose) props.onClose(); } }, ticon('close', 13), '关闭'),
         ),
         h('div', { className: 'dside-keys-tip' },
           '这些是编辑器（monaco）自己的开关，改完立刻生效并存在本机（localStorage）——不用重启，'
@@ -4161,7 +4232,7 @@ window.__ModuleLoader__.load({
           // ⑤：先回答"它现在认哪些语言"，再说"装了哪些包"——用户关心的是前者
           h('div', { className: 'dside-eset-row', key: 'cn-cov' },
             h('div', { className: 'dside-eset-main' },
-              h('div', { className: 'dside-eset-label' }, h('span', { className: 'dside-eset-icon' }, '🧭'), 'Agent 现在能查'),
+              h('div', { className: 'dside-eset-label' }, h('span', { className: 'dside-eset-icon' }, ticon('compass', 14)), 'Agent 现在能查'),
               h('div', { className: 'dside-eset-desc' },
                 '这些语言的代码，Agent 能查"定义在哪 / 全项目谁在引用"，而不是只靠搜索猜。'),
               h('div', { className: 'dside-eset-key' },
@@ -4183,7 +4254,7 @@ window.__ModuleLoader__.load({
           ),
           h('div', { className: 'dside-eset-row', key: 'cn-row' },
             h('div', { className: 'dside-eset-main' },
-              h('div', { className: 'dside-eset-label' }, h('span', { className: 'dside-eset-icon' }, '🧭'), '已装语言组件'),
+              h('div', { className: 'dside-eset-label' }, h('span', { className: 'dside-eset-icon' }, ticon('compass', 14)), '已装语言组件'),
               h('div', { className: 'dside-eset-desc' },
                 'Agent 改代码前会用代码导航查"定义在哪 / 全项目谁在用"。缺哪种语言，它会先问你要不要装'
                 + '（写清装什么包、从哪来、多大），你同意才下载并按官方哈希校验，装完立刻可用。'),
@@ -4291,7 +4362,7 @@ window.__ModuleLoader__.load({
           },
             h('div', { className: 'dside-eset-main' },
               h('div', { className: 'dside-eset-label' },
-                h('span', { className: 'dside-eset-icon' }, g.scope === 'always' ? '🔓' : '🔑'),
+                h('span', { className: 'dside-eset-icon' }, g.scope === 'always' ? ticon('lock', 12) : ticon('key', 12)),
                 grantLabelText(g.key)),
               h('div', { className: 'dside-eset-desc' },
                 (g.scope === 'always' ? '永久放行' : '本对话放行')
@@ -4314,7 +4385,7 @@ window.__ModuleLoader__.load({
             },
               h('div', { className: 'dside-eset-main' },
                 h('div', { className: 'dside-eset-label' },
-                  h('span', { className: 'dside-eset-icon' }, '🚫'),
+                  h('span', { className: 'dside-eset-icon' }, ticon('ban', 14)),
                   grantLabelText(d.key)),
                 h('div', { className: 'dside-eset-desc' },
                   '已拒绝' + (Number(d.count) > 1 ? ' ' + Number(d.count) + ' 次' : '')
@@ -4331,12 +4402,12 @@ window.__ModuleLoader__.load({
             : (status === 'loading' ? '读取中…' : (dirty ? '未保存' : '已保存'))));
       return h('div', { className: 'dside-eset dside-rules' },
         h('div', { className: 'dside-keys-head' },
-          h('span', { className: 'dside-keys-title' }, '📜 Agent 设置'),
+          h('span', { className: 'dside-keys-title' }, ticon('scroll', 14), 'Agent 设置'),
           h('button', {
             className: 'dside-btn small',
             title: '回到编辑器（Esc 也能关）',
             onClick: function () { if (props.onClose) props.onClose(); },
-          }, '✕ 关闭'),
+          }, ticon('close', 13), '关闭'),
         ),
         h('div', { className: 'dside-eset-body' },
           h('div', { className: 'dside-eset-group-title' }, '铁律'),
@@ -4449,7 +4520,7 @@ window.__ModuleLoader__.load({
     }
 
     // VSCode 的折叠箭头画法（照 tree.css：**同一个「下箭头」**，收起时整体 rotate(-90°)，
-    // 而不是换两个图标）—— 线宽 1.2、圆头，视觉与 codicon chevron 一致。
+    // 而不是换两个图标）—— 线宽 1.2、圆头，视觉与 VSCode 的折叠箭头一致。
     function chevronSvg(expanded) {
       return h('svg', {
         className: 'dside-chev' + (expanded ? '' : ' collapsed'),
@@ -4460,26 +4531,535 @@ window.__ModuleLoader__.load({
       }));
     }
 
-    // 资源管理器标题栏那四个动作的图标：**直接取 VSCode 官方 codicon 的 SVG 路径**
-    // （microsoft/vscode-codicons `src/icons/*.svg`，MIT）—— 不自己画、不用 emoji，
-    // 这样和 VSCode 的形状一模一样（§6 58 的"照抄规格"）。
-    var CODICON_PATHS = {
-      'new-file': ['M5 14C4.448 14 4 13.552 4 13V3C4 2.448 4.448 2 5 2H8V4.5C8 5.328 8.672 6 9.5 6H12V6.025C12.344 6.056 12.677 6.121 13 6.213V5.414C13 5.016 12.842 4.635 12.561 4.353L9.647 1.439C9.366 1.158 8.984 1 8.586 1H5C3.895 1 3 1.895 3 3V13C3 14.105 3.895 15 5 15H7.261C7.008 14.693 6.791 14.357 6.607 14H5ZM9 2.207L11.793 5H9.5C9.224 5 9 4.776 9 4.5V2.207ZM11.5 7C9.015 7 7 9.015 7 11.5C7 13.985 9.015 16 11.5 16C13.985 16 16 13.985 16 11.5C16 9.015 13.985 7 11.5 7ZM14 12H12V14C12 14.276 11.776 14.5 11.5 14.5C11.224 14.5 11 14.276 11 14V12H9C8.724 12 8.5 11.776 8.5 11.5C8.5 11.224 8.724 11 9 11H11V9C11 8.724 11.224 8.5 11.5 8.5C11.776 8.5 12 8.724 12 9V11H14C14.276 11 14.5 11.224 14.5 11.5C14.5 11.776 14.276 12 14 12Z'],
-      'new-folder': ['M2 4.5V6H5.58579C5.71839 6 5.84557 5.94732 5.93934 5.85355L7.29289 4.5L5.93934 3.14645C5.84557 3.05268 5.71839 3 5.58579 3H3.5C2.67157 3 2 3.67157 2 4.5ZM1 4.5C1 3.11929 2.11929 2 3.5 2H5.58579C5.98361 2 6.36514 2.15804 6.64645 2.43934L8.20711 4H12.5C13.8807 4 15 5.11929 15 6.5V7.25716C14.6929 7.00353 14.3578 6.78261 14 6.59971V6.5C14 5.67157 13.3284 5 12.5 5H8.20711L6.64645 6.56066C6.36514 6.84197 5.98361 7 5.58579 7H2V11.5C2 12.3284 2.67157 13 3.5 13H6.20703C6.30564 13.3486 6.43777 13.6832 6.59971 14H3.5C2.11929 14 1 12.8807 1 11.5V4.5ZM16 11.5C16 13.9853 13.9853 16 11.5 16C9.01472 16 7 13.9853 7 11.5C7 9.01472 9.01472 7 11.5 7C13.9853 7 16 9.01472 16 11.5ZM12 9C12 8.72386 11.7761 8.5 11.5 8.5C11.2239 8.5 11 8.72386 11 9V11H9C8.72386 11 8.5 11.2239 8.5 11.5C8.5 11.7761 8.72386 12 9 12H11V14C11 14.2761 11.2239 14.5 11.5 14.5C11.7761 14.5 12 14.2761 12 14V12H14C14.2761 12 14.5 11.7761 14.5 11.5C14.5 11.2239 14.2761 11 14 11H12V9Z'],
-      'collapse-all': [
-        'M14 4.27051C14.5999 4.62053 15 5.26009 15 6V11C15 13.21 13.21 15 11 15H6C5.26009 15 4.62053 14.5999 4.27051 14H11C12.65 14 14 12.65 14 11V4.27051Z',
-        'M9.5 7C9.776 7 10 7.224 10 7.5C10 7.776 9.776 8 9.5 8H5.5C5.224 8 5 7.776 5 7.5C5 7.224 5.224 7 5.5 7H9.5Z',
-        'M11 2C12.103 2 13 2.897 13 4V11C13 12.103 12.103 13 11 13H4C2.897 13 2 12.103 2 11V4C2 2.897 2.897 2 4 2H11ZM4 3C3.449 3 3 3.449 3 4V11C3 11.552 3.449 12 4 12H11C11.551 12 12 11.552 12 11V4C12 3.449 11.551 3 11 3H4Z',
-      ],
-      'refresh': ['M3 8C3 5.23858 5.23858 3 8 3C9.63527 3 11.0878 3.78495 12.0005 5H10C9.72386 5 9.5 5.22386 9.5 5.5C9.5 5.77614 9.72386 6 10 6H12.8904C12.8973 6.00014 12.9041 6.00014 12.911 6H13C13.2761 6 13.5 5.77614 13.5 5.5V2.5C13.5 2.22386 13.2761 2 13 2C12.7239 2 12.5 2.22386 12.5 2.5V4.03138C11.4009 2.78613 9.79253 2 8 2C4.68629 2 2 4.68629 2 8C2 11.3137 4.68629 14 8 14C11.1301 14 13.6999 11.6035 13.9756 8.54488C14.0003 8.26985 13.7975 8.0268 13.5225 8.00202C13.2474 7.97723 13.0044 8.1801 12.9796 8.45512C12.75 11.003 10.6079 13 8 13C5.23858 13 3 10.7614 3 8Z'],
-      'edit': ['M14.236 1.76386C13.2123 0.740172 11.5525 0.740171 10.5289 1.76386L2.65722 9.63549C2.28304 10.0097 2.01623 10.4775 1.88467 10.99L1.01571 14.3755C0.971767 14.5467 1.02148 14.7284 1.14646 14.8534C1.27144 14.9783 1.45312 15.028 1.62432 14.9841L5.00978 14.1151C5.52234 13.9836 5.99015 13.7168 6.36433 13.3426L14.236 5.47097C15.2596 4.44728 15.2596 2.78755 14.236 1.76386ZM11.236 2.47097C11.8691 1.8378 12.8957 1.8378 13.5288 2.47097C14.162 3.10413 14.162 4.1307 13.5288 4.76386L12.75 5.54269L10.4571 3.24979L11.236 2.47097ZM9.75002 3.9569L12.0429 6.24979L5.65722 12.6355C5.40969 12.883 5.10023 13.0595 4.76117 13.1465L2.19447 13.8053L2.85327 11.2386C2.9403 10.8996 3.1168 10.5901 3.36433 10.3426L9.75002 3.9569Z'],
-      'trash': ['M14 2H10C10 0.897 9.103 0 8 0C6.897 0 6 0.897 6 2H2C1.724 2 1.5 2.224 1.5 2.5C1.5 2.776 1.724 3 2 3H2.54L3.349 12.708C3.456 13.994 4.55 15 5.84 15H10.159C11.449 15 12.543 13.993 12.65 12.708L13.459 3H13.999C14.275 3 14.499 2.776 14.499 2.5C14.499 2.224 14.275 2 13.999 2H14ZM8 1C8.551 1 9 1.449 9 2H7C7 1.449 7.449 1 8 1ZM11.655 12.625C11.591 13.396 10.934 14 10.16 14H5.841C5.067 14 4.41 13.396 4.346 12.625L3.544 3H12.458L11.656 12.625H11.655ZM7 5.5V11.5C7 11.776 6.776 12 6.5 12C6.224 12 6 11.776 6 11.5V5.5C6 5.224 6.224 5 6.5 5C6.776 5 7 5.224 7 5.5ZM10 5.5V11.5C10 11.776 9.776 12 9.5 12C9.224 12 9 11.776 9 11.5V5.5C9 5.224 9.224 5 9.5 5C9.776 5 10 5.224 10 5.5Z'],
+    // 文件类型标记：扩展名 → { 短标记 t 或图标 i, 颜色 c }
+    // 颜色取自 GitHub 语言颜色表；原值按浅色背景设计，深色底会糊，这里已做「保色相提亮」
+    // （色相与彩度不变，只把亮度提到 0.66，所以 JS 仍是黄、TS 仍是蓝）。
+    var FILE_MARK = {
+      '7z': { i:'file-zip', c:'#8b8b93' },
+      'avi': { i:'movie', c:'#8b8b93' },
+      'avif': { i:'photo', c:'#8b8b93' },
+      'bash': { t:'SH', c:'#89e051' },
+      'bmp': { i:'photo', c:'#8b8b93' },
+      'c': { t:'C', c:'#929292' },
+      'cc': { t:'C++', c:'#f34b7d' },
+      'cjs': { t:'JS', c:'#f1e05a' },
+      'cpp': { t:'C++', c:'#f34b7d' },
+      'cs': { t:'CS', c:'#9079fd' },
+      'css': { t:'#', c:'#a776e1' },
+      'cxx': { t:'C++', c:'#f34b7d' },
+      'flac': { i:'music', c:'#8b8b93' },
+      'gif': { i:'photo', c:'#8b8b93' },
+      'go': { t:'GO', c:'#00add8' },
+      'gz': { i:'file-zip', c:'#8b8b93' },
+      'h': { t:'C', c:'#929292' },
+      'hpp': { t:'C++', c:'#f34b7d' },
+      'htm': { t:'<>', c:'#f15934' },
+      'html': { t:'<>', c:'#f15934' },
+      'ico': { i:'photo', c:'#8b8b93' },
+      'java': { t:'JV', c:'#c28330' },
+      'jpeg': { i:'photo', c:'#8b8b93' },
+      'jpg': { i:'photo', c:'#8b8b93' },
+      'js': { t:'JS', c:'#f1e05a' },
+      'json': { t:'{}', c:'#929292' },
+      'jsonc': { t:'{}', c:'#929292' },
+      'jsx': { t:'JS', c:'#f1e05a' },
+      'key': { i:'key', c:'#8b8b93' },
+      'kt': { t:'KT', c:'#a97bff' },
+      'kts': { t:'KT', c:'#a97bff' },
+      'less': { t:'#', c:'#d8649c' },
+      'lua': { t:'LUA', c:'#5b8cfb' },
+      'm4a': { i:'music', c:'#8b8b93' },
+      'markdown': { t:'M↓', c:'#558ef7' },
+      'md': { t:'M↓', c:'#558ef7' },
+      'mdx': { t:'M↓', c:'#558ef7' },
+      'mjs': { t:'JS', c:'#f1e05a' },
+      'mkv': { i:'movie', c:'#8b8b93' },
+      'mov': { i:'movie', c:'#8b8b93' },
+      'mp3': { i:'music', c:'#8b8b93' },
+      'mp4': { i:'movie', c:'#8b8b93' },
+      'mts': { t:'TS', c:'#4e95e5' },
+      'ogg': { i:'music', c:'#8b8b93' },
+      'p12': { i:'key', c:'#8b8b93' },
+      'pem': { i:'key', c:'#8b8b93' },
+      'pfx': { i:'key', c:'#8b8b93' },
+      'php': { t:'PHP', c:'#7e8fcb' },
+      'png': { i:'photo', c:'#8b8b93' },
+      'ps1': { t:'PS', c:'#6c94cf' },
+      'psm1': { t:'PS', c:'#6c94cf' },
+      'py': { t:'PY', c:'#5b98cd' },
+      'pyw': { t:'PY', c:'#5b98cd' },
+      'rar': { i:'file-zip', c:'#8b8b93' },
+      'rb': { t:'RB', c:'#d4716a' },
+      'rs': { t:'RS', c:'#dea584' },
+      'sass': { t:'#', c:'#d8649c' },
+      'scss': { t:'#', c:'#d8649c' },
+      'sh': { t:'SH', c:'#89e051' },
+      'sql': { i:'database', c:'#e38c00' },
+      'svelte': { t:'SV', c:'#fd4718' },
+      'svg': { t:'XML', c:'#4896e6' },
+      'swift': { t:'SW', c:'#f4543b' },
+      'tar': { i:'file-zip', c:'#8b8b93' },
+      'toml': { t:'TM', c:'#d47453' },
+      'ts': { t:'TS', c:'#4e95e5' },
+      'tsx': { t:'TS', c:'#4e95e5' },
+      'vue': { t:'VUE', c:'#41b883' },
+      'wav': { i:'music', c:'#8b8b93' },
+      'webm': { i:'movie', c:'#8b8b93' },
+      'webp': { i:'photo', c:'#8b8b93' },
+      'xml': { t:'XML', c:'#4896e6' },
+      'yaml': { t:'YM', c:'#f84d46' },
+      'yml': { t:'YM', c:'#f84d46' },
+      'zip': { i:'file-zip', c:'#8b8b93' },
+      'zsh': { t:'SH', c:'#89e051' },
     };
-    function codicon(name, size) {
-      var ds = CODICON_PATHS[name] || [];
+    // 未知类型 / 没有扩展名：用一张折角的纸（Tabler 的 file），别用问号
+    var FILE_MARK_FALLBACK = { i: 'file', c: '#9aa0a6' };
+
+    // Tabler Icons（MIT，github.com/tabler/tabler-icons）—— 24 格描边图标，
+    // circle/rect/line 已统一折算成 path。语义键是天工自己的叫法，跟 Tabler 原名不是一一对应。
+    var TABLER_PATHS = {
+      'explorer': [
+      'M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2',
+      ],
+      'server': [
+      'M3 7a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v2a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-2',
+      'M3 15a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v2a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3l0 -2',
+      'M7 8l0 .01',
+      'M7 16l0 .01',
+      ],
+      'run': [
+      'M13 3l0 7l6 0l-8 11l0 -7l-6 0l8 -11',
+      ],
+      'plugins': [
+      'M4 7h3a1 1 0 0 0 1 -1v-1a2 2 0 0 1 4 0v1a1 1 0 0 0 1 1h3a1 1 0 0 1 1 1v3a1 1 0 0 0 1 1h1a2 2 0 0 1 0 4h-1a1 1 0 0 0 -1 1v3a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1v-1a2 2 0 0 0 -4 0v1a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h1a2 2 0 0 0 0 -4h-1a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1',
+      ],
+      'settings': [
+      'M10.325 4.317c.426 -1.756 2.924 -1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543 -.94 3.31 .826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756 .426 1.756 2.924 0 3.35a1.724 1.724 0 0 0 -1.066 2.573c.94 1.543 -.826 3.31 -2.37 2.37a1.724 1.724 0 0 0 -2.572 1.065c-.426 1.756 -2.924 1.756 -3.35 0a1.724 1.724 0 0 0 -2.573 -1.066c-1.543 .94 -3.31 -.826 -2.37 -2.37a1.724 1.724 0 0 0 -1.065 -2.572c-1.756 -.426 -1.756 -2.924 0 -3.35a1.724 1.724 0 0 0 1.066 -2.573c-.94 -1.543 .826 -3.31 2.37 -2.37c1 .608 2.296 .07 2.572 -1.065',
+      'M9 12a3 3 0 1 0 6 0a3 3 0 0 0 -6 0',
+      ],
+      'folder': [
+      'M5 4h4l3 3h7a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2',
+      ],
+      'folder-open': [
+      'M5 19l2.757 -7.351a1 1 0 0 1 .936 -.649h12.307a1 1 0 0 1 .986 1.164l-.996 5.211a2 2 0 0 1 -1.964 1.625h-14.026a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v2',
+      ],
+      'chevron': [
+      'M9 6l6 6l-6 6',
+      ],
+      'new-file': [
+      'M14 3v4a1 1 0 0 0 1 1h4',
+      'M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2',
+      'M12 11l0 6',
+      'M9 14l6 0',
+      ],
+      'new-folder': [
+      'M12 19h-7a2 2 0 0 1 -2 -2v-11a2 2 0 0 1 2 -2h4l3 3h7a2 2 0 0 1 2 2v3.5',
+      'M16 19h6',
+      'M19 16v6',
+      ],
+      'refresh': [
+      'M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4',
+      'M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4',
+      ],
+      'collapse-all': [
+      'M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12',
+      'M9 4v16',
+      'M15 10l-2 2l2 2',
+      ],
+      'globe': [
+      'M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0',
+      'M3.6 9h16.8',
+      'M3.6 15h16.8',
+      'M11.5 3a17 17 0 0 0 0 18',
+      'M12.5 3a17 17 0 0 1 0 18',
+      ],
+      'diff': [
+      'M7 10h14l-4 -4',
+      'M17 14h-14l4 4',
+      ],
+      'pin': [
+      'M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4',
+      'M9 15l-4.5 4.5',
+      'M14.5 4l5.5 5.5',
+      ],
+      'close': [
+      'M18 6l-12 12',
+      'M6 6l12 12',
+      ],
+      'search': [
+      'M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0',
+      'M21 21l-6 -6',
+      ],
+      'save': [
+      'M6 4h10l4 4v10a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2',
+      'M10 14a2 2 0 1 0 4 0a2 2 0 1 0 -4 0',
+      'M14 4l0 4l-6 0l0 -4',
+      ],
+      'trash': [
+      'M4 7l16 0',
+      'M10 11l0 6',
+      'M14 11l0 6',
+      'M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12',
+      'M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3',
+      ],
+      'edit': [
+      'M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4',
+      'M13.5 6.5l4 4',
+      ],
+      'terminal': [
+      'M8 9l3 3l-3 3',
+      'M13 15l3 0',
+      'M3 6a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2l0 -12',
+      ],
+      'browser': [
+      'M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0',
+      'M3.6 9h16.8',
+      'M3.6 15h16.8',
+      'M11.5 3a17 17 0 0 0 0 18',
+      'M12.5 3a17 17 0 0 1 0 18',
+      ],
+      'history': [
+      'M12 8l0 4l2 2',
+      'M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5',
+      ],
+      'chevron-down': [
+      'M6 9l6 6l6 -6',
+      ],
+      'chevron-up': [
+      'M6 15l6 -6l6 6',
+      ],
+      'plus': [
+      'M12 5l0 14',
+      'M5 12l14 0',
+      ],
+      'check': [
+      'M5 12l5 5l10 -10',
+      ],
+      'alert': [
+      'M12 9v4',
+      'M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0',
+      'M12 16h.01',
+      ],
+      'info': [
+      'M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0',
+      'M12 9h.01',
+      'M11 12h1v4h1',
+      ],
+      'arrow-up': [
+      'M12 5l0 14',
+      'M18 11l-6 -6',
+      'M6 11l6 -6',
+      ],
+      'arrow-down': [
+      'M12 5l0 14',
+      'M18 13l-6 6',
+      'M6 13l6 6',
+      ],
+      'undo': [
+      'M9 14l-4 -4l4 -4',
+      'M5 10h11a4 4 0 1 1 0 8h-1',
+      ],
+      'redo': [
+      'M15 14l4 -4l-4 -4',
+      'M19 10h-11a4 4 0 1 0 0 8h1',
+      ],
+      'eye': [
+      'M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0',
+      'M21 12c-2.4 4 -5.4 6 -9 6c-3.6 0 -6.6 -2 -9 -6c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6',
+      ],
+      'copy': [
+      'M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667l0 -8.666',
+      'M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1',
+      ],
+      'external': [
+      'M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6',
+      'M11 13l9 -9',
+      'M15 4h5v5',
+      ],
+      'dots': [
+      'M4 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
+      'M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
+      'M18 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
+      ],
+      'stop': [
+      'M5 7a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2l0 -10',
+      ],
+      'pin-off': [
+      'M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4',
+      'M9 15l-4.5 4.5',
+      'M14.5 4l5.5 5.5',
+      ],
+      'clock': [
+      'M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0',
+      'M12 7v5l3 3',
+      ],
+      'file': [
+      'M14 3v4a1 1 0 0 0 1 1h4',
+      'M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2',
+      ],
+      'file-code': [
+      'M14 3v4a1 1 0 0 0 1 1h4',
+      'M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2',
+      'M10 13l-1 2l1 2',
+      'M14 13l1 2l-1 2',
+      ],
+      'keyboard': [
+      'M2 8a2 2 0 0 1 2 -2h16a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-16a2 2 0 0 1 -2 -2l0 -8',
+      'M6 10l0 .01',
+      'M10 10l0 .01',
+      'M14 10l0 .01',
+      'M18 10l0 .01',
+      'M6 14l0 .01',
+      'M18 14l0 .01',
+      'M10 14l4 .01',
+      ],
+      'list': [
+      'M9 6l11 0',
+      'M9 12l11 0',
+      'M9 18l11 0',
+      'M5 6l0 .01',
+      'M5 12l0 .01',
+      'M5 18l0 .01',
+      ],
+      'filter': [
+      'M4 4h16v2.172a2 2 0 0 1 -.586 1.414l-4.414 4.414v7l-6 2v-8.5l-4.48 -4.928a2 2 0 0 1 -.52 -1.345v-2.227',
+      ],
+      'link': [
+      'M9 15l6 -6',
+      'M11 6l.463 -.536a5 5 0 0 1 7.071 7.072l-.534 .464',
+      'M13 18l-.397 .534a5.068 5.068 0 0 1 -7.127 0a4.972 4.972 0 0 1 0 -7.071l.524 -.463',
+      ],
+      'palette': [
+      'M12 21a9 9 0 0 1 0 -18c4.97 0 9 3.582 9 8c0 1.06 -.474 2.078 -1.318 2.828c-.844 .75 -1.989 1.172 -3.182 1.172h-2.5a2 2 0 0 0 -1 3.75a1.3 1.3 0 0 1 -1 2.25',
+      'M7.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
+      'M11.5 7.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
+      'M15.5 10.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
+      ],
+      'shield': [
+      'M12 3a12 12 0 0 0 8.5 3a12 12 0 0 1 -8.5 15a12 12 0 0 1 -8.5 -15a12 12 0 0 0 8.5 -3',
+      ],
+      'upload': [
+      'M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2',
+      'M7 9l5 -5l5 5',
+      'M12 4l0 12',
+      ],
+      'download': [
+      'M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2',
+      'M7 11l5 5l5 -5',
+      'M12 4l0 12',
+      ],
+      'folder-up': [
+      'M12 5l0 14',
+      'M18 11l-6 -6',
+      'M6 11l6 -6',
+      ],
+      'zoom-in': [
+      'M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0',
+      'M7 10l6 0',
+      'M10 7l0 6',
+      'M21 21l-6 -6',
+      ],
+      'zoom-out': [
+      'M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0',
+      'M7 10l6 0',
+      'M21 21l-6 -6',
+      ],
+      'fit': [
+      'M16 4l4 0l0 4',
+      'M14 10l6 -6',
+      'M8 20l-4 0l0 -4',
+      'M4 20l6 -6',
+      'M16 20l4 0l0 -4',
+      'M14 14l6 6',
+      'M8 4l-4 0l0 4',
+      'M4 4l6 6',
+      ],
+      'robot': [
+      'M6 6a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2l0 -4',
+      'M12 2v2',
+      'M9 12v9',
+      'M15 12v9',
+      'M5 16l4 -2',
+      'M15 14l4 2',
+      'M9 18h6',
+      'M10 8v.01',
+      'M14 8v.01',
+      ],
+      'tool': [
+      'M7 10h3v-3l-3.5 -3.5a6 6 0 0 1 8 8l6 6a2 2 0 0 1 -3 3l-6 -6a6 6 0 0 1 -8 -8l3.5 3.5',
+      ],
+      'message': [
+      'M8 9h8',
+      'M8 13h6',
+      'M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12',
+      ],
+      'photo': [
+      'M15 8h.01',
+      'M3 6a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v12a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3v-12',
+      'M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5',
+      'M14 14l1 -1c.928 -.893 2.072 -.893 3 0l3 3',
+      ],
+      'book': [
+      'M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0',
+      'M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0',
+      'M3 6l0 13',
+      'M12 6l0 13',
+      'M21 6l0 13',
+      ],
+      'send': [
+      'M10 14l11 -11',
+      'M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5',
+      ],
+      'player-stop': [
+      'M5 7a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2l0 -10',
+      ],
+      'arrow-back-up': [
+      'M9 14l-4 -4l4 -4',
+      'M5 10h11a4 4 0 1 1 0 8h-1',
+      ],
+      'clear': [
+      'M19 20h-10.5l-4.21 -4.3a1 1 0 0 1 0 -1.41l10 -10a1 1 0 0 1 1.41 0l5 5a1 1 0 0 1 0 1.41l-9.2 9.3',
+      'M18 13.3l-6.3 -6.3',
+      ],
+      'lock': [
+      'M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-6',
+      'M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0',
+      'M8 11v-4a4 4 0 1 1 8 0v4',
+      ],
+      'key': [
+      'M16.555 3.843l3.602 3.602a2.877 2.877 0 0 1 0 4.069l-2.643 2.643a2.877 2.877 0 0 1 -4.069 0l-.301 -.301l-6.558 6.558a2 2 0 0 1 -1.239 .578l-.175 .008h-1.172a1 1 0 0 1 -.993 -.883l-.007 -.117v-1.172a2 2 0 0 1 .467 -1.284l.119 -.13l.414 -.414h2v-2h2v-2l2.144 -2.144l-.301 -.301a2.877 2.877 0 0 1 0 -4.069l2.643 -2.643a2.877 2.877 0 0 1 4.069 0',
+      'M15 9h.01',
+      ],
+      'ban': [
+      'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0',
+      'M5.7 5.7l12.6 12.6',
+      ],
+      'restore': [
+      'M3.06 13a9 9 0 1 0 .49 -4.087',
+      'M3 4.001v5h5',
+      'M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
+      ],
+      'tag': [
+      'M6.5 7.5a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
+      'M3 6v5.172a2 2 0 0 0 .586 1.414l7.71 7.71a2.41 2.41 0 0 0 3.408 0l5.592 -5.592a2.41 2.41 0 0 0 0 -3.408l-7.71 -7.71a2 2 0 0 0 -1.414 -.586h-5.172a3 3 0 0 0 -3 3',
+      ],
+      'database': [
+      'M4 6a8 3 0 1 0 16 0a8 3 0 1 0 -16 0',
+      'M4 6v6a8 3 0 0 0 16 0v-6',
+      'M4 12v6a8 3 0 0 0 16 0v-6',
+      ],
+      'layout': [
+      'M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12',
+      'M15 4l0 16',
+      ],
+      'terminal-2': [
+      'M8 9l3 3l-3 3',
+      'M13 15l3 0',
+      'M3 6a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2l0 -12',
+      ],
+      'target': [
+      'M11 12a1 1 0 1 0 2 0a1 1 0 1 0 -2 0',
+      'M7 12a5 5 0 1 0 10 0a5 5 0 1 0 -10 0',
+      'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0',
+      ],
+      'bookmark': [
+      'M18 7v14l-6 -4l-6 4v-14a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4',
+      ],
+      'wand': [
+      'M6 21l15 -15l-3 -3l-15 15l3 3',
+      'M15 6l3 3',
+      'M9 3a2 2 0 0 0 2 2a2 2 0 0 0 -2 2a2 2 0 0 0 -2 -2a2 2 0 0 0 2 -2',
+      'M19 13a2 2 0 0 0 2 2a2 2 0 0 0 -2 2a2 2 0 0 0 -2 -2a2 2 0 0 0 2 -2',
+      ],
+      'sparkles': [
+      'M16 18a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2m0 -12a2 2 0 0 1 2 2a2 2 0 0 1 2 -2a2 2 0 0 1 -2 -2a2 2 0 0 1 -2 2m-7 12a6 6 0 0 1 6 -6a6 6 0 0 1 -6 -6a6 6 0 0 1 -6 6a6 6 0 0 1 6 6',
+      ],
+      'skip-next': [
+      'M4 5v14l12 -7l-12 -7',
+      'M20 5l0 14',
+      ],
+      'skip-prev': [
+      'M20 5v14l-12 -7l12 -7',
+      'M4 5l0 14',
+      ],
+      'folders': [
+      'M9 3h3l2 2h5a2 2 0 0 1 2 2v7a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2',
+      'M17 16v2a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2h2',
+      ],
+      'arrow-left': [
+      'M5 12l14 0',
+      'M5 12l6 6',
+      'M5 12l6 -6',
+      ],
+      'arrow-right': [
+      'M5 12l14 0',
+      'M13 18l6 -6',
+      'M13 6l6 6',
+      ],
+      'replace': [
+      'M3 4a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4',
+      'M15 16a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4',
+      'M21 11v-3a2 2 0 0 0 -2 -2h-6l3 3m0 -6l-3 3',
+      'M3 13v3a2 2 0 0 0 2 2h6l-3 -3m0 6l3 -3',
+      ],
+      'cursor': [
+      'M10 12h4',
+      'M9 4a3 3 0 0 1 3 3v10a3 3 0 0 1 -3 3',
+      'M15 4a3 3 0 0 0 -3 3v10a3 3 0 0 0 3 3',
+      ],
+      'compass': [
+      'M8 16l2 -6l6 -2l-2 6l-6 2',
+      'M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0',
+      'M12 3l0 2',
+      'M12 19l0 2',
+      'M3 12l2 0',
+      'M19 12l2 0',
+      ],
+      'receipt': [
+      'M5 21v-16a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v16l-3 -2l-2 2l-2 -2l-2 2l-2 -2l-3 2m4 -14h6m-6 4h6m-2 4h2',
+      ],
+      'help': [
+      'M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0',
+      'M12 16v.01',
+      'M12 13a2 2 0 0 0 .914 -3.782a1.98 1.98 0 0 0 -2.414 .483',
+      ],
+      'ghost': [
+      'M5 11a7 7 0 0 1 14 0v7a1.78 1.78 0 0 1 -3.1 1.4a1.65 1.65 0 0 0 -2.6 0a1.65 1.65 0 0 1 -2.6 0a1.65 1.65 0 0 0 -2.6 0a1.78 1.78 0 0 1 -3.1 -1.4v-7',
+      'M10 10l.01 0',
+      'M14 10l.01 0',
+      'M10 14a3.5 3.5 0 0 0 4 0',
+      ],
+      'text-size': [
+      'M3 7v-2h13v2',
+      'M10 5v14',
+      'M12 19h-4',
+      'M15 13v-1h6v1',
+      'M18 12v7',
+      'M17 19h2',
+      ],
+      'scroll': [
+      'M17 20h-11a3 3 0 0 1 0 -6h11a3 3 0 0 0 0 6h1a3 3 0 0 0 3 -3v-11a2 2 0 0 0 -2 -2h-10a2 2 0 0 0 -2 2v8',
+      ],
+      'recycle': [
+      'M12 17l-2 2l2 2',
+      'M10 19h9a2 2 0 0 0 1.75 -2.75l-.55 -1',
+      'M8.536 11l-.732 -2.732l-2.732 .732',
+      'M7.804 8.268l-4.5 7.794a2 2 0 0 0 1.506 2.89l1.141 .024',
+      'M15.464 11l2.732 .732l.732 -2.732',
+      'M18.196 11.732l-4.5 -7.794a2 2 0 0 0 -3.256 -.14l-.591 .976',
+      ],
+      'mouse': [
+      'M6 7a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4v10a4 4 0 0 1 -4 4h-4a4 4 0 0 1 -4 -4l0 -10',
+      'M12 7l0 4',
+      ],
+    };
+    function ticon(name, size) {
+      var ds = TABLER_PATHS[name] || [];
       var px = size || 16;
-      return h('svg', { width: px, height: px, viewBox: '0 0 16 16', fill: 'currentColor', 'aria-hidden': 'true' },
-        ds.map(function (d, i) { return h('path', { key: i, d: d }) }));
+      return h('svg', {
+        width: px, height: px, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
+        strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true',
+      }, ds.map(function (d, i) { return h('path', { key: i, d: d }) }));
     }
 
     function FileNode(props) {
@@ -4580,7 +5160,7 @@ window.__ModuleLoader__.load({
       },
         h('span', { className: 'dside-lead' }, lead),
         // 文件夹不画图标：左边的折叠箭头已经表明它是目录（2026-10-22 用户要求），文件仍留图标
-        isDir ? null : h('span', { className: 'dside-node-icon' }, iconFor(node)),
+        isDir ? null : fileMarkNode(node, 14),
         h('span', { className: 'dside-node-name' }, node.name),
       );
 
@@ -4638,7 +5218,7 @@ window.__ModuleLoader__.load({
       }
       return h('div', { className: 'dside-node dside-node-new' },
         h('span', { className: 'dside-lead' }, lead),
-        props.kind === 'dir' ? null : h('span', { className: 'dside-node-icon' }, '📄'),
+        props.kind === 'dir' ? null : h('span', { className: 'dside-node-icon' }, ticon('file', 14)),
         h('input', {
           ref: ref,
           className: 'dside-inline-input',
@@ -4680,7 +5260,7 @@ window.__ModuleLoader__.load({
           className: 'dside-pane-act', key: name, title: label, 'aria-label': label,
           disabled: !!disabled,
           onClick: function (e) { e.stopPropagation(); if (!disabled) fn(); },
-        }, codicon(name));
+        }, ticon(name, 16));
       }
       var inlineNew = props.inlineNew;
       var rows = null;
@@ -4941,11 +5521,11 @@ window.__ModuleLoader__.load({
       var menuEl = null;
       if (kind === 'image') {
         bar = h('div', { className: 'dside-media-bar' },
-          h('button', { title: '缩小（Ctrl+滚轮 / 按住 Ctrl 点图）', onClick: zoomOut }, '－'),
+          h('button', { title: '缩小（Ctrl+滚轮 / 按住 Ctrl 点图）', onClick: zoomOut }, ticon('zoom-out', 13)),
           h('span', { className: 'dside-media-zoom', title: '选择缩放级别', onClick: function () { setMenu(!menu) } },
             zoom === 'fit' ? '适应窗口' : Math.round(zoom * 100) + '%'),
-          h('button', { title: '放大（点图 / Ctrl+滚轮）', onClick: zoomIn }, '＋'),
-          h('button', { title: '适应窗口', onClick: zoomFit }, '⤢'),
+          h('button', { title: '放大（点图 / Ctrl+滚轮）', onClick: zoomIn }, ticon('zoom-in', 13)),
+          h('button', { title: '适应窗口', onClick: zoomFit }, ticon('fit', 13)),
           dim ? h('span', { className: 'dside-media-dim' }, dim.w + '×' + dim.h) : null,
           size !== null ? h('span', { className: 'dside-media-dim' }, fileSizeText(size)) : null,
           props.canToggleText
@@ -5254,13 +5834,13 @@ window.__ModuleLoader__.load({
       }
 
       var bar = h('div', { className: 'dside-browser-bar' },
-        h('button', { className: 'dside-browser-btn', title: '后退', disabled: !st.canBack, onClick: function () { act('back'); } }, '←'),
-        h('button', { className: 'dside-browser-btn', title: '前进', disabled: !st.canForward, onClick: function () { act('forward'); } }, '→'),
+        h('button', { className: 'dside-browser-btn', title: '后退', disabled: !st.canBack, onClick: function () { act('back'); } }, ticon('arrow-left', 14)),
+        h('button', { className: 'dside-browser-btn', title: '前进', disabled: !st.canForward, onClick: function () { act('forward'); } }, ticon('arrow-right', 14)),
         h('button', {
           className: 'dside-browser-btn',
           title: st.loading ? '停止加载' : '刷新 (F5)',
           onClick: function () { act(st.loading ? 'stop' : 'reload'); },
-        }, st.loading ? '✕' : '⟳'),
+        }, st.loading ? ticon('close', 14) : ticon('refresh', 14)),
         h('input', {
           className: 'dside-browser-url',
           ref: inputRef,
@@ -5278,8 +5858,8 @@ window.__ModuleLoader__.load({
         h('button', {
           className: 'dside-browser-btn', title: '在系统浏览器中打开',
           onClick: function () { if (st.url && bridge.openExternal) { try { bridge.openExternal(st.url); } catch (e) { /* 忽略 */ } } },
-        }, '↗'),
-        h('button', { className: 'dside-browser-btn', title: '开发者工具 (F12)', onClick: function () { act('devtools'); } }, '🛠'),
+        }, ticon('external', 13)),
+        h('button', { className: 'dside-browser-btn', title: '开发者工具 (F12)', onClick: function () { act('devtools'); } }, ticon('tool', 14)),
         // 幻影开关（设计定稿 §4.4）：**只在浏览器工具栏**，不进设置页。默认开；
         // 关掉只是"不演给人看"，Agent 的动作照做（幻影是可视化，不是闸门）。
         h('button', {
@@ -5293,7 +5873,7 @@ window.__ModuleLoader__.load({
             try { bridge.setPhantom({ on: next }); } catch (e) { /* 忽略 */ }
             if (props.onStatus) props.onStatus('Agent幻影已' + (next ? '打开' : '关闭'));
           },
-        }, st.phantomOn ? '👻' : '👻'),
+        }, ticon('ghost', 14)),
       );
 
       var view = h('div', { className: 'dside-browser-view', ref: viewRef },
@@ -5515,8 +6095,8 @@ window.__ModuleLoader__.load({
         nav.total
           ? h('div', { className: 'dside-review-nav' },
               h('span', { className: 'cnt' }, (nav.idx + 1) + ' / ' + nav.total),
-              h('button', { className: 'dside-btn small', title: '上一处改动（Alt+Shift+F5）', onClick: function () { step(-1) } }, '↑'),
-              h('button', { className: 'dside-btn small', title: '下一处改动（Alt+F5）', onClick: function () { step(1) } }, '↓'),
+              h('button', { className: 'dside-btn small', title: '上一处改动（Alt+Shift+F5）', onClick: function () { step(-1) } }, ticon('arrow-up', 12)),
+              h('button', { className: 'dside-btn small', title: '下一处改动（Alt+F5）', onClick: function () { step(1) } }, ticon('arrow-down', 12)),
             )
           : null,
       );
@@ -6933,7 +7513,7 @@ window.__ModuleLoader__.load({
       var binaryEl = (file && binary && binary.path === file.path)
         ? h('div', { className: 'dside-binary' },
             h('div', { className: 'dside-binary-card' },
-              h('div', { className: 'dside-binary-icon' }, '⚠'),
+              h('div', { className: 'dside-binary-icon' }, ticon('alert', 28)),
               // 文案对应 VSCode binaryEditor.ts 的 localize('binaryError', ...)
               h('div', { className: 'dside-binary-text' }, '这个文件不是文本，编辑器里显示不出来（二进制文件，或用了不支持的文本编码）。'),
               h('div', { className: 'dside-binary-sub' },
@@ -7068,8 +7648,8 @@ window.__ModuleLoader__.load({
       var askBar = askCtx ? h('div', { className: 'dside-ask' },
         h('div', { className: 'dside-ask-ctx' },
           h('b', null, askCtx.sel
-            ? '🤖 选中 ' + (askCtx.sel.endLine - askCtx.sel.startLine + 1) + ' 行'
-            : '🤖 当前文件'),
+            ? [ticon('robot', 12), ' 选中 ' + (askCtx.sel.endLine - askCtx.sel.startLine + 1) + ' 行']
+            : [ticon('robot', 12), ' 当前文件']),
           h('span', { className: 'dside-ask-file', title: askCtx.path },
             (askCtx.rel || askCtx.path) + (askCtx.dirty ? '（有未保存修改）' : '')),
           askCtx.markers.length
@@ -7264,7 +7844,7 @@ window.__ModuleLoader__.load({
                 className: 'dside-chip' + (i === diffState.index ? ' active' : '') + (undone ? ' undone' : ''),
                 title: it.path + (undone ? '（已撤销）' : (it.status === 'kept' ? '（已保留）' : '')),
                 onClick: function () { gotoReviewItem(i); },
-              }, (it.isCreate ? '＋ ' : '✎ ') + it.name);
+              }, [it.isCreate ? ticon('plus', 11) : ticon('edit', 11), it.name]);
             }))
           : null,
         // ⑥ 第四刀：改动块横条 —— 只列没处理的块，每块两个动作（保留 / 撤销）。
@@ -7309,10 +7889,10 @@ window.__ModuleLoader__.load({
           + (t.pinned && props.pinnedCompact ? ' compact' : '');
         // 2026-10-21 用户要求：标题左侧就是文件图标（VSCode 的 showIcons 默认开）；
         // 浏览器 / 差异 / 设置标签用它自己的类型标记，不再与文件图标并列两个图标
-        var tabMark = isBrowserPath(t.path) ? { txt: '🌐', title: '内置浏览器标签' }
-          : isReviewPath(t.path) ? { txt: '⇄', title: '改动差异标签' }
-          : isSettingsPath(t.path) ? { txt: '⚙', title: '设置标签' }
-          : { txt: iconFor({ type: 'file', name: t.name }), title: '' };
+        var tabMark = isBrowserPath(t.path) ? { icon: 'globe', title: '内置浏览器标签' }
+          : isReviewPath(t.path) ? { icon: 'diff', title: '改动差异标签' }
+          : isSettingsPath(t.path) ? { icon: 'settings', title: '设置标签' }
+          : { mark: fileMarkOf({ type: 'file', name: t.name }), title: '' };
         var tabIconProps = { className: 'dside-tab-icon' };
         if (tabMark.title) tabIconProps.title = tabMark.title;
         return h('div', {
@@ -7339,7 +7919,9 @@ window.__ModuleLoader__.load({
           // ⑮ 标签右键菜单（VSCode 的 Editor Tab Context：关闭族 / 固定 / 路径族）
           onContextMenu: function (e) { e.preventDefault(); e.stopPropagation(); if (props.onTabContext) props.onTabContext(t.path, e); },
         },
-          h('span', tabIconProps, tabMark.txt),
+          tabMark.mark
+            ? fileMarkNode(tabMark.mark, 12, 'dside-tab-icon')
+            : h('span', tabIconProps, ticon(tabMark.icon, 14)),
           h('span', { className: 'dside-tab-name' }, t.name),
           // VSCode 同款：固定标签上的动作按钮是「取消固定」而不是关闭（其中键/Ctrl+W 也受保护）
           t.pinned
@@ -7348,7 +7930,7 @@ window.__ModuleLoader__.load({
                 title: t.dirty ? '未保存 · 取消固定' : '取消固定',
                 onClick: function (e) { e.stopPropagation(); if (props.onTogglePin) props.onTogglePin(t.path); },
               },
-                h('span', { className: 'glyph pin' }, '📌'),
+                h('span', { className: 'glyph pin' }, ticon('pin', 12)),
                 h('span', { className: 'glyph dot' }))
             : h('button', {
                 className: 'dside-tab-close',
@@ -7370,7 +7952,7 @@ window.__ModuleLoader__.load({
                   className: 'dside-btn small',
                   title: '以图片预览方式打开（VSCode 对 .svg 才有这个来回切换）',
                   onClick: function () { setSvgAsText(file.path, false) },
-                }, '🖼 以预览打开')
+                }, ticon('photo', 12), '以预览打开')
               : null,
             // Markdown 的源码/预览开关：VSCode 把这两个图标放在编辑器标题栏（navigation 组），同一位置
             (file && !isPseudoPath(file.path) && isMarkdownName(file.name))
@@ -7380,7 +7962,7 @@ window.__ModuleLoader__.load({
                     ? '回到 Markdown 源码（Ctrl+Shift+V）'
                     : '打开 Markdown 预览：左侧带目录，点标题可跳（Ctrl+Shift+V）',
                   onClick: function () { if (props.onToggleMdPreview) props.onToggleMdPreview(); },
-                }, mdPreviewOn ? '⟨⟩ 源码' : '📖 预览')
+                }, mdPreviewOn ? [ticon('file-code', 12), ' 源码'] : [ticon('book', 12), ' 预览'])
               : null,
           ),
           // ⚠ 这里曾有一个「保存 (Ctrl+S)」按钮 —— 2026-09-21 用户看截图后点名去掉
@@ -7603,14 +8185,16 @@ window.__ModuleLoader__.load({
         kids.push(h('button', {
           className: 'dside-reason-toggle',
           onClick: function () { setShowReason(!showReason); },
-        }, showReason ? '▾ 收起思考' : '▸ 思考过程 (' + reason.length + ' 字)'));
+        }, showReason
+          ? [ticon('chevron-up', 12), '收起思考']
+          : [ticon('chevron-down', 12), '思考过程 (' + reason.length + ' 字)']));
         if (showReason) kids.push(h('div', { className: 'dside-reason-body' }, reason));
       }
       // AI 回复按 Markdown 渲染（流式中也走流式渲染：streaming=true 做增量解析）
       kids.push(text
         ? h(MdBlock, { key: 'md', text: text, streaming: !!partial })
         : (partial ? '…' : '(无文本内容)'));
-      if (node && node.interrupted) kids.push(h('span', { className: 'dside-stop-note' }, '⏹ 已停止'));
+      if (node && node.interrupted) kids.push(h('span', { className: 'dside-stop-note' }, ticon('stop', 12), '已停止'));
       if (node && node.time) kids.push(h('span', { className: 'dside-msg-time' }, formatTime(node.time)));
       return h('div', { className: cls }, kids);
     }
@@ -7619,7 +8203,8 @@ window.__ModuleLoader__.load({
       var node = props.node;
       var name = (node.call && node.call.name) || node.callId;
       return h('div', { className: 'dside-toolrow' + (node.isError ? ' err' : '') },
-        '🔧 ' + name + (node.isError ? ' ✗' : ' ✓'));
+        ticon('tool', 11), '' + name + ' ',
+        node.isError ? ticon('close', 11) : ticon('check', 11));
     }
 
     // ── 对话投影（2026-09-10 修：平台把对话从 SessionSnapshot 搬走了）──────
@@ -7808,7 +8393,7 @@ window.__ModuleLoader__.load({
             e.stopPropagation();
             if (opts.onRename) opts.onRename(sid, title);
           },
-        }, codicon('edit', 14)),
+        }, ticon('edit', 14)),
         h('button', {
           className: 'dside-session-act del', title: why, disabled: !!opts.current || !!opts.running,
           onClick: function (e) {
@@ -7816,7 +8401,7 @@ window.__ModuleLoader__.load({
             if (opts.current || opts.running) return;
             if (opts.onDelete) opts.onDelete(sid, title);
           },
-        }, codicon('trash', 14)),
+        }, ticon('trash', 14)),
       );
     }
 
@@ -8009,7 +8594,7 @@ window.__ModuleLoader__.load({
           key: 'older',
           className: 'dside-btn small dside-older',
           onClick: function () { if (sessionFace && sessionFace.loadOlder) sessionFace.loadOlder(); },
-        }, '↑ 加载更早的消息'));
+        }, ticon('arrow-up', 12), '加载更早的消息'));
         if (conv.partial) msgs.push(h(AssistantBubble, { key: 'partial', partial: conv.partial }));
         if (msgs.length === 0) {
           body = h('div', { className: 'dside-agent-empty' },
@@ -8050,7 +8635,7 @@ window.__ModuleLoader__.load({
             title: g.path + '（点击查看差异）',
             onClick: function () { onReviewGroups(queue || [g], idx || 0); },
           },
-            h('span', { className: 'dside-change-icon' }, g.isCreate ? '＋' : '✎'),
+            h('span', { className: 'dside-change-icon' }, g.isCreate ? ticon('plus', 12) : ticon('edit', 12)),
             h('span', { className: 'dside-change-name' }, g.name),
             h('span', { className: 'dside-change-diff' },
               counts.added ? h('span', { className: 'add' }, '+' + counts.added) : null,
@@ -8068,12 +8653,12 @@ window.__ModuleLoader__.load({
                 className: 'dside-btn small',
                 title: '保留这个文件的改动',
                 onClick: function (e) { e.stopPropagation(); onKeepGroups([g], g.name); },
-              }, '✓'),
+              }, ticon('check', 12)),
               h('button', {
                 className: 'dside-btn small danger',
                 title: g.isCreate ? '删除这个新建的文件' : '把这些改动还原回去',
                 onClick: function (e) { e.stopPropagation(); onRollbackChange(g); },   // 别顺带把差异打开
-              }, '↺'),
+              }, ticon('restore', 12)),
             ),
           );
         }
@@ -8088,7 +8673,7 @@ window.__ModuleLoader__.load({
               className: 'dside-btn small',
               title: '撤销这一轮的全部改动',
               onClick: function () { onUndoGroups(r.groups, '第 ' + r.ordinal + ' 轮'); },
-            }, '↺'),
+            }, ticon('restore', 12)),
             h('button', {
               className: 'dside-btn small',
               title: '保留这一轮的改动',
@@ -8129,7 +8714,7 @@ window.__ModuleLoader__.load({
           }
           changesBlock = h('div', { className: 'dside-changes' }, headEl, rows,
             historyOpen && hasMoreChanges
-              ? h('div', { className: 'dside-changes-note' }, '↑ 更早的改动还没加载（点上方「加载更早的消息」）')
+              ? h('div', { className: 'dside-changes-note' }, '更早的改动还没加载（点上方「加载更早的消息」）')
               : null);
         }
       }
@@ -10209,133 +10794,133 @@ window.__ModuleLoader__.load({
       // "界面写着 Ctrl+N、实际没实现"的谎报（2026-09-21 用户报障）。
       function commandList() {
         var list = [
-          { id: 'file.openFile', title: '打开文件…', cat: '文件', icon: '📂', keywords: 'open file ctrl+o 打开 文件',
+          { id: 'file.openFile', title: '打开文件…', cat: '文件', icon: 'folder-open', keywords: 'open file ctrl+o 打开 文件',
             run: openFileViaDialog },
-          { id: 'file.openFolder', title: '打开文件夹…', cat: '文件', icon: '📂', run: openFolder },
-          { id: 'file.save', title: '保存', cat: '文件', icon: '💾', keywords: 'save ctrl+s',
+          { id: 'file.openFolder', title: '打开文件夹…', cat: '文件', icon: 'folder-open', run: openFolder },
+          { id: 'file.save', title: '保存', cat: '文件', icon: 'save', keywords: 'save ctrl+s',
             run: function () { var b = editorBridgeRef.current; if (b && b.save) b.save(); else setStatusText('没有可保存的文件'); } },
-          { id: 'file.saveAll', title: '全部保存', cat: '文件', icon: '💾', keywords: 'save all ctrl+k s',
+          { id: 'file.saveAll', title: '全部保存', cat: '文件', icon: 'save', keywords: 'save all ctrl+k s',
             run: function () { var b = editorBridgeRef.current; if (b && b.saveAll) b.saveAll(); } },
-          { id: 'file.saveAs', title: '另存为…', cat: '文件', icon: '💾', keywords: 'save as ctrl+shift+s 另存为 副本',
+          { id: 'file.saveAs', title: '另存为…', cat: '文件', icon: 'save', keywords: 'save as ctrl+shift+s 另存为 副本',
             run: saveAsViaDialog },
           // ⑤ 语言智能：这些能力（monaco TS worker 提供）本来就在跑，之前只是没有入口
-          { id: 'editor.gotoDefinition', title: '转到定义', cat: '编辑器', icon: '🎯', keywords: 'definition f12 goto 定义 跳转',
+          { id: 'editor.gotoDefinition', title: '转到定义', cat: '编辑器', icon: 'target', keywords: 'definition f12 goto 定义 跳转',
             run: function () { var b = editorBridgeRef.current; if (b && b.gotoDefinition) b.gotoDefinition(); else setStatusText('没有打开的编辑器'); } },
-          { id: 'editor.outline', title: '转到文件中的符号…', cat: '编辑器', icon: '🔖', keywords: 'outline symbol ctrl+shift+o 符号 大纲',
+          { id: 'editor.outline', title: '转到文件中的符号…', cat: '编辑器', icon: 'bookmark', keywords: 'outline symbol ctrl+shift+o 符号 大纲',
             run: function () { runEditorAction('editor.action.quickOutline'); } },
-          { id: 'editor.rename', title: '重命名符号', cat: '编辑器', icon: '✏️', keywords: 'rename f2 重命名',
+          { id: 'editor.rename', title: '重命名符号', cat: '编辑器', icon: 'edit', keywords: 'rename f2 重命名',
             run: function () { runEditorAction('editor.action.rename'); } },
-          { id: 'editor.format', title: '格式化文档', cat: '编辑器', icon: '🧹', keywords: 'format shift+alt+f 格式化',
+          { id: 'editor.format', title: '格式化文档', cat: '编辑器', icon: 'wand', keywords: 'format shift+alt+f 格式化',
             run: function () { runEditorAction('editor.action.formatDocument'); } },
-          { id: 'editor.deleteLines', title: '删除行', cat: '编辑器', icon: '🗑', keywords: 'delete line shift+delete 删除 行',
+          { id: 'editor.deleteLines', title: '删除行', cat: '编辑器', icon: 'trash', keywords: 'delete line shift+delete 删除 行',
             run: function () { runEditorAction('editor.action.deleteLines'); } },
-          { id: 'editor.hover', title: '显示悬停提示（类型信息）', cat: '编辑器', icon: 'ℹ️', keywords: 'hover 悬停 类型 文档',
+          { id: 'editor.hover', title: '显示悬停提示（类型信息）', cat: '编辑器', icon: 'info', keywords: 'hover 悬停 类型 文档',
             run: function () { runEditorAction('editor.action.showHover'); } },
-          { id: 'editor.inlineSuggest', title: '内联建议（AI 补全，Alt+\\）', cat: '编辑器', icon: '✨', keywords: 'inline suggestion ghost copilot alt+\\ 补全 ai 建议',
+          { id: 'editor.inlineSuggest', title: '内联建议（AI 补全，Alt+\\）', cat: '编辑器', icon: 'sparkles', keywords: 'inline suggestion ghost copilot alt+\\ 补全 ai 建议',
             run: function () { runEditorAction('editor.action.inlineSuggest.trigger'); } },
-          { id: 'editor.nextProblem', title: '下一个问题（诊断）', cat: '视图', icon: '⏭', keywords: 'problem marker f8 next 问题 诊断',
+          { id: 'editor.nextProblem', title: '下一个问题（诊断）', cat: '视图', icon: 'skip-next', keywords: 'problem marker f8 next 问题 诊断',
             run: function () { runEditorAction('editor.action.marker.next'); } },
-          { id: 'editor.prevProblem', title: '上一个问题（诊断）', cat: '视图', icon: '⏮', keywords: 'problem marker f8 prev 问题 诊断',
+          { id: 'editor.prevProblem', title: '上一个问题（诊断）', cat: '视图', icon: 'skip-prev', keywords: 'problem marker f8 prev 问题 诊断',
             run: function () { runEditorAction('editor.action.marker.prev'); } },
-          { id: 'view.problems', title: '显示问题面板（错误/警告）', cat: '视图', icon: '⚠️', keywords: 'problems diagnostics ctrl+shift+m 问题 诊断 错误 警告',
+          { id: 'view.problems', title: '显示问题面板（错误/警告）', cat: '视图', icon: 'alert', keywords: 'problems diagnostics ctrl+shift+m 问题 诊断 错误 警告',
             run: function () { setOverlay('problems'); } },
-          { id: 'view.terminal', title: '切换集成终端', cat: '视图', icon: '🖥', keywords: 'terminal shell console ctrl+` 终端 命令行',
+          { id: 'view.terminal', title: '切换集成终端', cat: '视图', icon: 'terminal', keywords: 'terminal shell console ctrl+` 终端 命令行',
             run: toggleTerminalPanel },
-          { id: 'term.new', title: '新建终端', cat: '视图', icon: '🖥', keywords: 'new terminal ctrl+shift+` 新建 终端',
+          { id: 'term.new', title: '新建终端', cat: '视图', icon: 'terminal', keywords: 'new terminal ctrl+shift+` 新建 终端',
             run: newTerminal },
-          { id: 'file.close', title: '关闭当前标签', cat: '文件', icon: '✕', keywords: 'close tab ctrl+w',
+          { id: 'file.close', title: '关闭当前标签', cat: '文件', icon: 'close', keywords: 'close tab ctrl+w',
             run: function () { if (activePath) closeTab(activePath); } },
-          { id: 'file.reopenClosed', title: '重新打开已关闭的标签', cat: '文件', icon: '↩️',
+          { id: 'file.reopenClosed', title: '重新打开已关闭的标签', cat: '文件', icon: 'undo',
             keywords: 'reopen closed undo close tab ctrl+shift+t', run: reopenClosedTab },
           // ⑮ 标签三件套（VSCode 里这一族既在标签右键菜单里，也在命令面板里）
-          { id: 'file.closeOthers', title: '关闭其他标签', cat: '文件', icon: '✕',
+          { id: 'file.closeOthers', title: '关闭其他标签', cat: '文件', icon: 'close',
             keywords: 'close others 关闭 其他 标签 tab',
             run: function () { if (activePath) closeOthers(activePath); } },
-          { id: 'file.closeRight', title: '关闭右侧所有标签', cat: '文件', icon: '✕',
+          { id: 'file.closeRight', title: '关闭右侧所有标签', cat: '文件', icon: 'close',
             keywords: 'close to the right 关闭 右侧 标签 tab',
             run: function () { if (activePath) closeRight(activePath); } },
-          { id: 'file.closeSaved', title: '关闭已保存的标签', cat: '文件', icon: '✕',
+          { id: 'file.closeSaved', title: '关闭已保存的标签', cat: '文件', icon: 'close',
             keywords: 'close saved ctrl+k u 关闭 已保存 标签 tab',
             run: closeSaved },
-          { id: 'file.closeAll', title: '全部关闭', cat: '文件', icon: '✕',
+          { id: 'file.closeAll', title: '全部关闭', cat: '文件', icon: 'close',
             keywords: 'close all ctrl+k w 关闭 全部 标签 tab',
             run: closeAll },
-          { id: 'file.keepOpen', title: '保持打开（把预览标签转正）', cat: '文件', icon: '📌',
+          { id: 'file.keepOpen', title: '保持打开（把预览标签转正）', cat: '文件', icon: 'pin',
             keywords: 'keep open keep editor preview ctrl+k enter 保持 打开 预览 转正 临时',
             run: function () { promoteTab(activePath); } },
-          { id: 'file.togglePin', title: '固定 / 取消固定标签', cat: '文件', icon: '📌',
+          { id: 'file.togglePin', title: '固定 / 取消固定标签', cat: '文件', icon: 'pin',
             keywords: 'pin unpin pinned toggle tab ctrl+k shift+enter 固定 取消固定 钉住 标签',
             run: function () { togglePinTab(activePath); } },
-          { id: 'file.copyPath', title: '复制路径', cat: '文件', icon: '📋',
+          { id: 'file.copyPath', title: '复制路径', cat: '文件', icon: 'copy',
             keywords: 'copy path clipboard 复制 路径',
             run: function () { copyTabPath(activePath, false); } },
-          { id: 'file.copyRelPath', title: '复制相对路径', cat: '文件', icon: '📋',
+          { id: 'file.copyRelPath', title: '复制相对路径', cat: '文件', icon: 'copy',
             keywords: 'copy relative path clipboard 复制 相对 路径',
             run: function () { copyTabPath(activePath, true); } },
-          { id: 'file.revealInExplorer', title: '在文件资源管理器中显示', cat: '文件', icon: '🗂',
+          { id: 'file.revealInExplorer', title: '在文件资源管理器中显示', cat: '文件', icon: 'folders',
             keywords: 'reveal in explorer folder alt+shift+r ctrl+k r 显示 定位 资源管理器 文件夹',
             run: function () { revealInExplorer(revealTarget()); } },
           // 图片预览的缩放（对应 VSCode 内置 media-preview 的 imagePreview.zoomIn / zoomOut 两条命令；
           // VSCode 里它们没有默认键位，只在图片预览为活动编辑器时出现在命令面板 —— 我们同样不占键位）
-          { id: 'image.zoomIn', title: '图片：放大', cat: '视图', icon: '🔍',
+          { id: 'image.zoomIn', title: '图片：放大', cat: '视图', icon: 'search',
             keywords: 'image zoom in 图片 放大 预览 preview',
             run: function () { var b = editorBridgeRef.current; if (b && b.mediaZoom) b.mediaZoom(1); } },
-          { id: 'image.zoomOut', title: '图片：缩小', cat: '视图', icon: '🔍',
+          { id: 'image.zoomOut', title: '图片：缩小', cat: '视图', icon: 'search',
             keywords: 'image zoom out 图片 缩小 预览 preview',
             run: function () { var b = editorBridgeRef.current; if (b && b.mediaZoom) b.mediaZoom(-1); } },
-          { id: 'image.zoomFit', title: '图片：适应窗口', cat: '视图', icon: '⤢',
+          { id: 'image.zoomFit', title: '图片：适应窗口', cat: '视图', icon: 'fit',
             keywords: 'image zoom fit whole 图片 适应 窗口 原始大小 preview',
             run: function () { var b = editorBridgeRef.current; if (b && b.mediaZoom) b.mediaZoom(0); } },
           // ⑫ 文件树三件套（VSCode 里也都在命令面板里）
           // ⑲ 新建走**内联输入**（VSCode 手感），目标层级 = 当前聚焦的树节点（见 startNewEntry）
-          { id: 'file.newFile', title: '新建文件…', cat: '文件', icon: '📄', keywords: 'new file create 新建 文件 ctrl+n',
+          { id: 'file.newFile', title: '新建文件…', cat: '文件', icon: 'file', keywords: 'new file create 新建 文件 ctrl+n',
             run: function () { startNewEntry('file', treeSel); } },
-          { id: 'file.newFolder', title: '新建文件夹…', cat: '文件', icon: '📁', keywords: 'new folder mkdir 新建 文件夹 目录',
+          { id: 'file.newFolder', title: '新建文件夹…', cat: '文件', icon: 'folder', keywords: 'new folder mkdir 新建 文件夹 目录',
             run: function () { startNewEntry('dir', treeSel); } },
-          { id: 'file.renameEntry', title: '重命名（当前文件）…', cat: '文件', icon: '✏️', keywords: 'rename f2 重命名 改名',
+          { id: 'file.renameEntry', title: '重命名（当前文件）…', cat: '文件', icon: 'edit', keywords: 'rename f2 重命名 改名',
             run: function () {
               if (!activePath) { setStatusText('没有打开的文件'); return; }
               promptRename({ name: String(activePath).split('\\').pop(), path: activePath, type: 'file' });
             } },
-          { id: 'file.deleteEntry', title: '删除（当前文件）…', cat: '文件', icon: '🗑', keywords: 'delete remove 删除 移除',
+          { id: 'file.deleteEntry', title: '删除（当前文件）…', cat: '文件', icon: 'trash', keywords: 'delete remove 删除 移除',
             run: function () {
               if (!activePath) { setStatusText('没有打开的文件'); return; }
               deleteEntry({ name: String(activePath).split('\\').pop(), path: activePath, type: 'file' });
             } },
-          { id: 'view.quickOpen', title: '打开文件…', cat: '视图', icon: '🗂', keywords: 'goto quick open ctrl+p', openWith: 'files' },
-          { id: 'view.search', title: '在文件中搜索…', cat: '视图', icon: '🔍', keywords: 'find grep ctrl+shift+f', openWith: 'search' },
+          { id: 'view.quickOpen', title: '打开文件…', cat: '视图', icon: 'folders', keywords: 'goto quick open ctrl+p', openWith: 'files' },
+          { id: 'view.search', title: '在文件中搜索…', cat: '视图', icon: 'search', keywords: 'find grep ctrl+shift+f', openWith: 'search' },
           // 主题切换条目已按用户要求移除：应用只保留深色（2026-09-17）
-          { id: 'view.refresh', title: '刷新工作空间', cat: '视图', icon: '⟳', keywords: 'reload refresh',
+          { id: 'view.refresh', title: '刷新工作空间', cat: '视图', icon: 'refresh', keywords: 'reload refresh',
             run: function () { setRefreshTick(function (t) { return t + 1; }); refreshOverview(); } },
-          { id: 'view.plugins', title: '插件（左侧活动栏）', cat: '视图', icon: '🧩',
+          { id: 'view.plugins', title: '插件（左侧活动栏）', cat: '视图', icon: 'plugins',
             keywords: 'plugin extension panel manage 插件 扩展 面板 管理',
             run: function () { pickActivity('plugins'); } },
-          { id: 'view.toggleExplorer', title: '切换文件树显示', cat: '视图', icon: '📁', keywords: 'explorer sidebar tree ctrl+b',
+          { id: 'view.toggleExplorer', title: '切换文件树显示', cat: '视图', icon: 'folder', keywords: 'explorer sidebar tree ctrl+b',
             run: function () { setShowExplorer(function (v) { return !v; }); } },
-          { id: 'agent.newChat', title: '新建对话', cat: 'Agent', icon: '💬', keywords: 'new chat session conversation 新对话 新会话 另起',
+          { id: 'agent.newChat', title: '新建对话', cat: 'Agent', icon: 'message', keywords: 'new chat session conversation 新对话 新会话 另起',
             run: function () { newChat(); } },
-          { id: 'view.changeHistory', title: '查看改动历史（本次会话）', cat: '视图', icon: '🗂', keywords: 'change history diff agent keep undo review 改动 历史 审阅 保留 撤销',
+          { id: 'view.changeHistory', title: '查看改动历史（本次会话）', cat: '视图', icon: 'folders', keywords: 'change history diff agent keep undo review 改动 历史 审阅 保留 撤销',
             run: function () { setHistoryOpen(true); } },
-          { id: 'view.snapshots', title: '工作区快照（回撤 / 还原）', cat: '视图', icon: '⏱', keywords: 'snapshot backup restore rollback undo timeline local history 快照 回撤 还原 恢复 备份 后悔 时间线',
+          { id: 'view.snapshots', title: '工作区快照（回撤 / 还原）', cat: '视图', icon: 'clock', keywords: 'snapshot backup restore rollback undo timeline local history 快照 回撤 还原 恢复 备份 后悔 时间线',
             run: function () { openSnapshots(); } },
-          { id: 'view.snapshotNow', title: '立即创建快照', cat: '视图', icon: '📌', keywords: 'snapshot now backup 立即快照 备份 打点 存档',
+          { id: 'view.snapshotNow', title: '立即创建快照', cat: '视图', icon: 'pin', keywords: 'snapshot now backup 立即快照 备份 打点 存档',
             run: function () { snapshotNow(); } },
-          { id: 'help.about', title: '关于 天工', cat: '帮助', icon: 'ℹ️', keywords: 'about version keyboard shortcut',
+          { id: 'help.about', title: '关于 天工', cat: '帮助', icon: 'info', keywords: 'about version keyboard shortcut',
             run: showAbout },
           // 键位系统（2026-09-21）：命令面板入口 + 标签切换（键位注册表要按 id 调它们）
-          { id: 'view.commands', title: '命令面板', cat: '视图', icon: '⌨️', keywords: 'command palette ctrl+shift+p f1 命令 面板',
+          { id: 'view.commands', title: '命令面板', cat: '视图', icon: 'keyboard', keywords: 'command palette ctrl+shift+p f1 命令 面板',
             run: function () { openCommands(); } },
-          { id: 'browser.open', title: '打开内置浏览器', cat: '视图', icon: '🌐', keywords: 'browser web open url 浏览器 打开 网页 地址 内置',
+          { id: 'browser.open', title: '打开内置浏览器', cat: '视图', icon: 'globe', keywords: 'browser web open url 浏览器 打开 网页 地址 内置',
             run: function () { openBrowserTab(''); } },
-          { id: 'view.keybindings', title: '快捷键设置…', cat: '视图', icon: '⌨', keywords: 'keyboard shortcut keybinding keymap 快捷键 键位 设置 自定义 改键',
+          { id: 'view.keybindings', title: '快捷键设置…', cat: '视图', icon: 'keyboard', keywords: 'keyboard shortcut keybinding keymap 快捷键 键位 设置 自定义 改键',
             run: function () { openKeybindings(); } },
-          { id: 'view.editorSettings', title: '编辑器设置…', cat: '视图', icon: '⚙️', keywords: 'editor settings unicode highlight ambiguous confusable invisible 编辑器 设置 易混淆 特殊字符 高亮 全角 标点',
+          { id: 'view.editorSettings', title: '编辑器设置…', cat: '视图', icon: 'settings', keywords: 'editor settings unicode highlight ambiguous confusable invisible 编辑器 设置 易混淆 特殊字符 高亮 全角 标点',
             run: function () { openEditorSettings(); } },
-          { id: 'md.togglePreview', title: 'Markdown：预览 / 源码', cat: '视图', icon: '📖', keywords: 'markdown preview toc outline document 预览 目录 文档 大纲 md',
+          { id: 'md.togglePreview', title: 'Markdown：预览 / 源码', cat: '视图', icon: 'book', keywords: 'markdown preview toc outline document 预览 目录 文档 大纲 md',
             run: function () { toggleMdPreview(); } },
-          { id: 'view.nextTab', title: '下一个标签', cat: '视图', icon: '→', keywords: 'next tab ctrl+tab 下一个 标签',
+          { id: 'view.nextTab', title: '下一个标签', cat: '视图', icon: 'arrow-right', keywords: 'next tab ctrl+tab 下一个 标签',
             run: function () { activateTab(1); } },
-          { id: 'view.prevTab', title: '上一个标签', cat: '视图', icon: '←', keywords: 'previous tab ctrl+shift+tab 上一个 标签',
+          { id: 'view.prevTab', title: '上一个标签', cat: '视图', icon: 'arrow-left', keywords: 'previous tab ctrl+shift+tab 上一个 标签',
             run: function () { activateTab(-1); } },
         ];
         return list;
@@ -10391,7 +10976,11 @@ window.__ModuleLoader__.load({
           + line(['file.newFile', 'file.save', 'file.saveAll']) + '\n'
           + line(['file.close', 'file.reopenClosed', 'file.closeAll', 'file.closeSaved', 'file.keepOpen', 'file.togglePin', 'file.copyPath']) + '\n'
           + line(['view.nextTab', 'view.prevTab', 'view.explorer', 'view.terminal']) + '\n'
-          + line(['editor.askAgent', 'editor.inlineSuggest', 'editor.gotoDefinition', 'editor.outline']) + '\n',
+          + line(['editor.askAgent', 'editor.inlineSuggest', 'editor.gotoDefinition', 'editor.outline'])
+          // 第三方许可是 MIT / CC BY 的硬性义务（保留版权与许可声明），不是可选装饰。
+          // 关于页只放署名 + 指向安装目录里的全文，别在这里贴整篇 —— alert 撑不下也读不了。
+          + '\n第三方组件（完整许可文本在安装目录 resources\\app\\assets\\licenses\\）\n'
+          + '· Tabler Icons —— MIT，Copyright (c) 2020-2026 Paweł Kuna（界面图标）\n',
         );
       }
 
@@ -10400,41 +10989,41 @@ window.__ModuleLoader__.load({
       function actionBlocks() {
         return [
           { title: '文件', items: [
-            { icon: '📂', label: '打开文件夹…', title: '选择并打开一个工作空间', disabled: busy, run: openFolder },
-            { icon: '📄', label: '新建文件…', keys: keyHint('file.newFile'), title: '在所选文件夹（或工作空间根）里新建文件',
+            { icon: 'folder-open', label: '打开文件夹…', title: '选择并打开一个工作空间', disabled: busy, run: openFolder },
+            { icon: 'file', label: '新建文件…', keys: keyHint('file.newFile'), title: '在所选文件夹（或工作空间根）里新建文件',
               run: function () { promptNew('file', null); } },
-            { icon: '📁', label: '新建文件夹…', keys: keyHint('file.newFolder'), title: '在所选文件夹（或工作空间根）里新建文件夹',
+            { icon: 'folder', label: '新建文件夹…', keys: keyHint('file.newFolder'), title: '在所选文件夹（或工作空间根）里新建文件夹',
               run: function () { promptNew('dir', null); } },
-            { icon: '🗂', label: '快速打开文件…', keys: keyHint('view.quickOpen'), run: function () { closeOverlays(); setSearchOpen(false); setOverlay('files'); } },
-            { icon: '💾', label: '保存', keys: keyHint('file.save'), run: function () { var b = editorBridgeRef.current; if (b && b.save) b.save(); else setStatusText('没有可保存的文件'); } },
-            { icon: '💾', label: '全部保存', keys: keyHint('file.saveAll'), run: function () { var b = editorBridgeRef.current; if (b && b.saveAll) b.saveAll(); } },
-            { icon: '✕', label: '关闭当前标签', keys: keyHint('file.close'), run: function () { if (activePath) closeTab(activePath); } },
-            { icon: '↩️', label: '重新打开已关闭的标签', keys: keyHint('file.reopenClosed'), run: reopenClosedTab },
+            { icon: 'folders', label: '快速打开文件…', keys: keyHint('view.quickOpen'), run: function () { closeOverlays(); setSearchOpen(false); setOverlay('files'); } },
+            { icon: 'save', label: '保存', keys: keyHint('file.save'), run: function () { var b = editorBridgeRef.current; if (b && b.save) b.save(); else setStatusText('没有可保存的文件'); } },
+            { icon: 'save', label: '全部保存', keys: keyHint('file.saveAll'), run: function () { var b = editorBridgeRef.current; if (b && b.saveAll) b.saveAll(); } },
+            { icon: 'close', label: '关闭当前标签', keys: keyHint('file.close'), run: function () { if (activePath) closeTab(activePath); } },
+            { icon: 'undo', label: '重新打开已关闭的标签', keys: keyHint('file.reopenClosed'), run: reopenClosedTab },
           ] },
           { title: '编辑', items: [
-            { icon: '↶', label: '撤销', keys: keyHint('editor.undo'), run: function () { runEditorAction('undo'); } },
-            { icon: '↷', label: '重做', keys: keyHint('editor.redo'), run: function () { runEditorAction('redo'); } },
-            { icon: '🔍', label: '在文件中查找', keys: keyHint('editor.find'), run: function () { runEditorAction('actions.find'); } },
-            { icon: '🎯', label: '转到定义', keys: keyHint('editor.gotoDefinition'), run: function () { var b = editorBridgeRef.current; if (b && b.gotoDefinition) b.gotoDefinition(); else setStatusText('没有打开的编辑器'); } },
-            { icon: '🔖', label: '转到文件中的符号…', keys: keyHint('editor.outline'), run: function () { runEditorAction('editor.action.quickOutline'); } },
-            { icon: '✏️', label: '重命名符号', keys: keyHint('editor.rename'), run: function () { runEditorAction('editor.action.rename'); } },
-            { icon: '🧹', label: '格式化文档', keys: keyHint('editor.format'), run: function () { runEditorAction('editor.action.formatDocument'); } },
-            { icon: '✨', label: '内联建议（AI 补全）', keys: keyHint('editor.inlineSuggest'), run: function () { runEditorAction('editor.action.inlineSuggest.trigger'); } },
+            { icon: 'undo', label: '撤销', keys: keyHint('editor.undo'), run: function () { runEditorAction('undo'); } },
+            { icon: 'redo', label: '重做', keys: keyHint('editor.redo'), run: function () { runEditorAction('redo'); } },
+            { icon: 'search', label: '在文件中查找', keys: keyHint('editor.find'), run: function () { runEditorAction('actions.find'); } },
+            { icon: 'target', label: '转到定义', keys: keyHint('editor.gotoDefinition'), run: function () { var b = editorBridgeRef.current; if (b && b.gotoDefinition) b.gotoDefinition(); else setStatusText('没有打开的编辑器'); } },
+            { icon: 'bookmark', label: '转到文件中的符号…', keys: keyHint('editor.outline'), run: function () { runEditorAction('editor.action.quickOutline'); } },
+            { icon: 'edit', label: '重命名符号', keys: keyHint('editor.rename'), run: function () { runEditorAction('editor.action.rename'); } },
+            { icon: 'wand', label: '格式化文档', keys: keyHint('editor.format'), run: function () { runEditorAction('editor.action.formatDocument'); } },
+            { icon: 'sparkles', label: '内联建议（AI 补全）', keys: keyHint('editor.inlineSuggest'), run: function () { runEditorAction('editor.action.inlineSuggest.trigger'); } },
           ] },
           { title: '查看', items: [
-            { icon: '⌨️', label: '命令面板…', keys: keyHint('view.commands'), run: function () { setSearchOpen(false); setOverlay('commands'); } },
-            { icon: '🔎', label: '在文件中搜索…', keys: keyHint('view.search'), run: function () { closeOverlays(); setSearchOpen(true); } },
-            { icon: '⚠️', label: '问题（错误 / 警告）', keys: keyHint('view.problems'), run: function () { closeOverlays(); setOverlay('problems'); } },
-            { icon: '🗂', label: '改动历史（本次会话）', run: function () { setHistoryOpen(true); } },
-            { icon: '⏱', label: '工作区快照（回撤 / 还原）', run: openSnapshots },
-            { icon: '🖥', label: '集成终端', keys: keyHint('view.terminal'), run: toggleTerminalPanel },
-            { icon: '🌐', label: '打开内置浏览器', title: '在中间面板开一个浏览器标签', run: function () { openBrowserTab(''); } },
-            { icon: '🧩', label: '插件（左侧活动栏）', run: function () { pickActivity('plugins'); } },
-            { icon: '👁', label: '显隐侧边栏', keys: keyHint('view.explorer'), run: function () { setShowExplorer(function (v) { return !v; }); } },
+            { icon: 'keyboard', label: '命令面板…', keys: keyHint('view.commands'), run: function () { setSearchOpen(false); setOverlay('commands'); } },
+            { icon: 'search', label: '在文件中搜索…', keys: keyHint('view.search'), run: function () { closeOverlays(); setSearchOpen(true); } },
+            { icon: 'alert', label: '问题（错误 / 警告）', keys: keyHint('view.problems'), run: function () { closeOverlays(); setOverlay('problems'); } },
+            { icon: 'folders', label: '改动历史（本次会话）', run: function () { setHistoryOpen(true); } },
+            { icon: 'clock', label: '工作区快照（回撤 / 还原）', run: openSnapshots },
+            { icon: 'terminal', label: '集成终端', keys: keyHint('view.terminal'), run: toggleTerminalPanel },
+            { icon: 'globe', label: '打开内置浏览器', title: '在中间面板开一个浏览器标签', run: function () { openBrowserTab(''); } },
+            { icon: 'plugins', label: '插件（左侧活动栏）', run: function () { pickActivity('plugins'); } },
+            { icon: 'eye', label: '显隐侧边栏', keys: keyHint('view.explorer'), run: function () { setShowExplorer(function (v) { return !v; }); } },
           ] },
           { title: '帮助', items: [
-            { icon: '⌨', label: '快捷键设置…', title: '在中间面板里逐条查看 / 修改快捷键', run: openKeybindings },
-            { icon: 'ℹ️', label: '关于 天工（含快捷键表）', run: showAbout },
+            { icon: 'keyboard', label: '快捷键设置…', title: '在中间面板里逐条查看 / 修改快捷键', run: openKeybindings },
+            { icon: 'info', label: '关于 天工（含快捷键表）', run: showAbout },
           ] },
         ];
       }
@@ -10463,41 +11052,41 @@ window.__ModuleLoader__.load({
           // （引擎 / 编辑器 / 快捷键）。组名别写"全部设置" —— 会被读成"包含下面所有开关"，但下面那些
           // 外观/标签项是即时生效的开关，不是页面。
           { title: '设置页', items: [
-            { icon: '⚙', label: 'harness 相关设置…', title: '在中面板里打开引擎自带的设置页（通用设置 / 模型 / 插件 / Agent 预设）', run: openSettingsPage },
-            { icon: '⚙️', label: '编辑器设置…', title: '在中面板里逐项设置编辑器喜好（易混淆字符 / 看不见的字符 / 非 ASCII + 适用范围）', run: openEditorSettings },
-            { icon: '⌨', label: '快捷键…', title: '在中面板里一条条查看 / 修改（点「改」后按下新的组合键）', run: openKeybindings },
-            { icon: '📜', label: 'Agent 设置…', title: '在中面板里写 Agent 的「铁律」：每轮对话前原样发给它的一段话（可临时停用）', run: openAgentSettings },
+            { icon: 'settings', label: 'harness 相关设置…', title: '在中面板里打开引擎自带的设置页（通用设置 / 模型 / 插件 / Agent 预设）', run: openSettingsPage },
+            { icon: 'settings', label: '编辑器设置…', title: '在中面板里逐项设置编辑器喜好（易混淆字符 / 看不见的字符 / 非 ASCII + 适用范围）', run: openEditorSettings },
+            { icon: 'keyboard', label: '快捷键…', title: '在中面板里一条条查看 / 修改（点「改」后按下新的组合键）', run: openKeybindings },
+            { icon: 'scroll', label: 'Agent 设置…', title: '在中面板里写 Agent 的「铁律」：每轮对话前原样发给它的一段话（可临时停用）', run: openAgentSettings },
           ] },
           { title: '外观', items: [
             { render: h(FontSizeRow, { onApply: function (px) { var b = editorBridgeRef.current; if (b && b.setFontSize) b.setFontSize(px); } }) },
-            { icon: '🎨', label: '界面主题：深色（固定）', disabled: true, title: '按你的要求：应用只有深色，不提供切换' },
+            { icon: 'palette', label: '界面主题：深色（固定）', disabled: true, title: '按你的要求：应用只有深色，不提供切换' },
           ] },
           // 链接打开方式（2026-10-21 用户要求）：Agent 对话里点网址不该再弹一个没用的原生小窗
           { title: '链接', items: [
             { render: h(LinkOpenRow, { mode: linkOpen, onChange: setLinkOpenMode }) },
-            { icon: '🧭', label: '只管对话里的网址', disabled: true,
+            { icon: 'compass', label: '只管对话里的网址', disabled: true,
               title: '工作区文件、代码跳转照旧在天工里打开；这一项管的是 Agent 回复里那些 http(s) 链接点下去去哪。' },
           ] },
           // ⑮ 标签三件套的开关（对应 VSCode 的 workbench.editor.*，**默认值与 VSCode 一致**）
           { title: '标签', items: [
             { render: h(ToggleRow, {
-                icon: '👁', label: '预览模式', value: tabPrefs.preview,
+                icon: 'eye', label: '预览模式', value: tabPrefs.preview,
                 title: 'VSCode 的 enablePreview（默认开）：在资源管理器里单击文件只在同一个「预览标签」里临时显示（标签名斜体），再单击别的文件就替换它；双击文件或标签、或者一开始编辑，就转成固定标签。关掉它 = 单击即固定打开。',
                 onToggle: function (v) { updateTabPrefs({ preview: v }); } }) },
             { render: h(ToggleRow, {
-                icon: '🗂', label: '快速打开走预览', value: tabPrefs.fromQuickOpen, disabled: !tabPrefs.preview,
+                icon: 'folders', label: '快速打开走预览', value: tabPrefs.fromQuickOpen, disabled: !tabPrefs.preview,
                 title: 'VSCode 的 enablePreviewFromQuickOpen（默认关）：Ctrl+P 选中的文件也用预览标签打开（会顶掉上一个预览标签）',
                 onToggle: function (v) { updateTabPrefs({ fromQuickOpen: v }); } }) },
             { render: h(ToggleRow, {
-                icon: '🛡', label: '跳转保护当前标签', value: !tabPrefs.fromCodeNav, disabled: !tabPrefs.preview,
+                icon: 'shield', label: '跳转保护当前标签', value: !tabPrefs.fromCodeNav, disabled: !tabPrefs.preview,
                 title: 'VSCode 的 enablePreviewFromCodeNavigation（默认关）反过来：默认开着 —— 用 F12 / 搜索结果 / 问题面板跳转前，先把当前标签转正，这样它不会被跳转目标顶掉。关掉它 = 当前标签保持预览态，可能被跳转目标替换掉。',
                 onToggle: function (v) { updateTabPrefs({ fromCodeNav: !v }); } }) },
             { render: h(ToggleRow, {
-                icon: '📌', label: '固定标签收窄成图标', value: tabPrefs.pinnedCompact,
+                icon: 'pin', label: '固定标签收窄成图标', value: tabPrefs.pinnedCompact,
                 title: 'VSCode 的 pinnedTabSizing（默认 normal：外观与普通标签相同，只是强制靠左、批量关闭会跳过它）。打开它 = 收窄成只显示图标。',
                 onToggle: function (v) { updateTabPrefs({ pinnedCompact: v }); } }) },
             { render: h(ToggleRow, {
-                icon: '♻️', label: '重开软件时恢复上次打开的文件', value: tabPrefs.restoreSession,
+                icon: 'recycle', label: '重开软件时恢复上次打开的文件', value: tabPrefs.restoreSession,
                 title: '关软件时开着的文件（连带**没保存的改动**）都记在本机，下次打开自动装回来；'
                   + '磁盘上已被删掉/移走的文件会自动跳过。关掉它 = 每次打开都是空编辑器。',
                 onToggle: function (v) {
@@ -10509,23 +11098,23 @@ window.__ModuleLoader__.load({
                   }
                   trace('ui', 'info', 'session-restore-toggle', { on: !!v });
                 } }) },
-            { icon: '🖱', label: '标签右键菜单：关闭族 · 保持打开 · 固定', disabled: true,
+            { icon: 'mouse', label: '标签右键菜单：关闭族 · 保持打开 · 固定', disabled: true,
               title: '在标签上点右键。固定标签不会被 Ctrl+W / 中键关闭（这是 VSCode 的保护行为）；要关就从右键菜单点「关闭」，或先「取消固定」。' },
           ] },
           // ⌨ 快捷键（入口已上移到「设置页」组，这组只留动作与状态）
           { title: '快捷键', items: [
-            { icon: '↺', label: '全部恢复默认', title: '把所有改过的键位恢复成出厂默认',
+            { icon: 'restore', label: '全部恢复默认', title: '把所有改过的键位恢复成出厂默认',
               run: function () {
                 resetAllKeyBindings();
                 setKeysRev(function (n) { return n + 1; });
                 setStatusText('快捷键已全部恢复默认');
               } },
-            { icon: '🧾', label: '改过的键位：' + changedKeyCount() + ' 条', disabled: true,
+            { icon: 'receipt', label: '改过的键位：' + changedKeyCount() + ' 条', disabled: true,
               title: '存在本机（localStorage 的 dside.keys.v1），换台机器不跟随' },
           ] },
           { title: '版本与更新', items: [
-            { icon: '🏷', label: verLabel, disabled: true, title: '更新包只发变化的文件，重启后自动应用' },
-            { icon: '🔄', label: '检查更新', keys: 'Ctrl+Shift+U', disabled: !(upd && upd.installed), run: checkUpdate },
+            { icon: 'tag', label: verLabel, disabled: true, title: '更新包只发变化的文件，重启后自动应用' },
+            { icon: 'refresh', label: '检查更新', keys: 'Ctrl+Shift+U', disabled: !(upd && upd.installed), run: checkUpdate },
           ] },
           { title: '代码导航', items: [
             // 【实测定案 · 2026-09-22】这一格原来是「代码导航状态卡片」（h(CodeNavRow)），
@@ -10538,12 +11127,12 @@ window.__ModuleLoader__.load({
             // 处置：这一格不再放"会自己拉数据的组件"，只留一行静态说明（点它去编辑器设置页/
             // 文档），信息从"活动面板里实时拉"改成"写在设置页说明里"。
             // 回归：tools/e2e-startup.mjs P11/P12（12 秒内不重建、零请求）。
-            { icon: '🧭', label: '语言组件装在 <数据目录>\\tools\\lsp（用到时 Agent 会问你）', disabled: true,
+            { icon: 'compass', label: '语言组件装在 <数据目录>\\tools\\lsp（用到时 Agent 会问你）', disabled: true,
               title: 'Agent 改代码前会用代码导航查"定义在哪 / 全项目谁在用"。缺哪种语言，它会先问你要不要装（写清装什么包、从哪来、多大），你同意才下载、按官方哈希校验。' },
           ] },
           { title: '诊断', items: [
-            { icon: '🧾', label: '使用轨迹日志', disabled: true, title: 'logs\\ide-trace.log（报 bug 时直接读它，不用你复述）' },
-            { icon: '💽', label: '工作区快照库', disabled: true, title: 'snapshots\\（每工作空间保留 40 份 / 最多 1GB）' },
+            { icon: 'receipt', label: '使用轨迹日志', disabled: true, title: 'logs\\ide-trace.log（报 bug 时直接读它，不用你复述）' },
+            { icon: 'database', label: '工作区快照库', disabled: true, title: 'snapshots\\（每工作空间保留 40 份 / 最多 1GB）' },
           ] },
         ];
       }
@@ -11807,7 +12396,7 @@ window.__ModuleLoader__.load({
       // 并把右侧切到 Agent 页（VSCode 的 Ctrl+I 也是"就地提问、答案立刻可见"）
       function onAskAgent(message, ctx) {
         if (!sessionFace) {
-          setStatusText('还没有会话：请先点击"📂 打开文件夹"新建');
+          setStatusText('还没有会话：请先点击"打开文件夹"新建');
           return;
         }
         sendMessage(message);
@@ -11817,7 +12406,7 @@ window.__ModuleLoader__.load({
 
       function sendMessage(text) {
         if (!sessionFace) {
-          setStatusText('还没有会话：请先点击"📂 打开文件夹"新建');
+          setStatusText('还没有会话：请先点击"打开文件夹"新建');
           return;
         }
         trace('ui', 'info', 'agent-send', { len: text.length });
@@ -12091,11 +12680,11 @@ window.__ModuleLoader__.load({
                     title: '新版本 v' + ((upd.latest && upd.latest.version) || '') + ' 可用 — 点击下载安装'
                       + ((upd.latest && upd.latest.notes) ? '\n\n' + upd.latest.notes : ''),
                     onClick: installUpdate,
-                  }, '⬆ 新版本 v' + ((upd.latest && upd.latest.version) || ''))
+                  }, ticon('arrow-up', 12), '新版本 v' + ((upd.latest && upd.latest.version) || ''))
                 : (upd.phase === 'downloading'
                     ? h('span', { className: 'dside-upd' }, '下载更新中 ' + Math.round((upd.progress || 0) * 100) + '%')
                     : (upd.phase === 'ready'
-                        ? h('button', { className: 'dside-upd has', onClick: applyUpdate }, '⟳ 重启并安装 v' + ((upd.latest && upd.latest.version) || ''))
+                        ? h('button', { className: 'dside-upd has', onClick: applyUpdate }, ticon('refresh', 12), '重启并安装 v' + ((upd.latest && upd.latest.version) || ''))
                         : h('button', {
                             className: 'dside-upd',
                             title: (upd.phase === 'error' ? '更新源读取失败：' + (upd.error || '') : '当前版本 — 点击检查更新')
@@ -12280,15 +12869,17 @@ window.__ModuleLoader__.load({
             // 操作栏：新对话（在当前工作空间里再开一个会话）
             h('div', { className: 'dside-side-actions' },
               h('button', {
-                className: 'dside-btn primary small',
+                className: 'dside-iconbtn',
                 title: root ? ('在「' + root + '」里开一个新对话') : '还没有工作空间 —— 先选一个文件夹',
+                'aria-label': '新建对话',
                 onClick: newChat,
-              }, '＋ 新对话'),
+              }, ticon('plus', 15)),
               h('button', {
-                className: 'dside-btn small' + (sessionsOpen ? ' primary' : ''),
+                className: 'dside-iconbtn' + (sessionsOpen ? ' on' : ''),
                 title: '展开 / 收起历史对话（可在全部对话内容里搜索）',
+                'aria-label': '历史对话',
                 onClick: function () { setSessionsOpen(function (v) { return !v; }); },
-              }, '🕘 历史对话'),
+              }, ticon('history', 15)),
             ),
             h(AgentPanel, {
                   listState: listState, current: current, conv: conv, sessionFace: sessionFace,
@@ -12345,7 +12936,10 @@ window.__ModuleLoader__.load({
                   setSearchOpen(false);
                   setOverlay(function (prev) { return prev === 'problems' ? null : 'problems'; });
                 },
-              }, (probCounts.e ? '✕ ' + probCounts.e : '') + (probCounts.e && probCounts.w ? '   ' : '') + (probCounts.w ? '⚠ ' + probCounts.w : ''))
+              },
+          probCounts.e ? [ticon('close', 11), ' ' + probCounts.e] : null,
+          probCounts.e && probCounts.w ? '   ' : null,
+          probCounts.w ? [ticon('alert', 11), ' ' + probCounts.w] : null)
             : null,
           // ⑯ 终端入口（2026-09-21 用户报障"按钮被藏了、快捷键又不行"）：状态栏常驻一个可见开关，
           // 与 VSCode 把面板开关放在状态栏同款；Ctrl+` / 操作组 / 命令面板三条入口照旧都在
@@ -12354,14 +12948,14 @@ window.__ModuleLoader__.load({
             title: '集成终端（Ctrl+` / Ctrl+J）：点一下打开 / 收起'
               + (kb.flash && !termOpen ? '（Agent 正在操作浏览器，键盘映射面板里有新按键）' : ''),
             onClick: toggleTerminalPanel,
-          }, '⌨ 终端',
+          }, ticon('keyboard', 12), '终端',
             // 面板关着的时候没有标签可闪 → 在状态栏这颗开关上闪，别把 Agent 的动作变成"什么都没发生"
             (kb.flash && !termOpen) ? h('span', { className: 'dside-dot dirty' }) : null),
           h('span', {
             className: 'dside-snapstat',
             title: '工作区快照（回撤 / 还原）：Agent 每轮开始前、每次保存后自动存一份；点开可看差异并一键还原',
             onClick: openSnapshots,
-          }, snapLast ? ('⏱ 快照 ' + snapTimeText(snapLast)) : '⏱ 快照'),
+          }, snapLast ? [ticon('clock', 12), ' 快照 ' + snapTimeText(snapLast)] : [ticon('clock', 12), ' 快照']),
           h('span', { className: 'sp' }, 'UTF-8 · 文本'),
           h('span', { className: 'sp' }, '天工 · DSH 引擎'),
         ),
@@ -12378,7 +12972,7 @@ window.__ModuleLoader__.load({
           ? h(PaletteOverlay, {
               title: '打开文件', placeholder: '输入文件名过滤…（Ctrl+P）',
               fetchItems: fetchFiles, score: fileScore,
-              describe: function (f) { return { icon: iconFor({ type: 'file', name: f.name }), title: f.name, detail: f._rel }; },
+              describe: function (f) { return { mark: fileMarkOf({ type: 'file', name: f.name }), title: f.name, detail: f._rel }; },
               onPick: function (f) { closeOverlays(); openTab({ name: f.name, path: f.path }, (tabPrefs.preview && tabPrefs.fromQuickOpen) ? 'preview' : null); },
               onClose: closeOverlays,
             })
@@ -12773,7 +13367,7 @@ window.__ModuleLoader__.load({
             type: 'button',
             title: '算了，不退',
             onClick: function () { setArmed(false); setNote(''); },
-          }, '✕')
+          }, ticon('close', 13))
           : null,
         note ? h('span', { className: 'dside-rewind-note' }, note) : null,
       );
