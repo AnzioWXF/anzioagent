@@ -45,6 +45,11 @@ contextBridge.exposeInMainWorld('anzioShell', {
     return () => { try { ipcRenderer.removeListener('anzio-shell:open-link', handler) } catch { /* 忽略 */ } }
   },
   setHotkeys: (chords) => ipcRenderer.invoke('anzio-shell:hotkeys', Array.isArray(chords) ? chords : []),
+  // ⑥ 本机密文（2026-10-22）：SSH 口令记在本机，落盘前由壳加密（safeStorage / Windows DPAPI），
+  //    文件里只有密文，且只有当前 Windows 账户能解。浏览器里没有这个桥 → 插件退回"只留内存"。
+  secretSet: (key, value) => ipcRenderer.invoke('anzio-shell:secret-set', String(key || ''), String(value || '')),
+  secretGet: (key) => ipcRenderer.invoke('anzio-shell:secret-get', String(key || '')),
+  secretDel: (key) => ipcRenderer.invoke('anzio-shell:secret-del', String(key || '')),
   onHotkey: (cb) => {
     const handler = (_e, chord) => { try { cb(String(chord || '')) } catch { /* 忽略 */ } }
     ipcRenderer.on('anzio-shell:hotkey', handler)

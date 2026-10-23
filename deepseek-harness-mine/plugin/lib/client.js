@@ -404,6 +404,7 @@ window.__ModuleLoader__.load({
     '.dside-srv-form-row{display:flex;gap:6px;}',
     '.dside-srv-input{width:100%;box-sizing:border-box;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l2);border-radius:6px;color:var(--dsw-alias-label-primary);font:inherit;font-size:11px;padding:4px 8px;outline:none;}',
     '.dside-srv-input:focus{border-color:var(--dsw-alias-state-business-primary);}',
+    '.dside-srv-hint{font-size:10px;line-height:1.4;color:var(--dsw-alias-label-tertiary);padding:0 2px;}',
     '.dside-srv-actions{display:flex;gap:6px;}',
     '.dside-ssh{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);min-height:0;}',
     '.dside-ssh.hidden{display:none;}',
@@ -2184,9 +2185,10 @@ window.__ModuleLoader__.load({
               h('input', { className: 'dside-srv-input', placeholder: '密钥文件路径（如 C:\\Users\\你\\.ssh\\id_rsa）', value: form.keyPath, onChange: function (e) { upd('keyPath', e.target.value) } }),
               h('input', {
                 className: 'dside-srv-input', type: 'password',
-                placeholder: '口令（用密钥登录就留空；口令只留在本机内存里，不落盘）',
+                placeholder: editingId ? '口令（留空 = 沿用已记住的；填新的 = 覆盖）' : '口令（用密钥登录就留空；填了会加密存在本机）',
                 value: form.password, onChange: function (e) { upd('password', e.target.value) },
               }),
+              editingId ? h('div', { className: 'dside-srv-hint' }, '口令加密保存在本机，只有这台电脑上这个 Windows 账户能解开。') : null,
               h('div', { className: 'dside-srv-actions' },
                 h('button', {
                   className: 'dside-btn primary small',
@@ -8903,34 +8905,68 @@ window.__ModuleLoader__.load({
         });
       }
 
-      // 口令只活在这块内存里：不写清单、不写日志、关软件就没了（清单里只存地址与密钥路径）
+      // 口令两个去处：本次会话留在内存（sshPwRef），跨重启交给壳加密落盘
+      // （window.anzioShell.secretSet → Windows DPAPI，文件里只有密文，只有本机本账户能解）。
+      // 浏览器里打开 3081 时没有这个桥 → 退回"只留内存"的老行为，功能不坏。
       var sshPwRef = React.useRef({});
+      function sshSecretBridge() {
+        var b = window.anzioShell;
+        return (b && b.secretSet && b.secretGet) ? b : null;
+      }
+      function sshRememberPw(id, pw) {
+        if (!id || !pw) return;
+        sshPwRef.current[id] = pw;
+        var b = sshSecretBridge();
+        if (!b) return;
+        b.secretSet(id, pw).then(function (r) {
+          if (r && r.ok === false) setStatusText('口令没能存到本机（' + ((r && r.code) || 'error') + '），本次会话内仍可用');
+        });
+      }
+      function sshForgetPw(id) {
+        if (!id) return;
+        delete sshPwRef.current[id];
+        var b = sshSecretBridge();
+        if (b) b.secretDel(id);
+      }
       function sshConnect(server, trustFingerprint) {
         if (!server || !server.host) return;
         setSshBusy(server.id);
         setSshErr('');
-        apiPost('/ssh-connect', {
-          id: server.id, host: server.host, port: server.port,
-          user: server.user, keyPath: server.keyPath, name: server.name,
-          password: sshPwRef.current[server.id] || undefined,
-          trustFingerprint: trustFingerprint || undefined,
-        }).then(function (r) {
-          setSshBusy('');
-          setSshFp(null);
-          if (!r || r.ok === false) {
-            var code = String((r && r.code) || '');
-            // 指纹不认识 / 变了：不连，先把指纹摆出来让用户拍板
-            if ((code === 'host-key-unknown' || code === 'host-key-changed') && r.fingerprint) {
-              setSshFp({ id: server.id, fingerprint: String(r.fingerprint), type: String(r.hostKeyType || ''), kind: code === 'host-key-changed' ? 'changed' : 'first' });
-              setSshErr('');
-              trace('ui', 'warn', 'ssh-host-key-ask', { id: server.id, host: server.host, kind: code });
-              return;
+        var send = function (password) {
+          apiPost('/ssh-connect', {
+            id: server.id, host: server.host, port: server.port,
+            user: server.user, keyPath: server.keyPath, name: server.name,
+            password: password || undefined,
+            trustFingerprint: trustFingerprint || undefined,
+          }).then(function (r) {
+            setSshBusy('');
+            setSshFp(null);
+            if (!r || r.ok === false) {
+              var code = String((r && r.code) || '');
+              // 指纹不认识 / 变了：不连，先把指纹摆出来让用户拍板
+              if ((code === 'host-key-unknown' || code === 'host-key-changed') && r.fingerprint) {
+                setSshFp({ id: server.id, fingerprint: String(r.fingerprint), type: String(r.hostKeyType || ''), kind: code === 'host-key-changed' ? 'changed' : 'first' });
+                setSshErr('');
+                trace('ui', 'warn', 'ssh-host-key-ask', { id: server.id, host: server.host, kind: code });
+                return;
+              }
+              setSshErr('连接失败：' + ((r && (r.error || r.detail)) || 'network'));
             }
-            setSshErr('连接失败：' + ((r && (r.error || r.detail)) || 'network'));
-          }
-          refreshSsh();
-          trace('ui', (r && r.ok !== false) ? 'info' : 'warn', 'ssh-connect', { id: server.id, host: server.host, ok: !!(r && r.ok !== false) });
-        });
+            refreshSsh();
+            trace('ui', (r && r.ok !== false) ? 'info' : 'warn', 'ssh-connect', { id: server.id, host: server.host, ok: !!(r && r.ok !== false) });
+          });
+        };
+        var cached = sshPwRef.current[server.id] || '';
+        if (cached) { send(cached); return }
+        var bridge = sshSecretBridge();
+        if (!bridge) { send(''); return }
+        // 重启天工后第一次连这台机器走的就是这条路：把本机记住的口令取回来。
+        // 取不到不算错 —— 照旧往后端发空口令，由它回 no-credential 让用户重填。
+        bridge.secretGet(server.id).then(function (r) {
+          var got = (r && r.ok && r.value) ? String(r.value) : '';
+          if (got) sshPwRef.current[server.id] = got;
+          send(got);
+        }).catch(function () { send('') });
       }
       function sshDisconnect(sid) {
         apiPost('/ssh-disconnect', { id: sid }).then(function () {
@@ -8954,15 +8990,17 @@ window.__ModuleLoader__.load({
       }
       function sshAddServer(srv, pw) {
         var id = 'srv-' + Date.now().toString(36);
-        if (pw) sshPwRef.current[id] = pw;
+        sshRememberPw(id, pw);
         var next = ssh.servers.concat([Object.assign({ id: id }, srv)]);
         sshSaveServers(next);
         sshPickServer(id, Object.assign({ id: id }, srv));   // 加完直接连，省一次点击
       }
 
       // 服务器清单的编辑 / 移除：改的是"本机这份清单"，不碰服务器本身
+      // 口令留空 = 这次没改口令：**不动**已记住的那份。原实现会顺手清掉，
+      // 结果只是改个端口、用户下次连接就 no-credential（2026-10-22 一并修掉）。
       function sshEditServer(id, srv, pw) {
-        if (pw) sshPwRef.current[id] = pw; else delete sshPwRef.current[id];
+        sshRememberPw(id, pw);
         var next = ssh.servers.map(function (it) { return it.id === id ? Object.assign({}, it, srv) : it });
         sshSaveServers(next);
         setStatusText('已保存「' + (srv.name || srv.host) + '」的设置');
@@ -8973,6 +9011,7 @@ window.__ModuleLoader__.load({
         var label = srv ? (srv.name || srv.host) : id;
         if (!window.confirm('从清单里移除「' + label + '」？\n\n只移除本机这条记录，不影响服务器上的任何东西。')) return;
         try { sshDisconnect(id); } catch (e) { /* 没连着 */ }
+        sshForgetPw(id);                                    // 顺带把本机记住的口令删掉，不留孤儿密文
         var next = ssh.servers.filter(function (it) { return it.id !== id });
         sshSaveServers(next);
         if (sshSel === id) setSshSel(next.length ? next[0].id : null);

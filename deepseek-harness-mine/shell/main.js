@@ -1,6 +1,6 @@
 'use strict'
 
-const { app, BrowserWindow, Menu, ipcMain, dialog, nativeTheme, shell, globalShortcut } = require('electron')
+const { app, BrowserWindow, Menu, ipcMain, dialog, nativeTheme, shell, globalShortcut, safeStorage } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const http = require('http')
@@ -562,6 +562,72 @@ function setupUpdater() {
       return { ok: true }
     } catch (e) {
       return { ok: false, code: 'error', message: String((e && e.message) || e) }
+    }
+  })
+
+  // ── 本机密文（2026-10-22）：SSH 口令这类"要记住、又不能明文躺在磁盘上"的东西 ──
+  // 走 Electron safeStorage（Windows 下是 DPAPI，密钥绑**当前 Windows 账户**）：文件里只有密文，
+  // 单独拷到别的电脑、或换 Windows 用户来解，都解不开。同一账户下的程序能解 —— 这是机制本身的边界。
+  // 这里只做"按 key 存一段字符串"，不认业务含义（key 由插件给，目前是服务器 id）。
+  // 加密不可用（极端环境）一律返回 no-encryption，**绝不退化成明文落盘**。
+  const SECRET_PATH = path.join(DSH_HOME, 'secrets.json')
+  const readSecrets = () => {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(SECRET_PATH, 'utf8'))
+      return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {}
+    } catch { return {} }
+  }
+  const writeSecrets = (map) => {
+    try {
+      fs.mkdirSync(path.dirname(SECRET_PATH), { recursive: true })
+      fs.writeFileSync(SECRET_PATH, JSON.stringify(map, null, 2), { encoding: 'utf8', mode: 0o600 })
+      return true
+    } catch (e) {
+      noteLog('error', 'secret', 'write-failed', { message: String((e && e.message) || e) })
+      return false
+    }
+  }
+  const secretReady = () => {
+    try { return safeStorage.isEncryptionAvailable() } catch { return false }
+  }
+  ipcMain.handle('anzio-shell:secret-set', (_e, key, value) => {
+    try {
+      const k = String(key || '').slice(0, 120)
+      const v = String(value || '')
+      if (!k || !v) return { ok: false, code: 'bad-arg' }
+      if (!secretReady()) return { ok: false, code: 'no-encryption' }
+      const map = readSecrets()
+      map[k] = safeStorage.encryptString(v).toString('base64')
+      return writeSecrets(map) ? { ok: true } : { ok: false, code: 'write-failed' }
+    } catch (e) {
+      noteLog('error', 'secret', 'set-failed', { message: String((e && e.message) || e) })
+      return { ok: false, code: 'error' }
+    }
+  })
+  ipcMain.handle('anzio-shell:secret-get', (_e, key) => {
+    try {
+      const k = String(key || '').slice(0, 120)
+      if (!k) return { ok: false, code: 'bad-arg' }
+      const stored = readSecrets()[k]
+      if (!stored) return { ok: false, code: 'not-found' }
+      if (!secretReady()) return { ok: false, code: 'no-encryption' }
+      return { ok: true, value: safeStorage.decryptString(Buffer.from(String(stored), 'base64')) }
+    } catch (e) {
+      // 解不开的三种可能：换过 Windows 账户、文件被拷自别的机器、密文损坏 —— 一律当作"没存过"，
+      // 让插件走"报缺口令、请重新填"的正常路径，而不是崩掉。
+      noteLog('warn', 'secret', 'get-failed', { message: String((e && e.message) || e) })
+      return { ok: false, code: 'decrypt-failed' }
+    }
+  })
+  ipcMain.handle('anzio-shell:secret-del', (_e, key) => {
+    try {
+      const k = String(key || '').slice(0, 120)
+      if (!k) return { ok: false, code: 'bad-arg' }
+      const map = readSecrets()
+      if (map[k]) { delete map[k]; writeSecrets(map) }
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, code: 'error' }
     }
   })
 
