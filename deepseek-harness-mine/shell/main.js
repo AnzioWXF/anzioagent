@@ -943,7 +943,7 @@ if (!gotLock) {
     installShortcuts(mainWindow)
     installHotkeyForwarding(mainWindow)
     // 内置浏览器内核：必须在 boot() 之前装，页面加载后马上会来要视图
-    try { browserHost = installBrowserHost(mainWindow) } catch (e) { console.error('[anzio] browser host failed:', (e && e.message) || e); noteLog('error', 'browser-host', '内置浏览器宿主安装失败', { error: (e && e.message) || String(e) }) }
+    try { browserHost = installBrowserHost(mainWindow, noteLog) } catch (e) { console.error('[anzio] browser host failed:', (e && e.message) || e); noteLog('error', 'browser-host', '内置浏览器宿主安装失败', { error: (e && e.message) || String(e) }) }
     // 内置浏览器第二期：Playwright 驱动层 + 壳桥。也必须在 boot() 之前起好 —— 后端子进程要用
     // 壳桥的地址与口令（经环境变量交下去），起了后端才起桥的话，第一个会话就指挥不动浏览器。
     try {

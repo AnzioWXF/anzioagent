@@ -14,11 +14,13 @@
 //      隔离：浏览器页面看不到天工的 cookie/localStorage，反之亦然。
 //   4. 本文件属于「壳半」，改完**不热重载**，要重启天工才生效。
 
-const { WebContentsView, Menu, shell, clipboard, ipcMain } = require('electron')
+const { WebContentsView, Menu, shell, clipboard, ipcMain, app, session, safeStorage } = require('electron')
 const path = require('path')
+const fs = require('fs')
 
 const PARTITION = 'persist:anzio-browser'
 const BROWSER_PRELOAD = path.join(__dirname, 'browser-preload.js')
+const SNAPSHOT_FILE = 'browser-session-cookies.bin'
 // VSCode 同款白底：视图还没渲染出内容时先铺白，配合"藏起来前先截图"避免闪黑
 const BLANK_COLOR = '#FFFFFF'
 
@@ -37,9 +39,103 @@ function normalizeUrl(raw) {
   return 'https://' + s
 }
 
-function installBrowserHost(win) {
+// ── 登录态跨重启（2026-11-03）────────────────────────────────────────────────
+// 站点没给过期时间的那种登录凭证（会话 cookie）Chromium 永不写盘，而 Chrome 靠"继续浏览上次打开的网页"
+// 那个开关专门把它留到下次启动，Electron 没有这个开关 ⇒ 关一次天工就掉一次登录。这里自己存：
+// cookie 一变就（去抖几秒）存一份加密快照，启动时原样回填 —— 回填时**不给过期时间**，仍然算会话
+// cookie，站点自己的登出与过期语义不受影响（登出后快照里就没有它，不会被复活）。
+
+function snapshotPath() {
+  return path.join(app.getPath('userData'), SNAPSHOT_FILE)
+}
+
+function browserSession() {
+  return session.fromPartition(PARTITION)
+}
+
+async function snapshotSessionCookies(note) {
+  try {
+    const store = browserSession().cookies
+    const keep = await store.get({ session: true })
+    const file = snapshotPath()
+    if (!keep.length) {
+      try { fs.unlinkSync(file) } catch { /* 本来就没有 */ }
+      return 0
+    }
+    // 与 SSH 口令同一条纪律：加密不可用就**不落盘**，绝不退化成明文
+    if (!safeStorage.isEncryptionAvailable()) {
+      note('warn', 'browser-cookie', '加密不可用，放弃保存会话 cookie', { count: keep.length })
+      return 0
+    }
+    const payload = {
+      savedAt: Date.now(),
+      cookies: keep.map((c) => ({
+        name: c.name, value: c.value, domain: c.domain, path: c.path,
+        secure: c.secure, httpOnly: c.httpOnly, sameSite: c.sameSite, hostOnly: c.hostOnly,
+      })),
+    }
+    const tmp = file + '.tmp'
+    fs.writeFileSync(tmp, safeStorage.encryptString(JSON.stringify(payload)))
+    fs.renameSync(tmp, file)
+    return keep.length
+  } catch (e) {
+    note('warn', 'browser-cookie', '会话 cookie 快照失败', { error: (e && e.message) || String(e) })
+    return 0
+  }
+}
+
+async function restoreSessionCookies(note) {
+  let data
+  try {
+    const file = snapshotPath()
+    if (!fs.existsSync(file)) return 0
+    if (!safeStorage.isEncryptionAvailable()) return 0
+    data = JSON.parse(safeStorage.decryptString(fs.readFileSync(file)))
+  } catch (e) {
+    // 换 Windows 账户 / 文件损坏都解不开，一律当没存过，不能把启动卡住
+    note('warn', 'browser-cookie', '会话 cookie 快照解不开，当作没存过', { error: (e && e.message) || String(e) })
+    return 0
+  }
+  const store = browserSession().cookies
+  let n = 0
+  for (const c of (data && data.cookies) || []) {
+    const host = String(c.domain || '').replace(/^\./, '')
+    if (!host) continue
+    const details = {
+      url: (c.secure ? 'https://' : 'http://') + host + (c.path || '/'),
+      name: c.name, value: c.value, path: c.path || '/',
+      secure: !!c.secure, httpOnly: !!c.httpOnly, sameSite: c.sameSite || 'unspecified',
+    }
+    if (!c.hostOnly) details.domain = c.domain
+    try { await store.set(details); n++ } catch { /* 单条被拒不影响其它站点 */ }
+  }
+  if (n) { try { await store.flushStore() } catch { /* 忽略 */ } }
+  note('info', 'browser-cookie', '会话 cookie 已回填', { count: n })
+  return n
+}
+
+function installBrowserHost(win, noteFn) {
+  const note = typeof noteFn === 'function' ? noteFn : () => { }
   const entries = new Map()          // id -> { id, view, rect }
   let seq = 0
+
+  // 回填必须赶在第一个页面加载之前：创建视图时等这个 promise，而不是靠"通常来得及"。
+  const restoreReady = restoreSessionCookies(note)
+  // 去抖 3 秒：登录这类 cookie 变化很少（一次登录也就几条），但平台的 'changed' 会连着报一串
+  let snapTimer = null
+  const scheduleSnapshot = () => {
+    if (snapTimer) clearTimeout(snapTimer)
+    snapTimer = setTimeout(() => { snapTimer = null; snapshotSessionCookies(note) }, 3000)
+  }
+  try { browserSession().cookies.on('changed', scheduleSnapshot) } catch (e) {
+    note('warn', 'browser-cookie', '挂不上 cookie 变化事件', { error: (e && e.message) || String(e) })
+  }
+  // 退出时再存一次并强制落盘：正常关天工能拿到最新的，被强杀/崩溃时靠上面那个去抖快照兜底
+  app.on('before-quit', () => {
+    try { browserSession().flushStorageData() } catch { /* 忽略 */ }
+    try { browserSession().cookies.flushStore().catch(() => { }) } catch { /* 忽略 */ }
+    snapshotSessionCookies(note)
+  })
 
   const send = (msg) => {
     try { if (!win.isDestroyed()) win.webContents.send('anzio-browser:event', msg) } catch { /* 窗口正在关闭 */ }
@@ -149,7 +245,9 @@ function installBrowserHost(win) {
     })
     wc.on('context-menu', (_e, params) => showContextMenu(entry, params))
 
-    if (url) wc.loadURL(normalizeUrl(url)).catch(() => { /* 失败有 did-fail-load 兜底 */ })
+    if (url) restoreReady.then(() => {
+      try { wc.loadURL(normalizeUrl(url)).catch(() => { /* 失败有 did-fail-load 兜底 */ }) } catch { /* 视图已销毁 */ }
+    })
     return { ok: true }
   }
 
