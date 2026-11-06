@@ -4,6 +4,7 @@
 !/.gitignore
 !/README.md
 !/LICENSE
+!/DEVELOPING.md
 !/patches/
 !/tools/
 !/deepseek-harness-mine/

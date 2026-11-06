@@ -1,97 +1,87 @@
-# 天工（AnzioAgent）
+# 天工 · Tiangong
 
-一个独立拥有的桌面 IDE：外形按 VSCode 的手感做，内核由 DSH 引擎直接驱动，Agent 是它原生的大脑，用来取代 VSCode 内置的 Copilot Chat。
+> **An IDE that owns its agent.** VSCode-style ergonomics, driven natively by [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness). The agent is not a panel bolted onto an editor — it is the reason this editor exists. MIT licensed, Windows.
 
-本仓放两样东西：**天工自己的源码**（Electron 壳、IDE 插件、辅助工具脚本），以及**一份官方引擎的原样快照** + 我们对引擎所作的改动补丁。两者分开摆：快照永远保持官方原样，我们的改动永远是独立补丁（见下）。
+一个自己完全拥有的桌面 IDE：外形按 VSCode 的手感做，内核由 DSH 引擎直接驱动，**Agent 是它原生的大脑**，而不是挂在编辑器旁边的一个插件。
 
-## 仓库结构
+<sub>当前版本 1.5.57，个人自用阶段。</sub>
+
+---
+
+## 这是什么
+
+打开就是一个三栏工作面，后端自动在本地起好：
 
 ```
-deepseek-harness-origin\  官方引擎原样快照（dsh-v0.2.1-alpha.2 的提交内容，见下节）
-deepseek-harness-mine\
-  shell\    Electron 壳：窗口与启动画面、后端管理、内置更新器、内置浏览器、壳桥与幻影驱动
-            home-files\ 装机模板（装配单与 AGENTS.md）
-  plugin\   IDE 插件真源：lib\index.js（host 半，/dsh-ide API）、lib\client.js（client 半，自建外壳与各面板）
-            static\ 前端运行时资源（Monaco / xterm）
-tools\      开发台启动、装机、发包、E2E 与各种探针脚本
-patches\    引擎补丁（我们对官方 checkout 的改动）
+┌──────────┬─────────────────────────┬────────────────┐
+│          │  编辑器（多标签）         │                │
+│  文件树   │                         │   Agent 对话    │
+│          ├─────────────────────────┤                │
+│          │  终端（多标签，各一条 PTY）│                │
+└──────────┴─────────────────────────┴────────────────┘
 ```
 
-## 引擎：原样快照进仓，改动只走补丁
+左边是你翻文件的地方，中间是你亲手改代码和跑命令的地方，右边是 Agent。**两边都能干活，不是"人看、机器做"。**
 
-`deepseek-harness-origin\` 是官方引擎的**原样快照**，来源写死在这里，别再猜：
+## 为什么自己做
 
-| 项 | 值 |
+现有工具里，Agent 要么是编辑器的一个插件，要么是编辑器外面的一层壳。前者的能力边界、提示词、工具面、会话数据都不在你手里；后者的编辑体验是二等的。
+
+我要的是第三种：**编辑器的地基由我掌控，Agent 作为它的核心器官存在。** 所以这个项目不 fork VSCode，也不做"网页套个窗口"——外壳自己写，引擎直接用官方的。
+
+## 跟官方 DeepSeek Harness 桌面版有什么不同
+
+（据 2026-11-06 的官方桌面版界面）
+
+官方桌面版是一张**会话工作台**：新会话、插件、自动化、工作区列表，中间一个输入框。它替你改文件，但没给你一个能手动干活的工作面——没有文件树、没有编辑器、没有终端。
+
+天工反过来：**工作面是主，Agent 在旁边。** 你随时可以手动接管，Agent 也能在你手上的同一个工作区里动手。同一个引擎，两种用法。
+
+## 现在能做什么
+
+- **文件树 + 编辑器**：Monaco，多标签，按次授权的保存（工作区外的文件也能存）
+- **集成终端**：多标签，每个标签一条独立 PTY，关面板不杀进程
+- **Agent 对话**：右侧常驻，工具卡、提问卡都在原位
+- **能力面板**：插件 / 技能 / MCP 三块，可停用、可编辑；MCP 改装配单后约 2 秒热生效
+- **内置浏览器**：壳里真的有一个 Chromium 视图，Agent 能导航、点击、输入、取页面；登录态跨重启保留
+- **SSH 终端**：连远程，Agent 能在真终端里执行
+- **设置页 / 命令面板 / 快捷键**：快捷键在窗口有焦点时才注册，失焦立刻注销——所以它永远抢得过别的软件
+- **内置更新器**：只发变化的文件，重启后自应用
+
+## 它刻意不做什么
+
+不带遥测、不带官方赞踩反馈、不带欢迎页、不带任何账号登录、不内置 Copilot Chat、不做顶部菜单栏、不做 Git 集成、不带 minimap。
+
+这些不是"还没做"，是**永不打算做**。判断标准只有一条：它服务的是"像 VSCode 的地基"还是"这个 Agent"？两者都不服务的，不做。
+
+模型凭证只放在你自己机器的本地配置里，走你自己配的 provider。
+
+## 怎么跑
+
+**现在还做不到 clone 下来就能跑。** 说清现状比给一套装不上的步骤有用：
+
+- 安装包没有对外发布过
+- 脚本、路径、更新源都按开发机硬编码（`D:\99DSH` / `D:\000AnzioAgent`）
+- 引擎需要先套我们那份补丁，再按五步重建产物
+
+想看它是怎么做的，直接读代码。想真的跑起来或者改它，[DEVELOPING.md](DEVELOPING.md) 里有完整的现状、目录布局和重建步骤——能跑通，但要照着把你的路径改进去。
+
+把安装整理成任何人都能复现的一条路，是接下来要做的事。
+
+## 技术
+
+| | |
 |---|---|
-| 官方仓 | `https://github.com/deepseek-ai/deepseek-harness.git` |
-| 版本 | tag `dsh-v0.2.1-alpha.2` |
-| 提交 | `d743267388641bc76f17c45ce8b4c231aed1d32c`（2026-10-09） |
-| 来历 | 2026-10-12 从官方仓 `git clone` 的干净检出（当时的 reflog 只有一条 clone 记录，工作树 0 改动）；**2026-10-21 拆掉它的 `.git` 后进仓**，好让"本地只留两个引擎目录"这条规矩成立 |
-| 规模 | 14,988 个文件 / 约 121 MB（不含 `.git`、不含依赖与构建产物） |
-| 一致性 | 与官方该提交逐文件一致：文件名、内容 blob 哈希、符号链接与可执行位全同（进仓时用 `git ls-files -s` 与官方清单逐行对比，0 差异） |
+| 外壳 | Electron 43，Windows x64（自建，不是 VSCode fork） |
+| 引擎 | DeepSeek Harness（MIT），以"官方原样快照 + 我们的补丁"方式接入 |
+| 编辑器 | Monaco |
+| 终端 | xterm.js + 独立 PTY |
+| 图标 | Tabler Icons（MIT，许可随仓） |
 
-快照里**没有**：`.git`（官方历史 282 MB 压缩 / 306 MB 工作副本，不进仓）、`node_modules`、`lib/`、`*.tsbuildinfo` 等构建产物。这些都在 `.gitignore` 里挡着，将来在快照目录里装依赖、重建产物也不会污染仓库。
+对引擎的改动不止是"加东西"——对话流的节点与分支、输入区、审批面板、快捷键表、设置页的挂载位置、技能可见性、网页搜索计费，都在引擎包里动过（48 个文件）。全部收在一份补丁里，快照永远保持官方原样——跟版时能一条条重放。
 
-**这个目录从今往后当只读的官方原件用**：别在里面装依赖、别在里面改代码 —— 它一改，跟官方比对和跟版重套就都没了基准。
+## 许可
 
-应用实际跑的是 `D:\99DSH\deepseek-harness-mine\harness`，它 = **这份快照 + 我们的补丁**（补丁改动不提交，永久留在工作区）。
+本仓 MIT，版权 2026 温献丰，见 [LICENSE](LICENSE)。
 
-**换机 / 重建顺序**：
-
-```powershell
-# 1. 把仓里的快照变成应用要跑的那棵
-Copy-Item -Recurse D:\99DSH\deepseek-harness-origin D:\99DSH\deepseek-harness-mine\harness
-# 2. 套补丁（补丁里的改动：会话与对话节点契约、ui-settings-general 挂主区、快捷键表、host 布局、审批四按钮等）
-cd D:\99DSH\deepseek-harness-mine\harness
-git apply D:\99DSH\patches\engine-0.2.1-alpha.2-ours.patch
-# 3. 装依赖 + 重建产物（见下）
-```
-
-想改成"官方 git 仓 + 补丁"的老办法也行：clone 官方、checkout 同一个提交、套同一份补丁 —— 快照就是为"官方仓不可达 / 该提交被删"这种情况留的底，两种做法拿到的树一样。
-
-**跟版**：官方发新版 → 临时 clone 一份官方（或直接用官方仓），checkout 新提交，用它整棵替换 `deepseek-harness-origin\`，把补丁里的改动重放成 `patches\engine-<新版本>-ours.patch`。补丁永远只在最外层，别把改动写进快照里（写进去以后就分不清哪些是官方的、哪些是我们的）。
-
-**许可**：引擎版权归 DeepSeek，MIT，`deepseek-harness-origin\LICENSE` 随树带；`patches\` 里的改动同为 MIT。
-
-改完引擎要重建产物（官方 `build:lib:*` 脚本会被 pnpm 依赖状态检查拦住、无 TTY 直接中止，按下面五步走）：
-
-```powershell
-pnpm install --prefer-offline --ignore-scripts
-tsc -b tsconfig.host.json
-# 建两个空占位 lib/types/index.js、lib/types/startup.js，内容 export {}（绕开根包缺入口）
-tsdown --config-loader native --env.DSH_BUILD_FACE host
-# 前端面同理：tsc -b tsconfig.client.json → 同一条 tsdown 换 --env.DSH_BUILD_FACE client
-```
-
-## 跑起来
-
-- **开发台**（Web 界面调插件）：双击 `tools\dev-web.bat`，起 3080，插件真源直接生效
-- **天工应用**：装好的程序在 `D:\000AnzioAgent`，数据在家目录 `D:\99DSH\app-home`（本仓不含数据，含会话与凭证）
-- **E2E**：`tools\run-e2e.ps1`，日志落 `_e2e-logs\`
-
-改动生效方式：插件与壳改完都要**重开天工**（插件 bundle 由后端缓存在进程内）。
-
-## 打包与装机
-
-```powershell
-# 装机 / 修复（必须现打，不带 -Build 会直接报错停住）
-tools\install-app.ps1 -Build
-
-# 发增量更新包到更新源 D:\000AnzioAgent\_updates
-tools\publish-update.ps1
-```
-
-新增壳侧文件要在**三处**登记（都是硬编码文件名数组，没有自动发现）：`shell\package.json` 的 `build.files`、`tools\install-app.ps1` 的 `$shellFiles`、`tools\publish-update.ps1` 的 `$shellFiles`。
-
-打包要设镜像，Electron 二进制的校验下载直连不通会 `fetch failed`：
-
-```powershell
-$env:ELECTRON_MIRROR = 'https://npmmirror.com/mirrors/electron/'
-$env:ELECTRON_BUILDER_BINARIES_MIRROR = 'https://npmmirror.com/mirrors/electron-builder-binaries/'
-```
-
-## 约定
-
-- 脚本与壳里的路径**按 `D:\99DSH` 硬编码**（工作目录、数据目录、更新源），换机要连带改
-- 界面全部走 `--dsw-*` 主题 token，不硬编码颜色
-- 许可证：本项目与引擎补丁均为 MIT（引擎版权归 DeepSeek，见官方仓库 LICENSE）
+`deepseek-harness-origin/` 是 DeepSeek 官方引擎的原样快照，版权归 DeepSeek，同为 MIT，其 `LICENSE` 随树携带。第三方依赖各自的许可随仓（如 `shell/assets/licenses/`）。
