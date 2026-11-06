@@ -128,6 +128,19 @@ window.__ModuleLoader__.load({
       '.dside-lor-opt.on{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-primary);color:#fff;}',
       '.dside-fontbtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
       '.dside-pane-title{flex:none;padding:10px 14px 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);}',
+      // 能力面板：插件 / 技能 / MCP 三个可折叠区
+      '.dside-cap-panel{flex:1;display:flex;flex-direction:column;min-height:0;}',
+      '.dside-cap-scroll{flex:1;overflow:auto;min-height:0;}',
+      '.dside-cap-sec{border-bottom:1px solid var(--dsw-alias-border-l1);}',
+      '.dside-cap-head{display:flex;align-items:center;gap:4px;width:100%;box-sizing:border-box;padding:7px 8px;background:transparent;border:none;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;letter-spacing:.08em;text-transform:uppercase;text-align:left;cursor:pointer;}',
+      '.dside-cap-head:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary);}',
+      '.dside-cap-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.dside-cap-count{flex:none;font-size:10px;letter-spacing:0;color:var(--dsw-alias-label-tertiary);}',
+      '.dside-cap-body{padding:2px 8px 10px;}',
+      '.dside-mcp-form{display:flex;flex-direction:column;gap:6px;margin-top:6px;}',
+      '.dside-mcp-form-title{font-size:11px;color:var(--dsw-alias-label-secondary);}',
+      '.dside-mcp-args{resize:vertical;min-height:52px;line-height:1.45;}',
+      '.dside-mcp-err{font-size:11px;color:var(--dsw-alias-state-error-primary);}',
     // 资源管理器标题栏 + 右侧动作按钮（VSCode 的 ViewTitle actions：新建文件 / 新建文件夹 / 折叠 / 刷新）
     // 可见性照 VSCode 的 workbench.view.alwaysShowHeaderActions 默认值 false：**悬停到该视图或它的标题栏、
     // 或视图里有焦点时**才显示（用户原话："我鼠标聚焦到标题栏后，这右侧这里应该有几个按钮"）。
@@ -3890,7 +3903,8 @@ window.__ModuleLoader__.load({
         // 区别只在于它还把中栏换成服务器终端、底栏换成服务器资源管理器。
         { id: 'server', icon: 'server', label: '服务器控制台' },
         { id: 'actions', icon: 'run', label: '操作' },
-        { id: 'plugins', icon: 'plugins', label: '插件' },   // 2026-09-21：从右侧面板搬过来的
+        // 2026-09-21 从右侧面板搬过来；2026-11-05 改名能力面板（内含插件 / 技能 / MCP）
+        { id: 'plugins', icon: 'plugins', label: '能力' },
       ];
       function btn(it) {
         var on = props.active === it.id && props.panelOpen;
@@ -8749,14 +8763,36 @@ window.__ModuleLoader__.load({
       );
     }
 
-    // ── 插件面板：全量透明（2026-09-22 用户要求）──────────────────────────────
-    // 用户原话："后端那一大批插件也要在这里显示，万一我以后要针对后端插件进行改动呢？
-    //   其它什么不可见的统统都要显示，这些东西必须对我透明的，我他妈是软件的开发者，隐藏干嘛。"
-    // 所以三块，一条都不藏：
-    //   ① 插件树（host 半的真身 ctx.loader.entries()）：**含纯后端插件、含 disabled 的行**，
-    //      每条带 状态 / 是否另带前端半 / 来源组 / 包名与版本 / package.json 说明；
-    //   ② 前端 bundle（浏览器侧模块表）：rev / 启动或按需 / inject 数（这层决定页面里跑到的是哪份代码）；
+    // ── 能力面板（2026-11-05 由「插件面板」改名）──────────────────────────────
+    // 面板拆成三个可折叠区：插件 / 技能 / MCP。技能与 MCP 属于 Agent 的能力供给，
+    // 跟插件清单不是一回事，混在一张平铺列表里看不出边界。
+    //
+    // 「插件」区沿用 2026-09-22 用户定的口径（原话："后端那一大批插件也要在这里显示…其它什么
+    // 不可见的统统都要显示，这些东西必须对我透明的，我他妈是软件的开发者，隐藏干嘛"），三块一条不藏：
+    //   ① 插件树（host 半的真身 ctx.loader.entries()）：含纯后端插件、含 disabled 的行；
+    //   ② 前端 bundle（浏览器侧模块表）：页面里真正跑到的是哪份代码；
     //   ③ 动态插件（会话内 Agent 造的，可停/运行/删）。
+    var CAP_OPEN_KEY = 'dside.capOpen.v1';
+    // 后端回的是错误代码，界面要给使用者看得懂的话
+    var MCP_ERR_TEXT = {
+      'bad-server-name': '名字只能用字母、数字、下划线或短横线，最长 32 位',
+      'command-required': '选了本机命令就必须填启动命令',
+      'url-required': '选了网址就必须填 http(s) 地址',
+      'server-name-taken': '已经有同名的服务器了',
+      'bad-entry-id': '内部标识不合法',
+      'no-dsh-home': '找不到天工的数据目录，改不了配置',
+    };
+    function readCapOpen() {
+      var out = { plugins: true, skills: true, mcp: true };
+      try {
+        var raw = JSON.parse(window.localStorage.getItem(CAP_OPEN_KEY) || 'null');
+        if (raw && typeof raw === 'object') {
+          for (var k in out) if (typeof raw[k] === 'boolean') out[k] = raw[k];
+        }
+      } catch (e) { /* 坏数据 / 隐私模式：当默认全展开 */ }
+      return out;
+    }
+
     var PLUGIN_STATE_LABEL = {
       active: { text: '运行中', cls: 'run' },
       loading: { text: '加载中', cls: 'pending' },
@@ -8770,15 +8806,187 @@ window.__ModuleLoader__.load({
       return h('span', { className: 'dside-plugin-badge ' + l.cls }, l.text);
     }
 
-    function PluginPanel(props) {
+    // 折叠区标题行：三角沿用资源管理器那一套（同一个「下箭头」，收起时整体转 -90°）
+    function CapSection(props) {
+      return h('div', { className: 'dside-cap-sec', 'data-cap-sec': props.k },
+        h('button', {
+          className: 'dside-cap-head',
+          onClick: props.onToggle,
+          'aria-expanded': props.open ? 'true' : 'false',
+        },
+          chevronSvg(props.open),
+          h('span', { className: 'dside-cap-name' }, props.title),
+          h('span', { className: 'dside-cap-count' }, String(props.count == null ? '' : props.count)),
+        ),
+        props.open ? h('div', { className: 'dside-cap-body' }, props.children) : null);
+    }
+
+    // 技能行：技能本体是目录里的 SKILL.md，开关状态在天工自己的配置里，不碰文件
+    function renderSkillRow(s, opts) {
+      var busy = opts && opts.busy;
+      return h('div', {
+        className: 'dside-plugin' + (s.enabled === false ? ' off' : ''),
+        key: 'sk:' + s.name, 'data-skill-row': s.name,
+      },
+        h('div', { className: 'dside-plugin-head' },
+          h('span', { className: 'dside-plugin-name' }, s.displayName || s.name),
+          s.enabled === false
+            ? h('span', { className: 'dside-plugin-badge disabled' }, '已停用')
+            : h('span', { className: 'dside-plugin-badge run' }, '启用'),
+        ),
+        s.description ? h('div', { className: 'dside-plugin-purpose' }, s.description) : null,
+        h('div', { className: 'dside-plugin-meta' },
+          (s.source === 'project' ? '随项目' : '我的') + ' · ' + String(s.path || '')),
+        h('div', { className: 'dside-plugin-actions' },
+          h('button', {
+            className: 'dside-btn small' + (s.enabled === false ? ' primary' : ''),
+            disabled: busy,
+            onClick: function () { if (opts && opts.onToggle) opts.onToggle(s); },
+          }, s.enabled === false ? '启用' : '停用'),
+          h('button', {
+            className: 'dside-btn small',
+            onClick: function () { if (opts && opts.onOpenFile) opts.onOpenFile(s); },
+          }, '打开文件'),
+        ),
+      );
+    }
+
+    // MCP 行：一台服务器 = 装配单里一行。引擎不发布连接状态，"挂上了几个工具"是唯一可信信号
+    function renderMcpRow(m, opts) {
+      var busy = opts && opts.busy;
+      var tools = m.toolCount || 0;
+      return h('div', {
+        className: 'dside-plugin' + (m.disabled ? ' off' : ''),
+        key: 'mc:' + m.id, 'data-mcp-row': m.id,
+      },
+        h('div', { className: 'dside-plugin-head' },
+          h('span', { className: 'dside-plugin-name' }, m.serverName || m.id),
+          m.disabled
+            ? h('span', { className: 'dside-plugin-badge disabled' }, '已停用')
+            : (tools > 0
+              ? h('span', { className: 'dside-plugin-badge run' }, tools + ' 个工具')
+              : h('span', { className: 'dside-plugin-badge stop' }, '未连上')),
+        ),
+        h('div', { className: 'dside-plugin-meta' },
+          (m.transport === 'streamable-http' ? (m.url || '') : (m.command || ''))),
+        h('div', { className: 'dside-plugin-actions' },
+          h('button', {
+            className: 'dside-btn small' + (m.disabled ? ' primary' : ''),
+            disabled: busy,
+            onClick: function () { if (opts && opts.onToggle) opts.onToggle(m); },
+          }, m.disabled ? '启用' : '停用'),
+          h('button', {
+            className: 'dside-btn small',
+            disabled: busy,
+            onClick: function () { if (opts && opts.onEdit) opts.onEdit(m); },
+          }, '编辑'),
+          h('button', {
+            className: 'dside-btn small danger',
+            disabled: busy,
+            onClick: function () { if (opts && opts.onDelete) opts.onDelete(m); },
+          }, '删除'),
+        ),
+      );
+    }
+
+    function CapabilityPanel(props) {
       var plugins = props.plugins || {}, onAction = props.onAction, busy = props.busy;
       var allRows = plugins.rows || [];
       var formal = plugins.formal || [];
       var dynamic = plugins.dynamic || [];
+      var skills = props.skills || [];
+      var mcp = props.mcp || [];
       var qs = React.useState('');
       var q = qs[0], setQ = qs[1];
       var ms = React.useState('all');
       var mode = ms[0], setMode = ms[1];
+      var openState = React.useState(readCapOpen);
+      var open = openState[0], setOpen = openState[1];
+      var mcpFormState = React.useState(null);   // null | 正在填的服务器
+      var mcpForm = mcpFormState[0], setMcpForm = mcpFormState[1];
+      var mcpErrState = React.useState('');
+      var mcpErr = mcpErrState[0], setMcpErr = mcpErrState[1];
+      function toggleSection(k) {
+        var next = {};
+        for (var p in open) next[p] = open[p];
+        next[k] = !next[k];
+        setOpen(next);
+        try { window.localStorage.setItem(CAP_OPEN_KEY, JSON.stringify(next)); } catch (e) { /* 写不进就算了，折叠不崩 */ }
+        trace('ui', 'info', 'cap-section-toggle', { section: k, open: next[k] });
+      }
+
+      // MCP 表单：一台服务器只需"名字 + 怎么连"（本机命令 or 网址），其余用引擎默认值
+      function submitMcpForm() {
+        if (!props.onCapability) return;
+        var f = mcpForm || {};
+        var isStdio = (f.transport || 'stdio') !== 'streamable-http';
+        Promise.resolve(props.onCapability('mcp-save', {
+          id: f.id || undefined,
+          serverName: String(f.serverName || '').trim(),
+          transport: isStdio ? 'stdio' : 'streamable-http',
+          command: isStdio ? String(f.command || '').trim() : undefined,
+          // 参数一行一个：带空格的路径（Program Files 那类）按空格切会切坏
+          args: isStdio ? String(f.args || '').split(/\r?\n/).map(function (x) { return x.trim(); }).filter(function (x) { return x !== ''; }) : undefined,
+          url: isStdio ? undefined : String(f.url || '').trim(),
+        })).then(function (r) {
+          if (r && r.error) { setMcpErr(MCP_ERR_TEXT[r.error] || String(r.error)); return; }
+          setMcpErr('');
+          setMcpForm(null);
+        });
+      }
+
+      function renderMcpForm() {
+        var f = mcpForm || {};
+        var isStdio = (f.transport || 'stdio') !== 'streamable-http';
+        function set(k, v) {
+          var next = {};
+          for (var p in f) next[p] = f[p];
+          next[k] = v;
+          setMcpForm(next);
+        }
+        return h('div', { className: 'dside-mcp-form' },
+          h('div', { className: 'dside-mcp-form-title' }, f.id ? ('编辑 ' + (f.serverName || '')) : '添加 MCP 服务器'),
+          h('input', {
+            className: 'dside-plugin-search',
+            placeholder: '名字：字母数字下划线，如 filesystem',
+            value: f.serverName || '',
+            onChange: function (e) { set('serverName', e.target.value); },
+          }),
+          h('div', { className: 'dside-plugin-modes' },
+            [['stdio', '本机命令'], ['streamable-http', '网址']].map(function (pair) {
+              return h('button', {
+                key: 'tp:' + pair[0],
+                className: 'dside-plugin-mode' + ((isStdio ? 'stdio' : 'streamable-http') === pair[0] ? ' on' : ''),
+                onClick: function () { set('transport', pair[0]); },
+              }, pair[1]);
+            })),
+          isStdio
+            ? h('div', { className: 'dside-mcp-form' },
+                h('input', {
+                  className: 'dside-plugin-search',
+                  placeholder: '启动命令，如 npx',
+                  value: f.command || '',
+                  onChange: function (e) { set('command', e.target.value); },
+                }),
+                h('textarea', {
+                  className: 'dside-plugin-search dside-mcp-args',
+                  rows: 3,
+                  placeholder: '参数，一行一个（可留空）',
+                  value: f.args || '',
+                  onChange: function (e) { set('args', e.target.value); },
+                }))
+            : h('input', {
+                className: 'dside-plugin-search',
+                placeholder: '服务器地址，如 http://127.0.0.1:3000/mcp',
+                value: f.url || '',
+                onChange: function (e) { set('url', e.target.value); },
+              }),
+          mcpErr ? h('div', { className: 'dside-mcp-err' }, mcpErr) : null,
+          h('div', { className: 'dside-plugin-actions' },
+            h('button', { className: 'dside-btn small primary', disabled: busy, onClick: submitMcpForm }, '保存'),
+            h('button', { className: 'dside-btn small', onClick: function () { setMcpForm(null); setMcpErr(''); } }, '取消')),
+        );
+      }
 
       var countClient = allRows.filter(function (r) { return r.hasClient; }).length;
       var countDisabled = allRows.filter(function (r) { return r.disabled; }).length;
@@ -8793,9 +9001,8 @@ window.__ModuleLoader__.load({
       });
       var clientRows = formal.filter(function (p) { return hit(p.id); });
 
-      var sections = [];
       // 过滤条（清单一百多条，不给筛选等于不可用）
-      sections.push(h('div', { className: 'dside-plugin-filter', key: 'filter' },
+      var filterBar = h('div', { className: 'dside-plugin-filter', key: 'filter' },
         h('input', {
           className: 'dside-plugin-search',
           value: q,
@@ -8811,8 +9018,10 @@ window.__ModuleLoader__.load({
                 className: 'dside-plugin-mode' + (mode === pair[0] ? ' on' : ''),
                 onClick: function () { setMode(pair[0]); },
               }, pair[1]);
-            }))));
+            })));
 
+      // 插件区的内容（改动前就是整张面板）
+      var sections = [];
       // ① 插件树（后端装配的真身，含停用的行）
       sections.push(h('div', { className: 'dside-pane-title', key: 'rows-title' },
         '插件树 · 后端装配 (' + rows.length + '/' + allRows.length + ')'));
@@ -8891,7 +9100,67 @@ window.__ModuleLoader__.load({
         ));
       });
 
-      return h('div', { className: 'dside-plugins' }, sections);
+      return h('div', { className: 'dside-cap-panel' },
+        filterBar,
+        h('div', { className: 'dside-cap-scroll' },
+          h(CapSection, {
+            k: 'plugins', title: '插件', count: allRows.length,
+            open: open.plugins, onToggle: function () { toggleSection('plugins'); },
+          }, sections),
+          h(CapSection, {
+            k: 'skills', title: '技能', count: skills.length,
+            open: open.skills, onToggle: function () { toggleSection('skills'); },
+          }, skills.length === 0
+            ? h('div', { className: 'dside-agent-empty' }, '暂无技能')
+            : skills.map(function (s) {
+                return renderSkillRow(s, {
+                  busy: busy,
+                  onToggle: function (x) {
+                    if (!props.onCapability) return;
+                    props.onCapability('skill-toggle', { name: x.name, enabled: x.enabled === false });
+                  },
+                  onOpenFile: function (x) { if (props.onOpenFile) props.onOpenFile(x); },
+                });
+              })),
+          h(CapSection, {
+            k: 'mcp', title: 'MCP', count: mcp.length,
+            open: open.mcp, onToggle: function () { toggleSection('mcp'); },
+          }, h('div', null,
+            mcp.length === 0 && !mcpForm
+              ? h('div', { className: 'dside-agent-empty' }, '暂无 MCP 服务器')
+              : mcp.map(function (m) {
+                  return renderMcpRow(m, {
+                    busy: busy,
+                    onToggle: function (x) {
+                      if (!props.onCapability) return;
+                      props.onCapability('mcp-toggle', { id: x.id, enabled: !x.disabled });
+                    },
+                    onEdit: function (x) {
+                      setMcpErr('');
+                      setMcpForm({
+                        id: x.id,
+                        serverName: x.serverName || '',
+                        transport: x.transport || 'stdio',
+                        command: x.command || '',
+                        args: Array.isArray(x.args) ? x.args.join('\n') : '',
+                        url: x.url || '',
+                      });
+                    },
+                    onDelete: function (x) {
+                      if (!window.confirm('删除 MCP 服务器「' + (x.serverName || x.id) + '」？')) return;
+                      if (props.onCapability) props.onCapability('mcp-delete', { id: x.id });
+                    },
+                  });
+                }),
+            mcpForm
+              ? renderMcpForm()
+              : h('div', { className: 'dside-plugin-actions' },
+                  h('button', {
+                    className: 'dside-btn small',
+                    onClick: function () { setMcpErr(''); setMcpForm({ transport: 'stdio' }); },
+                  }, '添加服务器')),
+          )),
+        ));
     }
 
     // 把平台内容（官方右栏那类）直接渲染在我们外壳里时的一道保险：渲染期抛错会顺着 root 槽
@@ -9753,6 +10022,11 @@ window.__ModuleLoader__.load({
       var sessionFace = sessionFaceState[0], setSessionFace = sessionFaceState[1];
       var pluginsState = React.useState({ formal: [], dynamic: [] });
       var plugins = pluginsState[0], setPlugins = pluginsState[1];
+      // 能力面板另外两区（2026-11-05）：技能靠扫目录、MCP 靠读装配单，跟着 /init 一起回来
+      var skillsState = React.useState([]);
+      var skills = skillsState[0], setSkills = skillsState[1];
+      var mcpState = React.useState([]);
+      var mcp = mcpState[0], setMcp = mcpState[1];
       // ⑰ 面板尺寸（拖拽手柄）：改动一律走增量式 updater（避免拖拽回调里拿到旧的 layout 值）
       var layoutState = React.useState(readLayout);
       var layout = layoutState[0], setLayout = layoutState[1];
@@ -10892,8 +11166,8 @@ window.__ModuleLoader__.load({
           // 主题切换条目已按用户要求移除：应用只保留深色（2026-09-17）
           { id: 'view.refresh', title: '刷新工作空间', cat: '视图', icon: 'refresh', keywords: 'reload refresh',
             run: function () { setRefreshTick(function (t) { return t + 1; }); refreshOverview(); } },
-          { id: 'view.plugins', title: '插件（左侧活动栏）', cat: '视图', icon: 'plugins',
-            keywords: 'plugin extension panel manage 插件 扩展 面板 管理',
+          { id: 'view.plugins', title: '能力（左侧活动栏）', cat: '视图', icon: 'plugins',
+            keywords: 'capability plugin extension skill mcp panel manage 能力 插件 扩展 技能 面板 管理',
             run: function () { pickActivity('plugins'); } },
           { id: 'view.toggleExplorer', title: '切换文件树显示', cat: '视图', icon: 'folder', keywords: 'explorer sidebar tree ctrl+b',
             run: function () { setShowExplorer(function (v) { return !v; }); } },
@@ -11018,7 +11292,7 @@ window.__ModuleLoader__.load({
             { icon: 'clock', label: '工作区快照（回撤 / 还原）', run: openSnapshots },
             { icon: 'terminal', label: '集成终端', keys: keyHint('view.terminal'), run: toggleTerminalPanel },
             { icon: 'globe', label: '打开内置浏览器', title: '在中间面板开一个浏览器标签', run: function () { openBrowserTab(''); } },
-            { icon: 'plugins', label: '插件（左侧活动栏）', run: function () { pickActivity('plugins'); } },
+            { icon: 'plugins', label: '能力（左侧活动栏）', run: function () { pickActivity('plugins'); } },
             { icon: 'eye', label: '显隐侧边栏', keys: keyHint('view.explorer'), run: function () { setShowExplorer(function (v) { return !v; }); } },
           ] },
           { title: '帮助', items: [
@@ -11781,6 +12055,8 @@ window.__ModuleLoader__.load({
           if (r.root && !(bootRootRef.current && !bootConfirmedRef.current)) setRoot(r.root);
           else if (r.root) trace('ui', 'info', 'boot-root-keep', { boot: bootRootRef.current, init: r.root });
           if (r.plugins) setPlugins(r.plugins);
+          if (Array.isArray(r.skills)) setSkills(r.skills);
+          if (Array.isArray(r.mcp)) setMcp(r.mcp);
           var shown = bootRootRef.current || r.root;
           setStatusText(shown ? ('工作空间: ' + shown) : '未选择工作空间');
         }).catch(function () {});
@@ -12660,6 +12936,30 @@ window.__ModuleLoader__.load({
         }).catch(function () { setBusy(false); });
       }
 
+      // 能力面板的动作（技能开关 / MCP 增删改）。装配单是热生效的，引擎那边有约 2 秒防抖，
+      // 所以成功后补拉一次，否则第一次拉到的还是旧装配。
+      function capabilityAction(action, payload) {
+        setBusy(true);
+        trace('ui', 'info', 'capability-action', { action: action });
+        return apiPost('/' + action, payload || {}).then(function (r) {
+          setBusy(false);
+          var err = r && r.error;
+          if (err) trace('ui', 'error', 'capability-action-failed', { action: action, error: String(err) });
+          else setTimeout(function () { refreshOverview(); }, 2200);
+          refreshOverview();
+          return r;
+        }).catch(function (e) {
+          setBusy(false);
+          return { error: String((e && e.message) || e) };
+        });
+      }
+
+      function openSkillFile(s) {
+        if (!s || !s.path) return;
+        openTab({ name: String(s.path).split(/[\\/]/).pop() || s.path, path: s.path });
+        trace('ui', 'info', 'skill-open-file', { name: s.name });
+      }
+
       return h('div', { className: 'dside-root' },
         h('div', { className: 'dside-titlebar' + (upd && upd.installed ? ' has-overlay' : '') },
           // 品牌标记：**路径左边一个小 logo**（2026-09-20 用户要回来；2026-09-17 曾按用户要求
@@ -12737,10 +13037,13 @@ window.__ModuleLoader__.load({
                 : (activity === 'actions'
                     ? h(BlocksPanel, { title: '操作', blocks: actionBlocks() })
                     : (activity === 'plugins'
-                        // ⑯ 插件面板（原右侧面板那个标签页，2026-09-21 用户要求搬到左侧活动栏）
+                        // ⑯ 能力面板（2026-09-21 从右侧面板搬到左侧活动栏；2026-11-05 改名并拆成插件/技能/MCP 三区）
                         ? h('div', { className: 'dside-explorer' },
-                            h('div', { className: 'dside-pane-title' }, '插件'),
-                            h(PluginPanel, { plugins: plugins, busy: busy, onAction: pluginAction }))
+                            h('div', { className: 'dside-pane-title' }, '能力'),
+                            h(CapabilityPanel, {
+                              plugins: plugins, skills: skills, mcp: mcp, busy: busy,
+                              onAction: pluginAction, onCapability: capabilityAction, onOpenFile: openSkillFile,
+                            }))
                         : h(BlocksPanel, { title: '设置', blocks: settingsBlocks() }))))),
                 // ⑰ 左栏手柄：挂在面板内部、绝对定位压在右边缘（不占布局空间，VSCode 同款）
                 h(Sash, {

@@ -1936,6 +1936,290 @@ export default {
       return rows
     }
 
+    // ── 能力面板：技能 / MCP（2026-11-05）────────────────────────────────────
+    // 技能只读：技能本体是磁盘上的 SKILL.md，面板不碰文件（开关状态存在天工自己的配置里，
+    // 见 skill-toggle 一节）。目录口径照引擎的 skill-filesystem：项目根的 .dsh\skills 与
+    // .agents\skills、家目录的 skills、用户目录的 .agents\skills；一级目录里找 SKILL.md，
+    // 或同名的扁平 .md。同名先到先得，顺序与引擎的 rank 一致。
+    // /init 每 5 秒来一次，扫盘结果缓存 5 秒，别让轮询一直读盘。
+    const DSH_HOME_DIR = (() => {
+      const env = String(process.env.DSH_HOME || '').trim()
+      if (env) return env
+      return path.resolve(profileDir, '..', '..', '..', '..')
+    })()
+    const USER_AGENTS_DIR = (() => {
+      const env = String(process.env.DSH_AGENTS_HOME || '').trim()
+      if (env) return env
+      const home = String(process.env.USERPROFILE || process.env.HOME || '').trim()
+      return home ? path.join(home, '.agents') : ''
+    })()
+
+    const SKILL_FM_LINE = /^([A-Za-z][A-Za-z0-9_-]*)\s*:\s*(.*)$/
+    const parseSkillFrontmatter = (text) => {
+      const norm = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+      if (!norm.startsWith('---\n')) return undefined
+      const end = norm.indexOf('\n---', 3)
+      if (end < 0) return undefined
+      const out = {}
+      for (const line of norm.slice(4, end).split('\n')) {
+        const m = SKILL_FM_LINE.exec(line)
+        if (!m) continue
+        let v = m[2].trim()
+        if (v.length >= 2 && ((v[0] === '"' && v.endsWith('"')) || (v[0] === "'" && v.endsWith("'")))) v = v.slice(1, -1)
+        out[m[1]] = v
+      }
+      return out
+    }
+    const SKILL_TRUTHY = /^(true|yes|on|1)$/i
+    const skillRoots = async () => {
+      const roots = []
+      const root = await resolveRoot()
+      if (root) {
+        roots.push({ dir: path.join(root, '.dsh', 'skills'), source: 'project' })
+        roots.push({ dir: path.join(root, '.agents', 'skills'), source: 'project' })
+      }
+      roots.push({ dir: path.join(DSH_HOME_DIR, 'skills'), source: 'user' })
+      if (USER_AGENTS_DIR) roots.push({ dir: path.join(USER_AGENTS_DIR, 'skills'), source: 'user' })
+      return roots
+    }
+    let skillCache = { at: 0, items: [] }
+    const skillsForPanel = async () => {
+      const now = Date.now()
+      if (now - skillCache.at < 5000) return skillCache.items
+      const capState = readCapabilityState()
+      const items = []
+      const seen = new Set()
+      for (const r of await skillRoots()) {
+        let names = []
+        try { names = readdirSync(r.dir) } catch { continue }   // 目录不存在：这一根就当没有
+        for (const name of names) {
+          let file = path.join(r.dir, name, 'SKILL.md')
+          let ok = false
+          try { ok = statSync(file).isFile() } catch { ok = false }
+          if (!ok) {
+            file = path.join(r.dir, name.replace(/\.md$/i, '') + '.md')
+            try { ok = statSync(file).isFile() } catch { ok = false }
+          }
+          if (!ok) continue
+          let fm
+          try { fm = parseSkillFrontmatter(readFileSync(file, 'utf8')) } catch { continue }
+          // 与引擎同一条门槛：name + description 缺一个就不算技能（引擎那边也直接忽略）
+          if (!fm || !fm.name || !fm.description) continue
+          if (seen.has(fm.name)) continue
+          seen.add(fm.name)
+          const modelInvocable = !SKILL_TRUTHY.test(String(fm['disable-model-invocation'] || '').trim())
+          const userInvocable = fm['user-invocable'] === undefined ? true : SKILL_TRUTHY.test(String(fm['user-invocable']).trim())
+          const userOff = skillDisabledByUser(capState, fm.name)
+          items.push({
+            name: fm.name,
+            displayName: fm.display_name || undefined,
+            description: fm.description,
+            whenToUse: fm.whenToUse || fm['when-to-use'] || undefined,
+            path: file,
+            root: r.dir,
+            source: r.source,
+            // enabled 是"面板上这个开关"，文件里的字段只说明作者声明的默认值
+            enabled: !userOff && (modelInvocable || userInvocable),
+            userDisabled: userOff,
+            modelInvocable,
+            userInvocable,
+          })
+        }
+      }
+      items.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+      skillCache = { at: now, items }
+      return items
+    }
+
+    // MCP：一台服务器 = 装配单里一行 dsh-mcp-client。引擎不发布连接状态，
+    // 面板能说的只有配置本身（连接与否靠工具数，见 /mcp-tools）。
+    // ⚠ 只取能显示的字段，config.env / headers 里可能有凭证，一律不回传。
+    // 引擎不发布 MCP 连接状态（连接态是插件闭包里的局部变量），唯一可信信号是
+    // "这台服务器的工具有没有挂到工具表上"。工具名格式 mcp__<serverName>__<原名>。
+    const mcpToolCounts = () => {
+      const out = new Map()
+      try {
+        if (ctx.tools === undefined || typeof ctx.tools.schemas !== 'function') return out
+        for (const schema of ctx.tools.schemas()) {
+          const parts = String((schema && schema.name) || '').split('__')
+          if (parts.length < 3 || parts[0] !== 'mcp') continue
+          out.set(parts[1], (out.get(parts[1]) || 0) + 1)
+        }
+      } catch { /* 拿不到工具表就当一台都没挂上 */ }
+      return out
+    }
+    const mcpForPanel = () => {
+      const out = []
+      const toolCounts = mcpToolCounts()
+      let entries = []
+      try { entries = [...ctx.loader.entries()] } catch { return out }
+      for (const entry of entries) {
+        let name = ''
+        try { name = String((entry.options && entry.options.name) || '') } catch { continue }
+        if (!/dsh-mcp-client$/.test(name)) continue
+        const cfg = (entry.options && entry.options.config) || {}
+        let id = ''
+        let disabled = false
+        try { id = String(entry.id || '') } catch { /* 忽略 */ }
+        try { disabled = entry.disabled === true } catch { /* 忽略 */ }
+        // 装配单 insert 进来的行会被挂在 include 组下（id 变成 include:xxx）；
+        // 面板标记块用的是我们写入时的裸 id，剥掉前缀两边才对得上，否则改一次就多一条
+        if (id.startsWith('include:')) id = id.slice('include:'.length)
+        out.push({
+          id: id || String(cfg.serverName || ''),
+          serverName: String(cfg.serverName || ''),
+          transport: String(cfg.transport || 'stdio'),
+          command: cfg.command ? String(cfg.command) : undefined,
+          args: Array.isArray(cfg.args) ? cfg.args.map(String) : undefined,
+          url: cfg.url ? String(cfg.url) : undefined,
+          disabled,
+          toolCount: toolCounts.get(String(cfg.serverName || '')) || 0,
+        })
+      }
+      out.sort((a, b) => (a.serverName < b.serverName ? -1 : a.serverName > b.serverName ? 1 : 0))
+      return out
+    }
+
+    // ── 能力面板：技能开关与 MCP 条目（写侧，2026-11-05）──────────────────────
+    // 两条硬口径：
+    //   ① 技能文件只读 —— 开关记在天工自己的 capabilities.json，引擎取技能时按表过滤；
+    //   ② MCP 只改装配单里我们自己的标记块，块外一个字不动（那份文件满是解释性注释，
+    //      用 YAML 解析再序列化会把注释和顺序全冲掉）。
+    const capabilityPath = () => path.join(DSH_HOME_DIR, 'capabilities.json')
+    const readCapabilityState = () => {
+      try {
+        const j = JSON.parse(readFileSync(capabilityPath(), 'utf8'))
+        return j && typeof j === 'object' ? j : {}
+      } catch { return {} }
+    }
+    const writeCapabilityState = async (state) => {
+      await mkdir(DSH_HOME_DIR, { recursive: true })
+      await writeFile(capabilityPath(), JSON.stringify(state, null, 2) + '\n', 'utf8')
+    }
+    const skillDisabledByUser = (state, name) => {
+      const s = state && state.skills && typeof state.skills === 'object' ? state.skills[name] : undefined
+      return !!(s && s.enabled === false)
+    }
+    const setSkillEnabled = async (name, enabled) => {
+      const key = String(name || '')
+      if (!/^[a-z0-9][a-z0-9-]*$/.test(key)) throw new Error('bad-skill-name: ' + key)
+      const state = readCapabilityState()
+      const skills = state.skills && typeof state.skills === 'object' ? { ...state.skills } : {}
+      if (enabled) delete skills[key]
+      else skills[key] = { enabled: false }
+      state.skills = skills
+      await writeCapabilityState(state)
+      skillCache = { at: 0, items: [] }
+      trace({ level: 'info', kind: 'skill-toggle', name: key, enabled: !!enabled })
+      return { name: key, enabled: !!enabled }
+    }
+
+    const MCP_BLOCK_KEY = 'dsh-ide:mcp:'
+    const mcpBlockStart = (id) => '# >>> ' + MCP_BLOCK_KEY + id
+    const mcpBlockEnd = (id) => '# <<< ' + MCP_BLOCK_KEY + id
+    const MCP_HEAD_PREFIX = '# ── 天工能力面板：MCP 服务器'
+    /** 取 pos 所在行前面那一行（去掉行尾），没有就返回 null。 */
+    const prevLineOf = (text, pos) => {
+      const curStart = text.lastIndexOf('\n', pos - 1) + 1
+      if (curStart <= 0) return null
+      const prevEnd = curStart - 1
+      const prevStart = text.lastIndexOf('\n', prevEnd - 1) + 1
+      return { start: prevStart, text: text.slice(prevStart, prevEnd) }
+    }
+    const readMcpRawConfig = (id) => {
+      let entries = []
+      try { entries = [...ctx.loader.entries()] } catch { return undefined }
+      for (const entry of entries) {
+        let name = ''
+        let eid = ''
+        try { name = String((entry.options && entry.options.name) || '') } catch { continue }
+        try { eid = String(entry.id || '') } catch { /* 忽略 */ }
+        if (eid.startsWith('include:')) eid = eid.slice('include:'.length)
+        if (!/dsh-mcp-client$/.test(name) || eid !== id) continue
+        const cfg = (entry.options && entry.options.config) || {}
+        return cfg && typeof cfg === 'object' ? { ...cfg } : {}
+      }
+      return undefined
+    }
+    const mcpBlockText = (row, baseConfig) => {
+      const cfg = { ...(baseConfig || {}) }
+      cfg.serverName = row.serverName
+      cfg.transport = row.transport
+      if (row.transport === 'streamable-http') {
+        delete cfg.command
+        delete cfg.args
+        delete cfg.cwd
+        cfg.url = row.url
+      } else {
+        delete cfg.url
+        cfg.command = row.command
+        cfg.args = Array.isArray(row.args) ? row.args : []
+      }
+      const lines = [
+        MCP_HEAD_PREFIX + ' ' + row.serverName + '（改这一块请走能力面板）──',
+        mcpBlockStart(row.id),
+        '- insert:',
+        '    - id: ' + JSON.stringify(row.id),
+        "      name: '@deepseek-ai/dsh-mcp-client'",
+      ]
+      if (row.disabled) lines.push('      disabled: true')
+      lines.push('      config: ' + JSON.stringify(cfg))
+      lines.push(mcpBlockEnd(row.id))
+      return lines.join('\n') + '\n'
+    }
+    const saveMcpEntry = async (row) => {
+      const file = profilePatchPath()
+      if (!file) throw new Error('no-dsh-home')
+      let text = ''
+      try { text = readFileSync(file, 'utf8') } catch { text = '' }
+      const block = mcpBlockText(row, readMcpRawConfig(row.id))
+      const start = mcpBlockStart(row.id)
+      const end = mcpBlockEnd(row.id)
+      const si = text.indexOf(start)
+      const ei = text.indexOf(end)
+      let next
+      if (si >= 0 && ei > si) {
+        // 块上面那行标题注释属于块，替换范围要连它一起盖掉，
+        // 否则每改一次（启停也算）就多堆一行标题
+        let from = si
+        const p = prevLineOf(text, from)
+        if (p && p.text.indexOf(MCP_HEAD_PREFIX) >= 0) from = p.start
+        next = text.slice(0, from) + block + text.slice(ei + end.length).replace(/^\r?\n/, '')
+      } else {
+        const sep = text.length === 0 ? '' : (text.endsWith('\n') ? '\n' : '\n\n')
+        next = text + sep + block
+      }
+      await writeFile(file, next, 'utf8')
+      trace({ level: 'info', kind: 'mcp-save', id: row.id, serverName: row.serverName, transport: row.transport, disabled: !!row.disabled })
+      return { id: row.id }
+    }
+    const deleteMcpEntry = async (id) => {
+      const file = profilePatchPath()
+      if (!file) throw new Error('no-dsh-home')
+      let text = ''
+      try { text = readFileSync(file, 'utf8') } catch { return { id, changed: false } }
+      const start = mcpBlockStart(id)
+      const end = mcpBlockEnd(id)
+      const si = text.indexOf(start)
+      const ei = text.indexOf(end)
+      if (si < 0 || ei <= si) return { id, changed: false }
+      // 块上面那行分隔注释和它前面的空行跟块是一体的，一起带走
+      // （只删块本身会在文件尾留一条孤零零的标题和空行，反复增删会把空行越堆越多）
+      let from = si
+      let p = prevLineOf(text, from)
+      if (p && p.text.indexOf(MCP_HEAD_PREFIX) >= 0) { from = p.start; p = prevLineOf(text, from) }
+      if (p && p.text.trim() === '') from = p.start
+      const next = text.slice(0, from) + text.slice(ei + end.length).replace(/^\r?\n/, '')
+      await writeFile(file, next, 'utf8')
+      trace({ level: 'info', kind: 'mcp-delete', id })
+      return { id, changed: true }
+    }
+    const setMcpDisabled = async (id, disabled) => {
+      const item = mcpForPanel().find((m) => m.id === id)
+      if (!item) throw new Error('mcp-not-found: ' + id)
+      return saveMcpEntry({ ...item, disabled: !!disabled })
+    }
+
     // 用户编辑器的写路径 = **用户自己的动作，不受 Agent 沙箱约束**。
     // 2026-09-22 用户报障："桌面上的文件保存失败：file access denied under workspace-write mode" ——
     // 拖进编辑区的文件在工作区之外，而 fs-sandbox 的会话策略是 workspace-write，写就被拦了。
@@ -2860,6 +3144,9 @@ export default {
           const root = await resolveRoot()
           return json(res, 200, {
             root: root || null,
+            // 能力面板另外两区（2026-11-05）：技能清单靠扫目录，MCP 靠读装配单
+            skills: await skillsForPanel(),
+            mcp: mcpForPanel(),
             plugins: {
               // 全量插件树（后端为主 + 带前端半的标记 + 停用的行也在，2026-09-22 用户要求透明）
               rows: pluginRows(),
@@ -3676,6 +3963,65 @@ export default {
           if (!row || !agent) return json(res, 404, { error: 'plugin-or-agent-missing' })
           const result = await runner.undefine(agent, pluginId)
           return json(res, 200, result)
+        }
+
+        // ── 能力面板：技能开关（2026-11-05）────────────────────────
+        if (action === '/skill-toggle' && req.method === 'POST') {
+          const body = await readBody(req)
+          try {
+            const out = await setSkillEnabled(String(body.name || ''), body.enabled !== false)
+            return json(res, 200, out)
+          } catch (e) {
+            return json(res, 400, { error: errOf(e) })
+          }
+        }
+
+        // ── 能力面板：MCP 服务器（写装配单，改完引擎自己热生效）──────
+        if (action === '/mcp-save' && req.method === 'POST') {
+          const body = await readBody(req)
+          const serverName = String(body.serverName || '').trim()
+          if (!/^[A-Za-z0-9_-]{1,32}$/.test(serverName)) return json(res, 400, { error: 'bad-server-name' })
+          const transport = body.transport === 'streamable-http' ? 'streamable-http' : 'stdio'
+          const id = String(body.id || '').trim() || ('mcp-' + serverName.toLowerCase())
+          if (!/^[A-Za-z0-9_.-]{1,64}$/.test(id)) return json(res, 400, { error: 'bad-entry-id' })
+          const exists = mcpForPanel().some((m) => m.id === id)
+          const clash = mcpForPanel().some((m) => m.id !== id && m.serverName.toLowerCase() === serverName.toLowerCase())
+          if (clash) return json(res, 409, { error: 'server-name-taken' })
+          const row = {
+            id, serverName, transport,
+            disabled: body.disabled === true,
+            command: transport === 'stdio' ? String(body.command || '').trim() : undefined,
+            args: transport === 'stdio' && Array.isArray(body.args) ? body.args.map(String) : undefined,
+            url: transport === 'streamable-http' ? String(body.url || '').trim() : undefined,
+          }
+          if (transport === 'stdio' && !row.command) return json(res, 400, { error: 'command-required' })
+          if (transport === 'streamable-http' && !/^https?:\/\//i.test(String(row.url || ''))) return json(res, 400, { error: 'url-required' })
+          try {
+            const out = await saveMcpEntry(row)
+            return json(res, 200, { ...out, created: !exists })
+          } catch (e) {
+            return json(res, 500, { error: errOf(e) })
+          }
+        }
+
+        if (action === '/mcp-toggle' && req.method === 'POST') {
+          const body = await readBody(req)
+          try {
+            const out = await setMcpDisabled(String(body.id || ''), body.enabled === false)
+            return json(res, 200, out)
+          } catch (e) {
+            return json(res, 400, { error: errOf(e) })
+          }
+        }
+
+        if (action === '/mcp-delete' && req.method === 'POST') {
+          const body = await readBody(req)
+          try {
+            const out = await deleteMcpEntry(String(body.id || ''))
+            return json(res, 200, out)
+          } catch (e) {
+            return json(res, 500, { error: errOf(e) })
+          }
         }
 
         // ── 工作空间全量文件（③ Ctrl+P 快速打开：本地 fuzzy 过滤）──
