@@ -24,6 +24,39 @@ const SNAPSHOT_FILE = 'browser-session-cookies.bin'
 // VSCode 同款白底：视图还没渲染出内容时先铺白，配合"藏起来前先截图"避免闪黑
 const BLANK_COLOR = '#FFFFFF'
 
+// ── 浏览器身份（2026-11-05）──────────────────────────────────────────────────
+// 站点（知乎等）按 UA + Client Hints 判"是不是真浏览器"：UA 里带 `Electron` / `dsh-ide-desktop`、
+// `userAgentData.brands` 里没有 Google Chrome，就按环境异常处理 —— 带签名（x-zse-96）的接口直接 403，
+// 表现是页面框架和账号都正常、只有回答/文章列表报"系统繁忙"。
+// UA 字符串用 setUserAgent 就能改；brands / fullVersionList **Electron 没有对应 API**，只能走 CDP 的
+// Network.setUserAgentOverride，所以每个浏览器视图都要挂一次调试器。
+// ⚠ UA 和 metadata 必须一起改：只改 UA 而 brands 还是 Electron 那套，判定照旧。
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36'
+// 调试器命令的防守上限（见 applyChromeIdentity）：正常几十毫秒，超了就是被驱动层占住了
+const IDENTITY_TIMEOUT_MS = 1500
+const CHROME_VERSION = '150'
+const CHROME_FULL_VERSION = '150.0.7871.224'
+const CHROME_UA_METADATA = {
+  brands: [
+    { brand: 'Not;A=Brand', version: '8' },
+    { brand: 'Chromium', version: CHROME_VERSION },
+    { brand: 'Google Chrome', version: CHROME_VERSION },
+  ],
+  fullVersionList: [
+    { brand: 'Not;A=Brand', version: '8.0.0.0' },
+    { brand: 'Chromium', version: CHROME_FULL_VERSION },
+    { brand: 'Google Chrome', version: CHROME_FULL_VERSION },
+  ],
+  fullVersion: CHROME_FULL_VERSION,
+  platform: 'Windows',
+  platformVersion: '15.0.0',
+  architecture: 'x86',
+  model: '',
+  mobile: false,
+  bitness: '64',
+  wow64: false,
+}
+
 // 页面 id 的协议头。壳里的页面 id 同时是编辑器标签的**伪路径**（设计定稿 §3）：
 // `browser://agent-<时间戳>-<序号>`（Agent 开的，见 bridge.js）或 `browser://browser-<序号>-<时间戳>`（人开的）。
 const VIEW_ID_SCHEME = 'browser://'
@@ -114,10 +147,82 @@ async function restoreSessionCookies(note) {
   return n
 }
 
-function installBrowserHost(win, noteFn) {
+function installBrowserHost(win, noteFn, options) {
   const note = typeof noteFn === 'function' ? noteFn : () => { }
   const entries = new Map()          // id -> { id, view, rect }
   let seq = 0
+  // 驱动层（Playwright）连着没有：它连着的时候新标签的调试接口已经被它占了（见 applyChromeIdentity）
+  const driverConnected = (options && typeof options.driverConnected === 'function') ? options.driverConnected : () => false
+  // 驱动层连着时请它给某个视图补身份（main.js 注入；驱动层没装就是 null）
+  const requestIdentityPatch = (options && typeof options.requestIdentityPatch === 'function') ? options.requestIdentityPatch : null
+  let driverOwnsNoted = false
+
+  // 分区级 UA：CDP 的覆盖只管渲染进程发起的请求，浏览器进程自己发的（预连接等）仍读分区设置。
+  try { browserSession().setUserAgent(CHROME_UA) } catch (e) {
+    note('warn', 'browser-ua', '分区 UA 设置失败', { error: (e && e.message) || String(e) })
+  }
+
+  // 把 Chrome 的身份落到一个视图上：UA 字符串 + Client Hints 一起。
+  // ⚠ 必须在**文档开始加载之后**调（见 create 里的 did-start-loading）：视图刚创建、还在空白页时
+  //   发 CDP 命令会一直不回（2026-11-05 实测，1.5s 后超时；此时 renderer 还没把导航接起来）。
+  // 全程不抛：拿不到调试器也照样给 UA 字符串，最多是 brands 还是 Electron 的值（日志里留痕）。
+  function applyChromeIdentity(entry) {
+    const wc = entry.view.webContents
+    try { wc.setUserAgent(CHROME_UA) } catch { /* 视图正在销毁 */ }
+    // 驱动层先连上时它已经 attach 了新 target：这时壳侧再 attach 自己的调试器，命令会**永不返回**
+    // （2026-11-05 实测，Playwright 连接后新建的视图必然如此）⇒ 直接交给驱动层下发（driver.js
+    // 的 patchIdentity 走的是外部 CDP 客户端那一侧，实测可用）。
+    if (driverConnected()) {
+      if (!driverOwnsNoted) {
+        driverOwnsNoted = true
+        note('info', 'browser-ua', '驱动层已连接，浏览器身份交给驱动层下发', {})
+      }
+      // 光跳过不够：得请驱动层立刻给这个视图补一次，否则要等用户下一次让 Agent 动浏览器
+      if (requestIdentityPatch) { try { requestIdentityPatch(entry.id) } catch { /* 忽略 */ } }
+      return Promise.resolve(false)
+    }
+    try {
+      if (!wc.debugger.isAttached()) wc.debugger.attach('1.3')
+    } catch (e) {
+      note('warn', 'browser-ua', '调试器挂不上，Client Hints 仍是 Electron 的值', { error: (e && e.message) || String(e) })
+      return Promise.resolve(false)
+    }
+    // 不带 acceptLanguage：那会连站点语言一起换掉，这里只想改身份
+    const sent = wc.debugger.sendCommand('Network.setUserAgentOverride', {
+      userAgent: CHROME_UA,
+      platform: 'Win32',
+      userAgentMetadata: CHROME_UA_METADATA,
+    }).then(() => 'ok').catch((e) => {
+      const msg = (e && e.message) || String(e)
+      // 超时那条分支会主动 detach，随后这条命令必然以 target closed 收场 —— 已经记过一次，别重复刷
+      if (!/target closed/i.test(msg)) note('warn', 'browser-ua', 'UA 覆盖下发失败', { error: msg })
+      return 'fail'
+    })
+    // 防守（不是拿延时凑时序）：驱动层可能刚好在检查之后连上，那时这条命令一直不回 —— 不能让它
+    // 把这次导航一起卡死。超时就把壳侧的调试器摘掉，之后重设身份时重新挂。
+    return Promise.race([sent, new Promise((r) => setTimeout(() => r('timeout'), IDENTITY_TIMEOUT_MS))]).then((r) => {
+      if (r !== 'timeout') return r === 'ok'
+      note('warn', 'browser-ua', '调试器命令超时（驱动层抢先），Client Hints 交给驱动层补', {})
+      try { wc.debugger.detach() } catch { /* 忽略 */ }
+      return false
+    })
+  }
+
+  // 一个视图只落一次身份；成功过就不再重试（同一次文档生命周期内 CDP 覆盖是一直生效的）
+  function ensureIdentity(entry) {
+    if (entry.identityOk) return
+    applyChromeIdentity(entry).then((ok) => {
+      if (ok) entry.identityOk = true
+    }).catch(() => { /* applyChromeIdentity 内部已兜住 */ })
+  }
+
+  // 驱动层断开后调：它下发的覆盖可能随 CDP 会话一起失效，壳侧重新挂一遍
+  function reapplyIdentity() {
+    for (const entry of entries.values()) {
+      entry.identityOk = false
+      ensureIdentity(entry)
+    }
+  }
 
   // 回填必须赶在第一个页面加载之前：创建视图时等这个 promise，而不是靠"通常来得及"。
   const restoreReady = restoreSessionCookies(note)
@@ -218,16 +323,26 @@ function installBrowserHost(win, noteFn) {
     win.contentView.addChildView(view)
     // visible 由**我们自己记账**，不读 view.getVisible()：Electron 43 的 WebContentsView 上没有那个
     // 读取接口，用它做判断会让"藏之前先截图"这一步被静默跳过（占位图永远不出现、藏起来会闪白）。
-    const entry = { id: key, view, rect: null, visible: false, lastPointer: null }
+    const entry = { id: key, view, rect: null, visible: false, lastPointer: null, identityOk: false }
     entries.set(key, entry)
     // 新视图也要立刻知道当前开关与速度档（否则工具栏关了幻影，新开的页面还会画指针）
     phantomSetup(entry)
 
     const wc = view.webContents
+    // UA 字符串先落：导航请求头当场就是它。Client Hints 要等文档开始加载（见 did-start-loading）。
+    try { wc.setUserAgent(CHROME_UA) } catch { /* 视图正在销毁 */ }
     wc.on('page-title-updated', (_e, title) => send({ type: 'title', id: key, title: String(title || '') }))
     wc.on('page-favicon-updated', (_e, urls) => send({ type: 'favicon', id: key, urls: Array.isArray(urls) ? urls.slice(0, 1) : [] }))
-    wc.on('did-start-loading', () => send({ type: 'loading', id: key, loading: true }))
-    wc.on('did-stop-loading', () => emitNav(entry))
+    wc.on('did-start-loading', () => {
+      send({ type: 'loading', id: key, loading: true })
+      // 不能更早：视图还在空白页时发 CDP 命令不返回（applyChromeIdentity 的注释）
+      ensureIdentity(entry)
+    })
+    wc.on('did-stop-loading', () => {
+      emitNav(entry)
+      // 驱动层那条路：文档开始时请求过一次可能太早（页面还没进 Playwright 的名单），加载完再补一次
+      ensureIdentity(entry)
+    })
     wc.on('did-navigate', () => emitNav(entry))
     wc.on('did-navigate-in-page', () => emitNav(entry))
     // errorCode -3 = 被主动取消（用户改地址/点刷新），不是错误，报了反而误导
@@ -235,7 +350,12 @@ function installBrowserHost(win, noteFn) {
       if (!isMainFrame || code === -3) return
       send({ type: 'fail', id: key, code, message: String(desc || ''), url: String(failedUrl || '') })
     })
-    wc.on('render-process-gone', () => send({ type: 'fail', id: key, code: 0, message: '页面进程已退出', url: wc.getURL() }))
+    // 渲染进程重建后调试器会一起掉，身份得重新落一遍（否则崩溃过一次的标签又变回 Electron）。
+    // 只重置标记：崩溃时没有文档，命令发不出去；等它重新加载时 did-start-loading 自然会再落一次。
+    wc.on('render-process-gone', () => {
+      send({ type: 'fail', id: key, code: 0, message: '页面进程已退出', url: wc.getURL() })
+      entry.identityOk = false
+    })
     wc.on('focus', () => send({ type: 'focus', id: key, focused: true }))
     wc.on('blur', () => send({ type: 'focus', id: key, focused: false }))
     // target=_blank 新窗口拦下来在天工里开新标签（设计定稿 §4.2「页面行为」：绝不开出无主的原生窗口）
@@ -387,7 +507,8 @@ function installBrowserHost(win, noteFn) {
   handle('anzio-browser:navigate', (id, url) => {
     const entry = entries.get(String(id))
     if (!entry) return { ok: false }
-    entry.view.webContents.loadURL(normalizeUrl(url)).catch(() => {})
+    // 身份不用在这里等：UA 字符串创建时就设好了，Client Hints 由 did-start-loading 落（导航会触发它）
+    try { entry.view.webContents.loadURL(normalizeUrl(url)).catch(() => {}) } catch { /* 视图已销毁 */ }
     return { ok: true }
   })
   handle('anzio-browser:action', (id, action) => {
@@ -458,7 +579,11 @@ function installBrowserHost(win, noteFn) {
     try { win.webContents.send('anzio-browser:key', Object.assign({ id: entry.id }, payload)) } catch { /* 窗口关闭中 */ }
   })
 
-  return { create, destroy, canonicalId, setBounds, setVisible, entries, sendToView: sendToView, sendAction: sendAction, phantom: () => ({ on: phantom.on, speed: phantom.speed }) }
+  return {
+    create, destroy, canonicalId, setBounds, setVisible, entries,
+    sendToView: sendToView, sendAction: sendAction, reapplyIdentity,
+    phantom: () => ({ on: phantom.on, speed: phantom.speed }),
+  }
 }
 
-module.exports = { installBrowserHost, normalizeUrl, PARTITION }
+module.exports = { installBrowserHost, normalizeUrl, PARTITION, CHROME_UA, CHROME_UA_METADATA }

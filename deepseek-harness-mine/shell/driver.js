@@ -470,16 +470,60 @@ function createDriver(opts) {
   const markName = '__anzioBrowserViewId'
   // 「Agent幻影」通道（第三期，可选）：{enabled(), send(id, cmd) → 该等多久}。没给就纯干活、不演。
   const phantom = (opts && opts.phantom) || null
+  // 浏览器身份（2026-11-05，可选）：{ ua, platform, metadata }，由 main.js 从 browser.js 注入。
+  // 为什么驱动层也要管：Playwright 连上之后会抢先 attach 新建的 target，壳侧那套 webContents.debugger
+  // 对这类页面发命令会永不返回（实测）⇒ 这条路上只能由我们从外部 CDP 客户端那一侧再下发一次。
+  const identity = (opts && opts.chromeIdentity) || null
+  const onDriverDown = (opts && opts.onDisconnect) || null
 
   let browser = null
   let connecting = null
   let idleTimer = null
+  let uaPatched = new WeakSet()        // 已经补过身份的页面（断开后重建：CDP 会话没了，覆盖可能失效）
   const wired = new WeakSet()          // 已经挂过事件监听的页面
   const events = new Map()             // viewId -> [{t, kind, text}]
   const queues = new Map()             // viewId -> Promise 链：同一页面的动作**串行**
   const mapCache = new Map()           // page -> viewId
 
   const log = (msg, meta) => { try { onLog(msg, meta) } catch { /* 忽略 */ } }
+
+  // ── 浏览器身份补丁（2026-11-05）────────────────────────────────────────────
+  // 只对"认得出是我方浏览器视图"的页面下手（天工自己那页、开发者工具都不碰）。
+  function patchIdentity(page) {
+    if (!identity || uaPatched.has(page)) return
+    uaPatched.add(page)
+    ;(async () => {
+      try {
+        const cdp = await page.context().newCDPSession(page)
+        await cdp.send('Network.setUserAgentOverride', {
+          userAgent: identity.ua,
+          platform: identity.platform || 'Win32',
+          userAgentMetadata: identity.metadata,
+        })
+        log('driver-ua-patched')
+      } catch (e) {
+        log('driver-ua-patch-failed', { error: (e && e.message) || String(e) })
+      }
+    })()
+  }
+  // 壳侧（browser.js）连着时开的标签：由它告诉我们"这个视图该补身份了"。
+  // 找不到就先放着 —— 页面还没进 Playwright 的名单，下一次 Agent 动作刷名单时会补上。
+  async function patchIdentityById(id) {
+    if (!identity) return
+    try {
+      const page = await pageFor(id)
+      patchIdentity(page)
+    } catch { /* 还没出现在页名单里 */ }
+  }
+
+  // 新页面出现时先问"你是谁"再补：preload 在文档创建时就挂上了标记，通常一问就答得出
+  function markAndPatch(page) {
+    if (!identity || uaPatched.has(page)) return
+    Promise.race([
+      page.evaluate('window.' + markName + ' || ""'),
+      new Promise((r) => setTimeout(() => r(''), 3000)),
+    ]).then((id) => { if (id) patchIdentity(page) }).catch(() => { /* 页面已关或正在跳转 */ })
+  }
 
   // ── 连接（惰性建、空闲拆、断了自重建）──────────────────────────────────────
   async function connect() {
@@ -490,6 +534,10 @@ function createDriver(opts) {
         const b = await chromium.connectOverCDP('http://127.0.0.1:' + port, { timeout: 15000 })
         browser = b
         b.on('disconnected', () => { browser = null; mapCache.clear(); log('driver-disconnected') })
+        // 连上之后用户在手开新标签：不等 Agent 的下一个动作，页面一出现就补身份
+        for (const ctx of b.contexts()) {
+          try { ctx.on('page', (p) => markAndPatch(p)) } catch { /* 忽略 */ }
+        }
         log('driver-connected', { port: Number(port) })
         return b
       } finally { connecting = null }
@@ -505,7 +553,10 @@ function createDriver(opts) {
     const b = browser
     browser = null
     mapCache.clear()
+    uaPatched = new WeakSet()
     if (b) { try { await b.close() } catch { /* 忽略 */ } log('driver-idle-disconnect') }
+    // 我们下发的 UA 覆盖可能跟着 CDP 会话一起失效 ⇒ 让壳侧重新把身份落一遍
+    if (onDriverDown) { try { onDriverDown() } catch { /* 忽略 */ } }
   }
 
   function noteEvent(id, kind, text) {
@@ -604,6 +655,8 @@ function createDriver(opts) {
       if (id) {
         out.set(id, p)
         wire(p, id)
+        // 用户先手动开的标签（那时驱动层可能还没连）在这里补身份；已补过的 WeakSet 会挡掉
+        patchIdentity(p)
         // 已经加载完的文档不会再跑 addInitScript → 当场补装一次（不等它，refreshMap 是热路径）
         if (!toastInstalled.has(p)) {
           toastInstalled.add(p)
@@ -1404,6 +1457,10 @@ function createDriver(opts) {
     status: impl.status.bind(impl),
     list: impl.list.bind(impl),
     disconnect: disconnect,
+    // 壳侧要知道"驱动层连着没有"：连着时新标签的调试接口被占，身份得走驱动层这条路
+    isConnected: () => !!browser,
+    // 内部用：壳侧开了新标签时请我们补身份（不进壳桥白名单，模型看不到）
+    patchIdentityById: patchIdentityById,
     // 内部用（bridge 之外别碰）
     _impl: impl,
     // 内部用：探针脚本直接验选择器解析 / 断言（不进壳桥白名单，模型看不到）

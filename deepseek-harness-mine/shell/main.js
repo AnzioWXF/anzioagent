@@ -7,7 +7,7 @@ const http = require('http')
 const { execSync } = require('child_process')
 const { BackendManager } = require('./backend.js')
 const { Updater } = require('./updater.js')
-const { installBrowserHost } = require('./browser.js')
+const { installBrowserHost, CHROME_UA, CHROME_UA_METADATA } = require('./browser.js')
 const { createDriver } = require('./driver.js')
 const { startBridge } = require('./bridge.js')
 
@@ -943,7 +943,14 @@ if (!gotLock) {
     installShortcuts(mainWindow)
     installHotkeyForwarding(mainWindow)
     // 内置浏览器内核：必须在 boot() 之前装，页面加载后马上会来要视图
-    try { browserHost = installBrowserHost(mainWindow, noteLog) } catch (e) { console.error('[anzio] browser host failed:', (e && e.message) || e); noteLog('error', 'browser-host', '内置浏览器宿主安装失败', { error: (e && e.message) || String(e) }) }
+    // driverConnected：驱动层连着时新标签的调试接口被它占住，身份要改由驱动层下发（见 browser.js 的
+    // applyChromeIdentity）。这里用闭包读，因为驱动层是下一步才创建的。
+    try {
+      browserHost = installBrowserHost(mainWindow, noteLog, {
+        driverConnected: () => !!(browserDriver && browserDriver.isConnected && browserDriver.isConnected()),
+        requestIdentityPatch: (id) => { try { if (browserDriver && browserDriver.patchIdentityById) browserDriver.patchIdentityById(id) } catch { /* 忽略 */ } },
+      })
+    } catch (e) { console.error('[anzio] browser host failed:', (e && e.message) || e); noteLog('error', 'browser-host', '内置浏览器宿主安装失败', { error: (e && e.message) || String(e) }) }
     // 内置浏览器第二期：Playwright 驱动层 + 壳桥。也必须在 boot() 之前起好 —— 后端子进程要用
     // 壳桥的地址与口令（经环境变量交下去），起了后端才起桥的话，第一个会话就指挥不动浏览器。
     try {
@@ -961,6 +968,10 @@ if (!gotLock) {
         },
         // 键盘记账（第三期）：驱动层记下"按了什么键"，壳转给天工页面里的键盘映射面板
         onAction: (record) => { if (browserHost && browserHost.sendAction) browserHost.sendAction(record) },
+        // 浏览器身份（2026-11-05）：驱动层连着时新标签只能从这一侧下发 UA/Client Hints
+        chromeIdentity: { ua: CHROME_UA, platform: 'Win32', metadata: CHROME_UA_METADATA },
+        // 驱动层断开后我们下发的覆盖可能失效 ⇒ 让壳侧重新落一遍（退出流程里不用再管）
+        onDisconnect: () => { if (!appQuitting && browserHost && browserHost.reapplyIdentity) browserHost.reapplyIdentity() },
       })
       browserBridge = await startBridge({
         driver: browserDriver, host: browserHost, win: mainWindow,
@@ -994,7 +1005,9 @@ if (!gotLock) {
 }
 
 // 退出时停掉自启的后端与内置浏览器驱动/壳桥
+let appQuitting = false
 app.on('before-quit', () => {
+  appQuitting = true
   if (backend) backend.stop()
   try { if (browserDriver) browserDriver.disconnect() } catch { /* 忽略 */ }
   try { if (browserBridge) browserBridge.close() } catch { /* 忽略 */ }

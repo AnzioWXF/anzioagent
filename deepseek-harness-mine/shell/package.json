@@ -1,6 +1,6 @@
 {
     "name":  "dsh-ide-desktop",
-    "version":  "1.5.56",
+    "version":  "1.5.57",
     "description":  "天工 (Tiangong) - independent DSH desktop app with embedded backend",
     "main":  "main.js",
     "author":  "DSH",
