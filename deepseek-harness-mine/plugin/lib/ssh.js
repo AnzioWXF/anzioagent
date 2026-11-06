@@ -66,7 +66,12 @@ export function createSshManager({ trace } = {}) {
     return new Promise(async (resolve, reject) => {
       if (!ssh2) return reject(new Error('ssh2-unavailable: ' + (loadError || 'unknown')))
       const sid = String(id || ('s' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)))
-      if (sessions.has(sid)) return reject(new Error('session-exists: ' + sid))
+      if (sessions.has(sid)) {
+        // 断线只把状态改成 closed、不动登记记录（列表要留着显示"已断开"），而界面上的
+        // "重新连接"恰好只在断开后才给 —— 不先把残壳摘掉，同一个 id 永远撞 session-exists。
+        if (sessions.get(sid).status === 'open') return reject(new Error('session-exists: ' + sid))
+        disconnect(sid)
+      }
 
       let privateKey = null
       if (keyPath) {
