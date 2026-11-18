@@ -29,6 +29,45 @@ const ARIA_DRIVER_MAX = 20000       // 快照在驱动层的上限（**必须回
 const MAX_SCAN = 40                 // 多个候选时最多逐个探测几个（再多也只会爆掉单次动作时长）
 const MAX_CANDIDATES = 8            // 候选清单最多列几个（命中总数照报，不受这个限制）
 
+// ── 终止（2026-11-17）────────────────────────────────────────────────────────
+// 用户按终止时必须**立刻**停：正在等的动作（page.expect 一次能等 45s、page.type 逐键能敲 70s）
+// 要当场放手，不能等它跑完。Playwright 的 CDP 调用大多撤不回，所以做法是"调用方立即拿到结果、
+// 队列立即放行"，那个还在跑的调用自己在后台结束（有 catch 兜住，不会变成未处理拒绝）。
+function abortedError() {
+  const err = new Error('已被用户终止')
+  err.aborted = true
+  return err
+}
+
+function isAbortSignal(value) {
+  return !!value && typeof value === 'object' && typeof value.aborted === 'boolean'
+    && typeof value.addEventListener === 'function'
+}
+
+function throwIfAborted(signal) {
+  if (signal && signal.aborted) throw abortedError()
+}
+
+/** Settle like `promise`, but reject the moment `signal` aborts, abandoning the original. */
+function untilAborted(signal, promise) {
+  if (!signal) return promise
+  if (signal.aborted) {
+    promise.catch(() => {})
+    return Promise.reject(abortedError())
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      promise.catch(() => {})
+      reject(abortedError())
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(
+      (value) => { signal.removeEventListener('abort', onAbort); resolve(value) },
+      (error) => { signal.removeEventListener('abort', onAbort); reject(error) },
+    )
+  })
+}
+
 // ── 页面内探针（**必须写成不捕获外部变量的纯函数**：Playwright 是按源码序列化过去的）──
 // 一个候选长什么样：给模型看的标识 + 为什么不可见。可见性判据与 Playwright 的动作前置检查同源
 // （有非空盒子 + visibility 不是 hidden），只是这里把"为什么"也带出来 —— 只说"不可见"等于没说。
@@ -688,8 +727,10 @@ function createDriver(opts) {
     try { return await page.title() } catch { return '' }
   }
   // 动作后等网络安静：上限 5s，超了不算失败（照抄 VSCode 的数值）
-  async function settle(page) {
-    try { await page.waitForLoadState('networkidle', { timeout: T_SETTLE }) } catch { /* 一直在请求就算了 */ }
+  async function settle(page, signal) {
+    try { await untilAborted(signal, page.waitForLoadState('networkidle', { timeout: T_SETTLE })) } catch (e) {
+      if (e && e.aborted) throw e      // 终止要穿透出去，别当成"一直在请求"吞掉
+    }
   }
 
   // ── 登录态指纹（2026-10-19）──────────────────────────────────────────────
@@ -992,10 +1033,212 @@ function createDriver(opts) {
     throw new Error('不认识的断言类型：' + kind + '（支持 ' + ASSERT_KINDS.join(' / ') + '）')
   }
 
-  // ── Agent幻影（第三期）：动手之前先把指针挪过去，让人看清"它点了哪儿" ──────────────
-  // ⚠ 这里的等待是**产品行为**（演给人看），不是拿延迟去凑时序：等多久由壳算（= 指针动画时长），
-  //   幻影关掉时 enabled() 为假 ⇒ 一点等待都不会发生，动作立刻执行。
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+  // ── 人手动作层（2026-11-09）────────────────────────────────────────────────
+  // 为什么要有这一层：Playwright 的 locator.click() 把"移动 → 按下 → 抬起"一次性派发完，
+  // 页面收到的几个事件落在同一毫秒（2026-11-05 实测：一次点击 7 个事件全在同一毫秒、坐标都是终点）。
+  // 平台风控认的正是这个 —— 人手做不到零毫秒按下抬起，也做不到指针瞬移。
+  // ⚠ 拟人化必须做在**真实事件**上：幻影关掉也照走人类节奏。幻影从此只负责"画"，
+  //   不再兼任"快慢"的闸门（old 口径"幻影关掉动作立刻执行"已废）。
+  const HUMAN = {
+    speed: 1,                                  // 全局倍速：1 = 真人节奏
+    stepMin: 8, stepMax: 25,                   // 两个 mousemove 之间的间隔
+    arriveMin: 70, arriveMax: 210,             // 移到位 → 按下
+    pressMin: 55, pressMax: 128,               // 按下 → 抬起（加上 CDP 往返开销，实测落在真人 80~140ms 区间）
+    afterMin: 130, afterMax: 420,              // 一次动作做完的收尾停顿
+    keyMin: 35, keyMax: 165,                   // 逐键间隔
+    wordPauseMin: 60, wordPauseMax: 240,       // 词与词之间
+    thinkChance: 0.1, thinkMin: 350, thinkMax: 1100,  // 打字中间"想一下"
+    overshootChance: 0.18,                     // 移动冲过头再折回的概率
+  }
+  const rnd = (min, max) => min + Math.random() * (max - min)
+  const rndInt = (min, max) => Math.round(rnd(min, max))
+
+  // 中文切成"输入法一次上屏的长度"：按标点断句，句内 4 字以上再随机断开。
+  // 为什么不是逐字：拼音输入法打中文时，页面收到的是**整词落字**，不是一串单字；
+  // 逐字上屏既不真、又把 input 事件翻倍（每字一次防抖请求）。
+  function textPieces(s, perChar) {
+    const chars = Array.from(String(s == null ? '' : s))
+    if (perChar) return chars
+    const out = []
+    let buf = ''
+    for (const ch of chars) {
+      buf += ch
+      if (/[，。！？；：、,.!?;:\n]/.test(ch)) { out.push(buf); buf = ''; continue }
+      if (buf.length >= 4 && Math.random() < 0.45) { out.push(buf); buf = '' }
+    }
+    if (buf) out.push(buf)
+    return out
+  }
+
+  // 指针"现在在哪"：真实事件的起点。绝不每次从 (0,0) 出发 —— 那是最像机器人一件事。
+  const pointerAt = new Map()
+  function startPoint(page, id) {
+    const key = String(id)
+    const known = pointerAt.get(key)
+    if (known) return known
+    const vp = page.viewportSize() || { width: 1280, height: 800 }
+    const p = { x: Math.round(rnd(vp.width * 0.3, vp.width * 0.7)), y: Math.round(rnd(vp.height * 0.3, vp.height * 0.7)) }
+    pointerAt.set(key, p)
+    return p
+  }
+
+  // 真实指针走一条路：分步、带噪声、先快后慢、偶尔冲过头再折回。
+  // 节奏由**每一个事件的间隔**决定（stepMin~stepMax），总时长是这些间隔之和 ——
+  // 而不是先定总时长再均分。原因：均分出来的间隔会随距离变化（近距离能到 100ms/步，
+  // 那完全不像人手），而"每一步多久"才是人手稳定的物理量。
+  // 定好总时长后再告诉幻影（duration 覆盖），两边仍然是同一个数。
+  async function humanMove(id, page, to, opts) {
+    const o = opts || {}
+    const key = String(id)
+    const from = startPoint(page, id)
+    const dist = Math.hypot(to.x - from.x, to.y - from.y)
+    if (dist < 1.5) { pointerAt.set(key, { x: to.x, y: to.y }); return }
+
+    // 过冲：人手不总落正中心，偶尔冲过 8~26px 再折回来（太精准反而假）
+    let mid = null
+    if (!o.noOvershoot && dist > 140 && Math.random() < HUMAN.overshootChance) {
+      const ux = (to.x - from.x) / dist
+      const uy = (to.y - from.y) / dist
+      const over = rnd(8, 26)
+      mid = { x: to.x + ux * over + rnd(-5, 5), y: to.y + uy * over + rnd(-5, 5) }
+    }
+    const legs = mid
+      ? [mid, { x: to.x, y: to.y }]
+      : [{ x: to.x, y: to.y }]
+
+    const speed = Math.max(0.25, HUMAN.speed)
+    for (const dest of legs) {
+      const cur = pointerAt.get(key) || from
+      const legDist = Math.hypot(dest.x - cur.x, dest.y - cur.y)
+      if (legDist < 0.5) continue
+      const steps = Math.max(3, Math.min(42, Math.round(legDist / 11) + rndInt(-2, 4)))
+      // 先排好每一步该等多久：既给人手节奏，也用来算这段路的总时长
+      const gaps = []
+      let total = 0
+      for (let i = 0; i < steps; i++) {
+        const g = Math.max(1, Math.round(rnd(HUMAN.stepMin, HUMAN.stepMax) / speed))
+        gaps.push(g)
+        total += g
+      }
+      // 幻影按同一时长演这段路（关闭时也发，页面自己会忽略绘制）
+      if (phantom && !o.silent) {
+        try { phantom.send(String(id), { type: 'move', x: dest.x, y: dest.y, duration: total }) } catch { /* 演不了就只干活 */ }
+      }
+      for (let i = 1; i <= steps; i++) {
+        const raw = i / steps
+        const t = 1 - (1 - raw) * (1 - raw)                 // 先快后慢：人到最后在微调
+        const last = i === steps
+        const nx = cur.x + (dest.x - cur.x) * t + (last ? 0 : rnd(-2.5, 2.5))
+        const ny = cur.y + (dest.y - cur.y) * t + (last ? 0 : rnd(-2.5, 2.5))
+        try { await page.mouse.move(nx, ny) } catch { break }
+        pointerAt.set(key, { x: nx, y: ny })
+        await sleep(gaps[i - 1])
+      }
+      pointerAt.set(key, { x: dest.x, y: dest.y })
+    }
+  }
+
+  // ── Agent幻影（第三期）：动手之前先把指针挪过去，让人看清"它点了哪儿" ──────────────
+  // 现在这段的真实作用变了：它不再"先演一段动画再让 Playwright 瞬移点击"，
+  // 而是**真实指针一格格走过去**（幻影的动画时长与这段路共用同一个数，见 legMs）。
+  // ⚠ 参数是**已解析好的 locator**：不能再自己 locator(sel).first()，那等于绕过候选检查又猜一次
+  // 落点：在元素盒子里取一个离线中心有点偏的点（人不会每次都点像素级正中心），并按视口夹住。
+  function pickInBox(page, box) {
+    const vp = page.viewportSize() || { width: 1280, height: 800 }
+    const x = box.x + box.width * rnd(0.42, 0.58)
+    const y = box.y + box.height * rnd(0.42, 0.58)
+    return {
+      x: Math.round(Math.max(1, Math.min(vp.width - 1, x))),
+      y: Math.round(Math.max(1, Math.min(vp.height - 1, y))),
+    }
+  }
+
+  function assertHittable(hit, at, verb) {
+    if (!hit) return                       // 测不出来（子框架 / 探针失败）不拦
+    if (hit.disabled) {
+      throw new Error('目标现在是禁用状态，' + (verb || '动作') + '没有执行。'
+        + '确认要按上去就传 force；否则先等它变为可用。')
+    }
+    if (!hit.ok) {
+      if (hit.outside) {
+        throw new Error('落点 (' + at.x + ',' + at.y + ') 已经在目标外面了（命中的是它的祖先「' + (hit.who || '') + '」），动作没有执行。'
+          + '通常意味着元素在走位途中挪了位置或被收起；等页面稳定后重试。')
+      }
+      throw new Error('落点 (' + at.x + ',' + at.y + ') 被「' + (hit.who || '别的元素') + '」挡住了，动作没有执行。'
+        + '先把它关掉/滚开，或确认要点隐藏元素再传 force。')
+    }
+  }
+
+  async function pointAt(id, page, loc, opts) {
+    const o = opts || {}
+    try { await loc.scrollIntoViewIfNeeded({ timeout: 4000 }) } catch { /* 滚不进视口就按现在的盒子算 */ }
+    const box = await loc.boundingBox({ timeout: 4000 }).catch(() => null)
+    if (!box || box.width <= 0 || box.height <= 0) {
+      throw new Error('取不到可点区域（元素没有尺寸或已消失），动作没有执行。')
+    }
+    const at = pickInBox(page, box)
+    if (!o.force) assertHittable(await hitAt(loc, at.x, at.y), at, o.verb)
+
+    await humanMove(id, page, at)
+
+    // 走位要花 0.2~0.8 秒，这期间页面可能动了（弹层、加载完成、列表位移），或者元素自己挪了位置。
+    // 按下之前必须再确认一次 —— 否则表现成"报告点击成功、实际点在空气上"。
+    if (!o.force) {
+      const again = await hitAt(loc, at.x, at.y)
+      if (again && !again.ok) {
+        // 自愈一次：元素挪了位置就重新取盒子再走一趟；还是不行才报错
+        const box2 = await loc.boundingBox({ timeout: 2000 }).catch(() => null)
+        if (box2 && box2.width > 0 && box2.height > 0) {
+          const at2 = pickInBox(page, box2)
+          const h2 = await hitAt(loc, at2.x, at2.y)
+          if (!h2 || h2.ok) {
+            await humanMove(id, page, at2)
+            return at2
+          }
+        }
+        throw new Error('指针到位后目标已经不是它了（落点上是「' + (again.who || '别的元素') + '」），动作没有执行。'
+          + '多半是走位这段时间页面在动；先用 browser_wait_for 等页面稳定再重试。')
+      }
+    }
+    return at
+  }
+
+  // 落点命中测试：坐标按下去命中的必须就是这个元素（或它的子孙）。
+  // 为什么不用 locator.click 自带的检查：我们自己派发鼠标事件，Playwright 那套检查不再参与，
+  // "被浮层盖住却显示点击成功"就是这里不查的直接后果（baseline §D.7）。
+  async function hitAt(loc, x, y) {
+    try {
+      return await loc.evaluate((el, pt) => {
+        // 元素在子框架里时，这边的 clientX/Y 与主框架坐标不同源，判断不了 ⇒ 不拦（放行由动作层负责）
+        if (window !== window.top) return null
+        let hit = document.elementFromPoint(pt.x, pt.y)
+        let guard = 0
+        while (hit && hit.shadowRoot && guard < 8) {
+          const inner = hit.shadowRoot.elementFromPoint(pt.x, pt.y)
+          if (!inner || inner === hit) break
+          hit = inner
+          guard += 1
+        }
+        if (!hit) return { ok: false, who: '页面空白处', disabled: false }
+        // ⚠ 只认"落在它身上或它的子孙上"。曾经为了容忍边距写成 `|| hit.contains(el)`，
+        //   结果元素挪走后落点命中 body 也被判成 ok，自愈永不触发、照样点空（2026-11-09 探针抓到）。
+        const ok = hit === el || el.contains(hit)
+        const outside = !ok && hit.contains(el)
+        const tag = hit.tagName ? hit.tagName.toLowerCase() : ''
+        const label = String(hit.getAttribute && (hit.getAttribute('aria-label') || '') || '').trim()
+        const text = String(hit.innerText || hit.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 24)
+        // 禁用态自己判：locator.click 的 actionability 检查在新派发方式下不参与，
+        // 少了这一条就会出现"按钮灰着却报告点击成功"
+        const disabled = el.disabled === true || el.getAttribute('aria-disabled') === 'true'
+        return {
+          ok: ok, disabled: disabled, outside: outside,
+          who: (tag || '未知元素') + (label || text ? '「' + (label || text) + '」' : ''),
+        }
+      }, { x: x, y: y })
+    } catch { return null }        // 测不出来就当没测（不因为探针本身失败而拦住动作）
+  }
 
   // ── 键盘记账（第三期 · 键盘映射面板的数据源）────────────────────────────────
   // Playwright **不提供**"每个键按下/抬起"的回调，所以键流只能由我们自己的动作层推出来：
@@ -1020,22 +1263,7 @@ function createDriver(opts) {
       for (const ch of s) recordKey(ch, 'press')
     } catch { /* 忽略 */ }
   }
-  // 把指针挪到某个元素上，**返回该点的视口坐标**（幻影关着 / 取不到位置 → null，调用方据此跳过演的部分）。
-  // 坐标要返回出去：按压指令得把坐标一起带上（见 press 的用法），否则页面只能靠自己记的指针位置画波纹
-  // ⚠ 参数是**已解析好的 locator**：不能再自己 locator(sel).first()，那等于绕过候选检查又猜一次
-  async function pointAt(id, loc) {
-    if (!phantom || !phantom.enabled()) return null
-    try {
-      const box = await loc.boundingBox({ timeout: 4000 })
-      if (!box) return null
-      const at = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
-      const ms = phantom.send(String(id), { type: 'move', x: at.x, y: at.y })
-      if (ms > 0) await sleep(ms)
-      return at
-    } catch { return null }        // 取不到位置就算了，绝不影响真实动作
-  }
-
-  // ── 动作实现（全部走 Playwright 的"类人"接口：自动等待、自动滚动、真实输入事件）──
+  // ── 动作实现（全部走 Playwright 的定位能力 + 我们自己的真实输入事件）──
   const impl = {
     async status() { return { connected: !!browser, port: Number(port) } },
 
@@ -1057,7 +1285,8 @@ function createDriver(opts) {
       return out
     },
 
-    async read(id, options) {
+    async read(id, options, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
       const o = options || {}
       const st = stateOf(id)
@@ -1119,67 +1348,86 @@ function createDriver(opts) {
       return out
     },
 
-    async screenshot(id, options) {
+    async screenshot(id, options, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
       const o = options || {}
       const buf = o.selector
-        ? await (await resolveSoft(page, o.selector)).loc.screenshot({ timeout: T_ACT })
-        : await page.screenshot({ timeout: T_ACT, fullPage: !!o.fullPage })
+        ? await (await resolveSoft(page, o.selector)).loc.screenshot({ timeout: T_ACT, signal })
+        : await page.screenshot({ timeout: T_ACT, fullPage: !!o.fullPage, signal })
       return { id: String(id), bytes: buf.length, base64: buf.toString('base64') }
     },
 
-    async navigate(id, url) {
+    async navigate(id, url, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
-      const resp = await page.goto(String(url), { timeout: T_NAV, waitUntil: 'domcontentloaded' })
-      await settle(page)
+      const resp = await page.goto(String(url), { timeout: T_NAV, waitUntil: 'domcontentloaded', signal })
+      await settle(page, signal)
       noteActionUrl(id, page)
       return { id: String(id), url: page.url(), title: await safeTitle(page), status: resp ? resp.status() : null }
     },
-    async back(id) {
+    async back(id, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
-      const r = await page.goBack({ timeout: T_NAV, waitUntil: 'domcontentloaded' })
-      await settle(page)
+      const r = await page.goBack({ timeout: T_NAV, waitUntil: 'domcontentloaded', signal })
+      await settle(page, signal)
       noteActionUrl(id, page)
       return { id: String(id), url: page.url(), moved: !!r }
     },
-    async forward(id) {
+    async forward(id, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
-      const r = await page.goForward({ timeout: T_NAV, waitUntil: 'domcontentloaded' })
-      await settle(page)
+      const r = await page.goForward({ timeout: T_NAV, waitUntil: 'domcontentloaded', signal })
+      await settle(page, signal)
       noteActionUrl(id, page)
       return { id: String(id), url: page.url(), moved: !!r }
     },
-    async reload(id) {
+    async reload(id, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
-      await page.reload({ timeout: T_NAV, waitUntil: 'domcontentloaded' })
-      await settle(page)
+      await page.reload({ timeout: T_NAV, waitUntil: 'domcontentloaded', signal })
+      await settle(page, signal)
       noteActionUrl(id, page)
       return { id: String(id), url: page.url() }
     },
 
-    async click(id, sel, options) {
+    async click(id, sel, options, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
       const o = options || {}
       const target = await resolveTarget(page, sel, o)             // 多个候选在这里就报错，绝不自选
       // 凭证指纹要在**动手之前**比：跨标签串身份往往就发生在点击那一刻
       const identity = await noteIdentity(page, id)
-      // 幻影：先把指针挪过去（没人看时是 null）
-      const at = await pointAt(id, target.loc)
-      // 按压**带上坐标**：点击波纹画在哪儿由驱动层实测的坐标说了算，不指望页面自己记的指针位置
-      if (at) phantom.send(String(id), { type: 'press', button: o.button || 'left', x: at.x, y: at.y })
-      if (at) await sleep(90)                                    // 按下→松开之间留一瞬，人手就是这样
+      // 真实指针走过去的落点（被盖住 / 没尺寸会在这里就报出来，不再"点了个寂寞还返回成功"）
+      const at = await pointAt(id, page, target.loc, { force: !!(o.force || target.forced), verb: '点击' })
+      if (!at) {
+        throw await translateActionError(page, target, new Error('取不到可点区域'), '点击')
+      }
+      // 到位后先停一眼：人在按下之前会确认落点
+      await sleep(Math.round(rnd(HUMAN.arriveMin, HUMAN.arriveMax) / Math.max(0.25, HUMAN.speed)))
+      throwIfAborted(signal)
+      if (phantom) phantom.send(String(id), { type: 'press', button: o.button || 'left', x: at.x, y: at.y })
+      const button = o.button || 'left'
+      const count = Math.max(1, Number(o.clickCount) || 1)
       try {
-        await target.loc.click({
-          timeout: o.timeout || T_ACT, button: o.button || 'left',
-          clickCount: o.clickCount || 1, force: !!(o.force || target.forced),
-        })
+        for (let n = 0; n < count; n++) {
+          if (n > 0) await sleep(Math.round(rnd(60, 120) / Math.max(0.25, HUMAN.speed)))
+          // ⚠ clickCount 必须随次数递增：浏览器靠它算 event.detail，detail 到 2 才派发 dblclick。
+          //   少了它，双击就只是"点了两次"，页面永远收不到 dblclick。
+          await page.mouse.down({ button: button, clickCount: n + 1 })
+          await sleep(Math.round(rnd(HUMAN.pressMin, HUMAN.pressMax) / Math.max(0.25, HUMAN.speed)))
+          await page.mouse.up({ button: button, clickCount: n + 1 })
+        }
       } catch (e) {
+        try { await page.mouse.up({ button: button }) } catch { /* 可能本来就没按下 */ }
         throw await translateActionError(page, target, e, '点击')
       } finally {
-        // 失败也要把按压状态收掉，否则页面上的指针会一直显示"按着"
-        if (at) phantom.send(String(id), { type: 'release' })
+        if (phantom) phantom.send(String(id), { type: 'release' })
       }
-      await settle(page)
+      // 点完不会立刻扑向下一个目标
+      await sleep(Math.round(rnd(HUMAN.afterMin, HUMAN.afterMax) / Math.max(0.25, HUMAN.speed)))
+      await settle(page, signal)
+      throwIfAborted(signal)
       noteActionUrl(id, page)
       const change = await observeChange(page, id)
       return {
@@ -1187,52 +1435,67 @@ function createDriver(opts) {
         matched: target.total, visibleCount: target.visible.length, forced: !!target.forced, identity, change,
       }
     },
-    async hover(id, sel, options) {
+    async hover(id, sel, options, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
-      const target = await resolveTarget(page, sel, options || {})
-      await pointAt(id, target.loc)
+      const o = options || {}
+      const target = await resolveTarget(page, sel, o)
+      // 悬停 = 指针真的走到它身上（mousemove / mouseover 由浏览器自己按轨迹派发）。
+      // 走不过去（取不到盒子 / 落点被盖）才回落到 Playwright 那一套，由它给出更具体的遮挡原因。
+      let at = null
       try {
-        await target.loc.hover({ timeout: T_ACT, force: !!(options && options.force) || !!target.forced })
-      } catch (e) { throw await translateActionError(page, target, e, '悬停') }
+        at = await pointAt(id, page, target.loc, { force: !!(o.force || target.forced), noOvershoot: true, verb: '悬停' })
+      } catch { at = null }
+      if (!at) {
+        try {
+          await target.loc.hover({ timeout: T_ACT, force: !!(o.force) || !!target.forced })
+        } catch (e) { throw await translateActionError(page, target, e, '悬停') }
+      } else {
+        await sleep(Math.round(rnd(HUMAN.arriveMin, HUMAN.arriveMax) / Math.max(0.25, HUMAN.speed)))
+      }
       return { id: String(id), hovered: labelOf(target), index: target.index, matched: target.total, visibleCount: target.visible.length }
     },
-    async drag(id, from, to, options) {
+    async drag(id, from, to, options, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
       const o = options || {}
       const a = await resolveTarget(page, from, o)
       const b = await resolveTarget(page, to, o)
-      if (phantom && phantom.enabled()) {
-        try {
-          const ab = await a.loc.boundingBox({ timeout: 4000 })
-          const bb = await b.loc.boundingBox({ timeout: 4000 })
-          if (ab && bb) {
-            const ms = phantom.send(String(id), {
-              type: 'drag',
-              from: { x: ab.x + ab.width / 2, y: ab.y + ab.height / 2 },
-              to: { x: bb.x + bb.width / 2, y: bb.y + bb.height / 2 },
-            })
-            if (ms > 0) await sleep(ms + 120)
-          }
-        } catch { /* 拿不到位置就只干活不演 */ }
-      }
-      // ⚠ dragAndDrop 只吃选择器，会绕过刚做完的候选检查 → 自己走"悬停 + 按下 + 移动 + 松开"
+      // ⚠ dragAndDrop 只吃选择器，会绕过刚做完的候选检查 → 自己走"走过去 + 按下 + 分步拖 + 松开"
       const identity = await noteIdentity(page, id)
+      const speed = Math.max(0.25, HUMAN.speed)
+      const bb2 = await b.loc.boundingBox({ timeout: T_ACT }).catch(() => null)
+      const dest = bb2
+        ? { x: bb2.x + bb2.width * rnd(0.42, 0.58), y: bb2.y + bb2.height * rnd(0.42, 0.58) }
+        : null
       try {
-        await a.loc.hover({ timeout: T_ACT })
+        const at = await pointAt(id, page, a.loc, { force: !!o.force || !!a.forced, verb: '拖拽' })
+        if (!at) throw new Error('取不到可点区域')
+        await sleep(Math.round(rnd(HUMAN.arriveMin, HUMAN.arriveMax) / speed))
+        // 幻影这边演一整条拖拽轨迹（它自己插值），真实指针则在下面一点点挪 —— 两条通道各司其职
+        if (phantom && dest) {
+          try { phantom.send(String(id), { type: 'drag', from: at, to: dest }) } catch { /* 演不了就只干活 */ }
+        }
         await page.mouse.down()
-        const bb2 = await b.loc.boundingBox({ timeout: T_ACT })
-        if (bb2) await page.mouse.move(bb2.x + bb2.width / 2, bb2.y + bb2.height / 2, { steps: 12 })
+        await sleep(Math.round(rnd(HUMAN.pressMin, HUMAN.pressMax) / speed))
+        if (dest) {
+          await humanMove(id, page, dest, { noOvershoot: true, silent: true })
+          await sleep(Math.round(rnd(80, 220) / speed))       // 松手前会稳一下
+        }
         await page.mouse.up()
       } catch (e) {
         try { await page.mouse.up() } catch { /* 可能本来就没按下 */ }
         throw await translateActionError(page, a, e, '拖拽')
       }
-      await settle(page)
+      await sleep(Math.round(rnd(HUMAN.afterMin, HUMAN.afterMax) / speed))
+      await settle(page, signal)
+      throwIfAborted(signal)
       noteActionUrl(id, page)
       const change = await observeChange(page, id)
       return { id: String(id), dragged: labelOf(a) + ' → ' + labelOf(b), identity: identity, change: change }
     },
-    async press(id, key, sel, options) {
+    async press(id, key, sel, options, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
       const combo = String(key)
       // 组合键按"按下顺序 + 逆序抬起"记账（Control+A → Ctrl↓ A↓ A↑ Ctrl↑），
@@ -1253,12 +1516,14 @@ function createDriver(opts) {
         throw target ? await translateActionError(page, target, e, '按键') : e
       }
       for (let i = parts.length - 1; i >= 0; i--) recordKey(parts[i], 'up')
-      await settle(page)
+      await settle(page, signal)
+      throwIfAborted(signal)
       noteActionUrl(id, page)
       const change = await observeChange(page, id)
       return { id: String(id), pressed: combo, target: target ? labelOf(target) : '', identity: identity, change: change }
     },
-    async type(id, text, options) {
+    async type(id, text, options, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
       const o = options || {}
       let target = null
@@ -1273,17 +1538,23 @@ function createDriver(opts) {
       const before = target ? await target.loc.evaluate(VALUE_PROBE).catch(() => null) : null
       const sensitive = before ? !!before.sensitive : false
       const identity = await noteIdentity(page, id)
+      const speed = Math.max(0.25, HUMAN.speed)
       if (target) {
-        // 先点一下聚焦（幻影还开着就让指针先走过去，人看得见"它点进了哪个输入框"）
-        const at = await pointAt(id, target.loc)
-        if (at) phantom.send(String(id), { type: 'press', x: at.x, y: at.y })
+        // 先点一下聚焦（指针真的走过去，人看得见"它点进了哪个输入框"）
+        const at = await pointAt(id, page, target.loc, { force: !!target.forced, verb: '写入前的聚焦点击' })
+        if (!at) throw await translateActionError(page, target, new Error('取不到可点区域'), '写入前的聚焦点击')
+        await sleep(Math.round(rnd(HUMAN.arriveMin, HUMAN.arriveMax) / speed))
+        if (phantom) phantom.send(String(id), { type: 'press', x: at.x, y: at.y })
         try {
-          await target.loc.click({ timeout: T_ACT, force: !!target.forced })
+          await page.mouse.down()
+          await sleep(Math.round(rnd(HUMAN.pressMin, HUMAN.pressMax) / speed))
+          await page.mouse.up()
         } catch (e) {
-          if (at) phantom.send(String(id), { type: 'release' })
           throw await translateActionError(page, target, e, '写入前的聚焦点击')
+        } finally {
+          if (phantom) phantom.send(String(id), { type: 'release' })
         }
-        if (at) phantom.send(String(id), { type: 'release' })
+        await sleep(Math.round(rnd(HUMAN.afterMin, HUMAN.afterMax) / speed))
       }
       const s = String(text == null ? '' : text)
       const ascii = /^[\x20-\x7E]*$/.test(s)
@@ -1300,23 +1571,51 @@ function createDriver(opts) {
       }
       // 记账要在**动作之前**：键流的意义是"人正看着它敲"，滞后了就成回放了
       recordText(s, ascii, sensitive)
-      // 键盘敲得出来的（ASCII）逐键派发：键帽真的依次按下、页面补全/按键响应也真的触发；
-      // 中文这类敲不出来的默认整段写入（设计定稿 §5.3）。perChar 才会逐字 insertText ——
-      // ⚠ 逐字只多触发 input，**没有输入法组合过程**（composition 事件），依赖拼音联想的组件照样不响应，
-      //   而且每字一次 input 会放大防抖请求，所以默认不开。
+      // 打字节奏（2026-11-09 改）：以前 ASCII 用固定 delay、中文整段一次上屏 ——
+      // 固定间隔本身就是机器指纹，整段上屏更是（人不可能一秒吐出八百字）。
+      // 现在 ASCII 逐键带随机间隔、词后多停、偶尔长停顿；中文按"输入法整词上屏"分批进，
+      // 这也符合真人用拼音输入法打中文时系统看到的样子（整词一次落字，不是逐字母）。
+      // ⚠ 分批 insertText 会放大 input 次数（防抖请求变多），这是拟人的代价。
       const perChar = !!o.perChar
-      const gap = Math.max(0, Number(o.interval || 60))
-      if (ascii) await page.keyboard.type(s, { delay: Number(o.interval || 0) })
-      else if (perChar) { for (const ch of s) { await page.keyboard.insertText(ch); if (gap > 0) await sleep(gap) } }
-      else await page.keyboard.insertText(s)
-      if (o.submit && ascii) { recordKey('Enter', 'down'); await page.keyboard.press('Enter'); recordKey('Enter', 'up') }
-      await settle(page)
+      const fixedGap = o.interval !== undefined ? Math.max(0, Number(o.interval) || 0) : null
+      let chunks = 0
+      if (ascii) {
+        for (const ch of s) {
+          // 逐键是最长的等待源（长文几十秒）：每敲一个之前先看有没有被终止
+          throwIfAborted(signal)
+          await page.keyboard.type(ch)
+          const gap = fixedGap !== null ? fixedGap : rndInt(HUMAN.keyMin, HUMAN.keyMax)
+          await sleep(Math.round(gap / speed))
+          if (/[\s,.;:!?]/.test(ch) && Math.random() < 0.5) {
+            await sleep(Math.round(rnd(HUMAN.wordPauseMin, HUMAN.wordPauseMax) / speed))
+          } else if (Math.random() < 0.02) {
+            await sleep(Math.round(rnd(HUMAN.thinkMin, HUMAN.thinkMax) / speed))
+          }
+        }
+      } else {
+        const pieces = textPieces(s, perChar)
+        chunks = pieces.length
+        for (const piece of pieces) {
+          throwIfAborted(signal)
+          await page.keyboard.insertText(piece)
+          await sleep(Math.round(rnd(HUMAN.wordPauseMin, HUMAN.wordPauseMax) / speed))
+          if (Math.random() < HUMAN.thinkChance) {
+            await sleep(Math.round(rnd(HUMAN.thinkMin, HUMAN.thinkMax) / speed))
+          }
+        }
+      }
+      if (o.submit && ascii) {
+        throwIfAborted(signal)
+        recordKey('Enter', 'down'); await page.keyboard.press('Enter'); recordKey('Enter', 'up')
+      }
+      await settle(page, signal)
       noteActionUrl(id, page)
       const after = target ? await target.loc.evaluate(VALUE_PROBE).catch(() => null) : null
       const change = await observeChange(page, id)
       return {
         id: String(id), typed: s.length, change: change,
-        mode: ascii ? 'per-key' : (perChar ? 'insert-per-char' : 'insert'),
+        mode: ascii ? 'per-key' : (perChar ? 'insert-per-char' : 'insert-chunks'),
+        chunks: chunks,
         sensitive: sensitive, overwrite: overwrite, cleared: cleared,
         target: labelOf(target), matched: target ? target.total : 0,
         identity: identity,
@@ -1325,7 +1624,8 @@ function createDriver(opts) {
         value: after && after.editable ? after.value : null,
       }
     },
-    async scroll(id, options) {
+    async scroll(id, options, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
       const o = options || {}
       const dx = Number(o.dx || 0), dy = Number(o.dy || 0)
@@ -1335,15 +1635,34 @@ function createDriver(opts) {
       if (sel) {
         loc = (await resolveSoft(page, sel)).loc
         const box = await loc.boundingBox({ timeout: T_ACT })
-        if (box) await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+        if (box) await humanMove(id, page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, { noOvershoot: true })
         before = Number(await loc.evaluate('(el) => el.scrollTop || 0')) || 0
       } else {
         const vp = page.viewportSize() || { width: 800, height: 600 }
-        await page.mouse.move(vp.width / 2, vp.height / 2)
+        // 滚轮落在指针当前位置：先把它挪到页面中间（人也是先看一眼再滚）
+        await humanMove(id, page, { x: Math.round(vp.width / 2 + rnd(-60, 60)), y: Math.round(vp.height / 2 + rnd(-60, 60)) }, { noOvershoot: true })
         before = Number(await page.evaluate('window.scrollY || 0')) || 0
       }
       // 用真实滚轮事件，不直接改 scrollTop：Agent 的动作必须和人手一致（幻影也要能演）
-      await page.mouse.wheel(dx, dy)
+      // ⚠ 一次 wheel 到底是最明显的机器特征：人是一段段滚、并且越滚越慢（惯性）。
+      //   这里按总量切成 3~8 段，段间带随机间隔与递减幅度。
+      const totalDy = Math.abs(dy)
+      const segs = dy === 0 ? 1 : Math.max(3, Math.min(8, Math.round(totalDy / 260) + rndInt(0, 2)))
+      let sentY = 0
+      let sentX = 0
+      const scale = Math.max(0.25, HUMAN.speed)
+      for (let i = 1; i <= segs; i++) {
+        throwIfAborted(signal)
+        const last = i === segs
+        const wantY = last ? dy : Math.round(dy * Math.min(1, (i / segs) * rnd(0.75, 1.05)))
+        const wantX = last ? dx : Math.round(dx * Math.min(1, (i / segs) * rnd(0.75, 1.05)))
+        const stepY = wantY - sentY
+        const stepX = wantX - sentX
+        sentY = wantY
+        sentX = wantX
+        if (stepX !== 0 || stepY !== 0) await page.mouse.wheel(stepX, stepY)
+        if (!last) await sleep(Math.round(rnd(35, 110) / scale))
+      }
       // ⚠ 滚轮是**异步**的（合成器拿到事件才滚）→ 不等它落下去，紧接着的读页面/截图会拿到滚动前
       //   那一帧，Agent 就会以为"没滚动"。这里等的是"位置真的变了"这个**条件**（rAF 轮询到条件成立
       //   或超时），滚不动（已经到底/这个元素不可滚）不算失败。
@@ -1361,11 +1680,12 @@ function createDriver(opts) {
           await page.waitForFunction((b) => (window.scrollY || 0) !== b, before, { timeout: 1500 })
         }
       } catch { /* 滚不动就算了 */ }
-      await settle(page)
+      await settle(page, signal)
       return { id: String(id), scrolled: { dx: dx, dy: dy } }
     },
 
-    async waitFor(id, options) {
+    async waitFor(id, options, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
       const o = options || {}
       const timeout = Number(o.timeout || T_ACT)
@@ -1375,8 +1695,9 @@ function createDriver(opts) {
         const match = o.match === 'contains' ? 'contains' : 'exact'
         const loc = locate(page, o.selector, match)
         try {
-          await loc.first().waitFor({ state: o.state || 'visible', timeout: timeout })
+          await untilAborted(signal, loc.first().waitFor({ state: o.state || 'visible', timeout: timeout, signal }))
         } catch (e) {
+          if (e && e.aborted) throw e      // 终止不是"等待超时"，别去编候选清单
           const total = await loc.count().catch(() => -1)
           const loose = match === 'exact'
             ? await locate(page, o.selector, 'contains').count().catch(() => -1)
@@ -1388,9 +1709,9 @@ function createDriver(opts) {
         }
         return { id: String(id), ok: true, waited: 'selector' }
       }
-      if (o.url) { await page.waitForURL(String(o.url), { timeout: timeout }); return { id: String(id), ok: true, waited: 'url' } }
-      if (o.loadState) { await page.waitForLoadState(o.loadState, { timeout: timeout }); return { id: String(id), ok: true, waited: 'load' } }
-      if (o.networkIdle) { await page.waitForLoadState('networkidle', { timeout: timeout }); return { id: String(id), ok: true, waited: 'networkidle' } }
+      if (o.url) { await untilAborted(signal, page.waitForURL(String(o.url), { timeout: timeout, signal })); return { id: String(id), ok: true, waited: 'url' } }
+      if (o.loadState) { await untilAborted(signal, page.waitForLoadState(o.loadState, { timeout: timeout, signal })); return { id: String(id), ok: true, waited: 'load' } }
+      if (o.networkIdle) { await untilAborted(signal, page.waitForLoadState('networkidle', { timeout: timeout, signal })); return { id: String(id), ok: true, waited: 'networkidle' } }
       throw new Error('等待条件没给（selector / url / loadState / networkIdle 四选一）')
     },
 
@@ -1398,7 +1719,8 @@ function createDriver(opts) {
     // 为什么必要：只有"读快照 + 自己比对"这一条路时，大表格里看漏一行就会得出"功能正常"的错误结论。
     // 四态必须分开：成立 / 不成立（给了实际值）/ 找不到（等满超时也没出现）/ 有歧义（命中多个）。
     // 只回布尔会把"页面错了"和"页面还没到"混成一件事。
-    async expect(id, options) {
+    async expect(id, options, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
       const o = options || {}
       const kind = String(o.assert || (o.selector ? 'text' : 'url'))
@@ -1407,6 +1729,7 @@ function createDriver(opts) {
       let r = null
       // 等的是"条件成立"这个**条件**（同 Playwright expect 的轮询语义），不是拿固定延时凑时序
       while (true) {
+        throwIfAborted(signal)
         r = await assertOnce(page, kind, o)
         if (r.state === 'pass' || r.state === 'ambiguous') break
         if (Date.now() - started >= timeout) break
@@ -1419,7 +1742,8 @@ function createDriver(opts) {
 
     // 布局度量：只报客观事实（内容比可见区宽/高、越出父容器、被省略号截断、行数），
     // 让"列宽够不够""按钮有没有换行"这类判断不必靠肉眼看截图
-    async measure(id, options) {
+    async measure(id, options, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
       const o = options || {}
       const scope = o.selector ? await resolveSoft(page, o.selector) : null
@@ -1432,11 +1756,13 @@ function createDriver(opts) {
     },
 
     // 兜底：跑一段 Playwright 代码。**能用固定动作干的场景一律不许走这里** —— 它演不出幻影（设计定稿 §4.3）
-    async code(id, source) {
+    async code(id, source, signal) {
+      throwIfAborted(signal)
       const page = await pageFor(id)
       const fn = new Function('page', 'return (async () => {' + String(source || '') + '\n})()')
-      const value = await fn(page)
-      await settle(page)
+      // 用户代码跑多久不可控：终止时先放手，代码自己在后台收尾
+      const value = await untilAborted(signal, fn(page))
+      await settle(page, signal)
       let out = null
       try { out = value === undefined ? null : JSON.parse(JSON.stringify(value)) } catch { out = String(value) }
       return { id: String(id), value: out }
@@ -1444,12 +1770,15 @@ function createDriver(opts) {
   }
 
   // 串行队列：同一页面的动作一个一个做（幻影要按顺序演；Agent 并发调用也不许互相插队）
-  function run(id, fn) {
+  // ⚠ 队列等的是"调用方看来这次结束了没有"：被终止的调用立刻放行（它在后台自己收尾），
+  //   否则用户按了终止，下一个动作还要排在它后面干等几十秒（2026-11-17）。
+  function run(id, fn, signal) {
     const key = String(id || '')
     const prev = queues.get(key) || Promise.resolve()
-    const next = prev.then(() => fn(), () => fn())
-    queues.set(key, next.catch(() => {}))
-    return next
+    const started = prev.then(() => { throwIfAborted(signal); return fn() }, () => { throwIfAborted(signal); return fn() })
+    const visible = signal ? untilAborted(signal, started) : started
+    queues.set(key, visible.catch(() => {}))
+    return visible
   }
 
   const SERIAL = ['navigate', 'back', 'forward', 'reload', 'click', 'hover', 'drag', 'press', 'type', 'scroll', 'waitFor', 'read', 'screenshot', 'expect', 'measure', 'code']
@@ -1466,7 +1795,13 @@ function createDriver(opts) {
     // 内部用：探针脚本直接验选择器解析 / 断言（不进壳桥白名单，模型看不到）
     _test: { pageFor, inspectSet, resolveTarget, resolveSoft, assertOnce, wildcardMatch, renderSnapshot, diffSnapshotLines, observeChange },
   }
-  for (const k of SERIAL) out[k] = (...args) => run(args[0], () => impl[k](...args))
+  // 中止信号约定放在最后一个参数（bridge 传进来；内部调用不传就是不可中止）
+  for (const k of SERIAL) {
+    out[k] = (...args) => {
+      const signal = isAbortSignal(args[args.length - 1]) ? args.pop() : undefined
+      return run(args[0], () => impl[k](...args, signal), signal)
+    }
+  }
   return out
 }
 

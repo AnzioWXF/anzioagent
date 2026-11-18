@@ -16,6 +16,7 @@
 // 合并进 monaco defineTheme（界面皮肤仍走 --dsw-* token）。
 
 import { createRequire } from 'node:module'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { spawn } from 'node:child_process'
 import { createReadStream, watch, readFileSync, readdirSync, statSync } from 'node:fs'
 import { createHash, createHmac } from 'node:crypto'
@@ -28,6 +29,17 @@ import { defineTool } from './tool-def.js'
 import { createSshManager, sshAvailable, sshLoadError } from './ssh.js'
 
 const ROUTE_PREFIX = '/dsh-ide'
+
+// 工具被终止时（用户按停止）要能立刻放手：exec.signal 由工具包装层带到 browserCall。
+// 为什么用隐式上下文而不是逐个调用点传参：浏览器工具有 19 处 browserCall，漏一处就是
+// "别的工具都停了、这一个还在等 50 秒"，而且漏了不报错，只能靠人记得（2026-11-17）。
+const toolAbortSignal = new AsyncLocalStorage()
+
+/** Run a tool body with its abort signal reachable from browserCall. */
+function withToolSignal(exec, run) {
+  const signal = exec === null || exec === undefined ? undefined : exec.signal
+  return signal === undefined || signal === null ? run() : toolAbortSignal.run(signal, run)
+}
 
 // monaco 静态资源根（相对本文件：../static/monaco；URL /dsh-ide/monaco/<p>
 // 与根下目录树一一对应，min/vs 即 monaco-editor@0.56.0 的 AMD 构建）
@@ -521,15 +533,50 @@ export default {
     const BROWSER_BRIDGE = process.env.ANZIO_BROWSER_BRIDGE || ''
     const BROWSER_TOKEN = process.env.ANZIO_BROWSER_TOKEN || ''
 
+    let browserCallSeq = 0
+    // 终止时告诉壳里"把这个动作停下"。为什么不能只让 fetch 放手：壳里那个 page.expect 还在等、
+    // page.type 还在逐键敲，同一页面的动作队列一直被它占着，接着发的动作还是排在后面。
+    async function cancelAtBridge(callId) {
+      try {
+        await fetch(BROWSER_BRIDGE + '/cancel', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-anzio-token': BROWSER_TOKEN },
+          body: JSON.stringify({ callId: callId }),
+          signal: AbortSignal.timeout(2000),
+        })
+      } catch { /* 壳桥没收到也不要紧：这边的等待已经放开了，最坏是壳里那个动作自己跑完 */ }
+    }
+
     async function browserCall(method, args) {
       if (!BROWSER_BRIDGE || !BROWSER_TOKEN) {
         throw new Error('内置浏览器只在「天工」桌面版里可用（当前进程没有壳桥）。请在应用里做这件事，或让用户自己操作。')
       }
-      const res = await fetch(BROWSER_BRIDGE + '/call', {
+      const signal = toolAbortSignal.getStore()
+      const callId = 'bc-' + Date.now().toString(36) + '-' + (++browserCallSeq)
+      const request = {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-anzio-token': BROWSER_TOKEN },
-        body: JSON.stringify({ method, args: args || {} }),
-      })
+        body: JSON.stringify({ method: method, args: args || {}, callId: callId }),
+      }
+      if (signal === undefined) {
+        const res = await fetch(BROWSER_BRIDGE + '/call', request)
+        return readBridgeBody(res, method)
+      }
+      if (signal.aborted) throw new Error('已被用户终止，这次操作没有执行')
+      const notifyCancel = () => { void cancelAtBridge(callId) }
+      signal.addEventListener('abort', notifyCancel, { once: true })
+      try {
+        const res = await fetch(BROWSER_BRIDGE + '/call', Object.assign({ signal: signal }, request))
+        return await readBridgeBody(res, method)
+      } catch (err) {
+        if (signal.aborted) throw new Error('已被用户终止，这次操作中途停下了')
+        throw err
+      } finally {
+        signal.removeEventListener('abort', notifyCancel)
+      }
+    }
+
+    async function readBridgeBody(res, method) {
       let body = null
       try { body = await res.json() } catch { body = null }
       if (body === null) throw new Error('壳桥没有返回可解析的结果（HTTP ' + res.status + '）')
@@ -620,7 +667,9 @@ export default {
               schema: { type: 'object', additionalProperties: false, properties: { detail: { type: 'string', required: true } } },
               render: (_args, value) => [{ type: 'text', text: String(value.detail || '') }],
             },
-            async execute(args, exec) { return { detail: String(await spec.run(args || {}, exec)) } },
+            async execute(args, exec) {
+              return { detail: String(await withToolSignal(exec, () => spec.run(args || {}, exec))) }
+            },
           }))
         }
 
@@ -731,13 +780,15 @@ export default {
           description: '往页面里输入文本：给了 selector 会先点它再输入。'
             + '**默认覆盖**（先清空原有内容，再写），要追加必须显式传 mode=append。'
             + '写完会回读该字段的实际值（密码/验证码只回字符数），所以不用再截图核对有没有写错。'
-            + '英文/数字/符号逐键输入（自动补全、按键响应会真实触发）；中文这类整段插入 —— 只发一次 input，'
-            + '依赖逐键或输入法联想的组件不会响应，需要时传 perChar=true（仍没有输入法组合过程）。',
+            + '输入节奏按真人的方式来：英文/数字/符号逐键敲、间隔随机、词后与句中会停顿；'
+            + '中文按输入法"整词上屏"分批落字（不是逐字母、也不是一次吐出整段）。'
+            + '代价是**比一次性粘贴慢**（长文几十秒），这是刻意的：整段瞬写是最容易被判定为机器操作的特征。'
+            + '依赖逐键或联想联动的组件仍不会收到 composition 事件，需要时传 perChar=true。',
           parameters: {
             id: ID, text: S('要输入的文本'), selector: OS('输入目标元素（省略 = 当前焦点）'),
             mode: OS('overwrite（默认，清空后写入）/ append（追加在原值后面）'),
             perChar: OB('true = 非 ASCII 也逐字插入（每字一次 input，会放大防抖请求，默认关）'),
-            interval: ON('逐键/逐字间隔毫秒（默认 0；perChar 时默认 60）'),
+            interval: ON('固定逐键间隔毫秒（省略 = 每次随机 35~165ms，词后与偶尔会停顿更久）'),
             submit: OB('true = 输完按回车'), match: MATCH, index: INDEX,
           },
           async run(args) {
@@ -746,7 +797,7 @@ export default {
               perChar: args.perChar, interval: args.interval, submit: args.submit, match: args.match, index: args.index,
             })
             const bits = ['已输入 ' + r.typed + ' 个字符']
-            bits.push(r.mode === 'per-key' ? '逐键' : (r.mode === 'insert-per-char' ? '逐字插入' : '整段插入'))
+            bits.push(r.mode === 'per-key' ? '逐键' : (r.mode === 'insert-per-char' ? '逐字插入' : ('分批上屏 ' + (r.chunks || 0) + ' 段')))
             if (r.overwrite === false) bits.push('追加（没清空原内容）')
             if (r.target) bits.push('目标 ' + r.target)
             let tail = ''
@@ -754,9 +805,9 @@ export default {
             else if (r.sensitive) tail = '；写入后该字段有 ' + r.valueLength + ' 个字符（密码/验证码，内容不回显）'
             else if (r.valueLength === 0) tail = '；⚠ 写入后该字段仍为空 —— 页面可能拒绝了这次输入'
             else tail = '；写入后的值：' + JSON.stringify(r.value)
-            const note = r.mode === 'insert'
-              ? '。注：整段插入只发一次 input、且没有输入法组合过程，依赖逐键/拼音联想的联动不会触发（要逐字传 perChar=true）'
-              : (r.mode === 'insert-per-char' ? '。注：逐字插入每字一次 input，但同样没有输入法组合过程' : '')
+            const note = r.mode === 'insert-per-char'
+              ? '。注：逐字插入每字一次 input，但同样没有输入法组合过程'
+              : ''
             return bits.join('，') + tail + note + idWarn(r) + fmtChange(r.change)
           },
         })
@@ -960,24 +1011,26 @@ export default {
               : [{ type: 'text', text: String(value.note || '') }, { type: 'image', attachment: value.image }]),
           },
           async execute(args, exec) {
-            const shot = await browserCall('page.screenshot', { id: args.id, selector: args.selector, fullPage: !!args.fullPage })
-            const capable = await imageCapable(exec)
-            if (!capable.ok) {
-              return { note: '截图拍到了（' + shot.bytes + ' 字节），但' + capable.why + '，没法把图交给模型。改用 browser_read_page 看页面结构。' }
-            }
-            const attachments = ctx.get('attachments')
-            if (attachments === undefined) {
-              return { note: '截图拍到了（' + shot.bytes + ' 字节），但这个部署里没有附件服务，没法把图交给模型。改用 browser_read_page。' }
-            }
-            const ref = await attachments.saveImage({ data: Buffer.from(shot.base64, 'base64'), mediaType: 'image/png', name: 'browser-screenshot.png' })
-            return {
-              note: '截图如下（' + ref.width + '×' + ref.height + '，' + Math.round(ref.bytes / 1024) + 'KB）。',
-              image: {
-                attachmentId: String(ref.attachmentId), mediaType: ref.mediaType, bytes: ref.bytes,
-                width: ref.width, height: ref.height,
-                ...(ref.name === undefined ? {} : { name: ref.name }),
-              },
-            }
+            return await withToolSignal(exec, async () => {
+              const shot = await browserCall('page.screenshot', { id: args.id, selector: args.selector, fullPage: !!args.fullPage })
+              const capable = await imageCapable(exec)
+              if (!capable.ok) {
+                return { note: '截图拍到了（' + shot.bytes + ' 字节），但' + capable.why + '，没法把图交给模型。改用 browser_read_page 看页面结构。' }
+              }
+              const attachments = ctx.get('attachments')
+              if (attachments === undefined) {
+                return { note: '截图拍到了（' + shot.bytes + ' 字节），但这个部署里没有附件服务，没法把图交给模型。改用 browser_read_page。' }
+              }
+              const ref = await attachments.saveImage({ data: Buffer.from(shot.base64, 'base64'), mediaType: 'image/png', name: 'browser-screenshot.png' })
+              return {
+                note: '截图如下（' + ref.width + '×' + ref.height + '，' + Math.round(ref.bytes / 1024) + 'KB）。',
+                image: {
+                  attachmentId: String(ref.attachmentId), mediaType: ref.mediaType, bytes: ref.bytes,
+                  width: ref.width, height: ref.height,
+                  ...(ref.name === undefined ? {} : { name: ref.name }),
+                },
+              }
+            })
           },
         }))
         for (const def of list) {

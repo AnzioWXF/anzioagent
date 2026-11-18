@@ -191,6 +191,72 @@ function titleOf() {
   return v ? APP_TITLE + ' v' + v : APP_TITLE
 }
 
+// ── 登录 cookie 的现场取证与自动重签（2026-11-17）────────────────────────────
+// 背景：DSH 的 /api 走一道按 Host 绑定的签名 cookie。它失效时页面不会退出去（事件
+// 长连接还开着），只有**新**请求吃到 401 —— 用户看到的就是"点终止没反应，只弹一条报错"。
+// 已确认不是过期（cookie 30 天、每次启动就用带 token 的地址重签）、也不是密钥漂移
+// （密钥在凭据里两个月没变），那到底哪一步没带上 cookie 只能靠现场留痕。
+// 这里只做两件事：401 时把现场写进 shell.log；顺手用带 token 的地址重签一次，
+// 让下一次请求就恢复 —— 不猜原因，也不为它改页面。
+let authRefreshAt = 0
+let authKeepAlive = null
+
+async function refreshAuthCookie(reason) {
+  const url = backend && backend.readyUrl
+  const win = mainWindow
+  if (!url) { noteLog('warn', 'auth-refresh', '拿不到带 token 的后端地址，无法重签', { reason: reason }); return false }
+  if (!win || win.isDestroyed()) return false
+  const ses = win.webContents.session
+  try {
+    // 走 Electron 自己的网络栈：303 的 Set-Cookie 会落进同一个 cookie 存储
+    await ses.fetch(url, { method: 'GET', redirect: 'manual', credentials: 'include' })
+    const mine = (await ses.cookies.get({})).filter((c) => String(c.name).startsWith('dsh-auth-'))
+    noteLog('info', 'auth-refresh', '已用启动地址重签登录 cookie', {
+      reason: reason,
+      cookieCount: mine.length,
+      cookieNames: mine.map((c) => c.name).join(','),
+      expires: mine.map((c) => new Date(Number(c.expirationDate) * 1000).toISOString()).join(','),
+    })
+    return true
+  } catch (e) {
+    noteLog('warn', 'auth-refresh', '重签失败', { reason: reason, error: String((e && e.message) || e) })
+    return false
+  }
+}
+
+// 401 现场：这一刻 cookie 还在不在、叫什么名字、什么时候过期 —— 下次复现就能定死
+function watchApiAuth(win) {
+  const ses = win.webContents.session
+  const filter = DSH_URL + '/api/*'
+  try {
+    ses.webRequest.onCompleted({ urls: [filter] }, (details) => {
+      if (details.statusCode !== 401) return
+      void (async () => {
+        const mine = (await ses.cookies.get({})).filter((c) => String(c.name).startsWith('dsh-auth-'))
+        noteLog('warn', 'api-401', '接口被登录鉴权挡住了', {
+          url: details.url,
+          method: details.method,
+          cookieCount: mine.length,
+          cookieNames: mine.map((c) => c.name).join(','),
+          expires: mine.map((c) => new Date(Number(c.expirationDate) * 1000).toISOString()).join(','),
+          httpOnly: mine.map((c) => c.httpOnly).join(','),
+          sameSite: mine.map((c) => c.sameSite).join(','),
+          backendUrl: backend && backend.readyUrl ? '有' : '无',
+          // owned=false 是决定性的：说明 3081 上跑的不是本应用起的后端，
+          // 它用的可能是另一份凭据（另一把签名密钥），本机 cookie 对它一律无效。
+          owned: backend && typeof backend.isOwned === 'function' ? backend.isOwned() : 'unknown',
+        })
+        if (Date.now() - authRefreshAt < 3000) return
+        authRefreshAt = Date.now()
+        await refreshAuthCookie('api-401')
+      })()
+    })
+    noteLog('info', 'api-auth-watch', '已挂上 /api 鉴权监听', { filter: filter })
+  } catch (e) {
+    noteLog('warn', 'api-auth-watch', '挂不上 /api 鉴权监听', { error: String((e && e.message) || e) })
+  }
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1500,
@@ -234,6 +300,8 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     failCount = 0
   })
+  // /api 的 401 现场 + 自动重签（见上面 refreshAuthCookie/watchApiAuth 的说明）
+  watchApiAuth(mainWindow)
 
   // ── 页面里 window.open / target=_blank 一律不开原生窗口（2026-10-21 用户报障）──────────
   // 报障原样：Agent 对话里点网址，Electron 默认给开一个没用的小窗口。
@@ -318,6 +386,15 @@ async function boot() {
   const target = await resolveAppUrl()
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.loadURL(target)
+  }
+  // 万一走的是不带 token 的地址（复用了外部后端、或 readyUrl 没赶上），立刻补一次重签 ——
+  // 否则 cookie 一旦失效，页面会一路 401 到下次带 token 启动为止（2026-11-17 查到的洞）。
+  if (!/[?&]token=/.test(String(target))) void refreshAuthCookie('boot')
+  // 运行期保活：cookie 有 30 天，但天工可能一直开着不关；每 30 分钟用带 token 的地址
+  // 重签一次，成本就是一次本地 GET，也不动页面（只走网络栈改 cookie）。
+  if (authKeepAlive === null) {
+    authKeepAlive = setInterval(() => { void refreshAuthCookie('keepalive') }, 30 * 60 * 1000)
+    if (typeof authKeepAlive.unref === 'function') authKeepAlive.unref()
   }
 }
 

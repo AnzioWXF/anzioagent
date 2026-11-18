@@ -22,6 +22,9 @@ function startBridge(deps) {
   const log = deps.log || function () {}
   const token = crypto.randomBytes(24).toString('hex')
   let seq = 0
+  // 正在跑的调用：callId -> AbortController。终止时按 id（或全量）掐断，见下面的 /cancel。
+  const inFlight = new Map()
+  let callSeq = 0
 
   const send = (msg) => {
     try { if (!win.isDestroyed()) win.webContents.send('anzio-browser:event', msg) } catch { /* 窗口关着 */ }
@@ -50,28 +53,28 @@ function startBridge(deps) {
     // 界面里换到这个标签（Agent 想让人看见它在操作哪个页面时用）
     'page.activate': async (a) => { send({ type: 'agent-open', id: String((a && a.id) || ''), url: null }); return { id: String((a && a.id) || '') } },
 
-    'page.navigate': async (a) => driver.navigate(String(a.id), String(a.url)),
-    'page.back': async (a) => driver.back(String(a.id)),
-    'page.forward': async (a) => driver.forward(String(a.id)),
-    'page.reload': async (a) => driver.reload(String(a.id)),
+    'page.navigate': async (a, signal) => driver.navigate(String(a.id), String(a.url), signal),
+    'page.back': async (a, signal) => driver.back(String(a.id), signal),
+    'page.forward': async (a, signal) => driver.forward(String(a.id), signal),
+    'page.reload': async (a, signal) => driver.reload(String(a.id), signal),
 
     // ── 交互 ──────────────────────────────────────────────────────────────
-    'page.click': async (a) => driver.click(String(a.id), String(a.selector), a || {}),
-    'page.dblclick': async (a) => driver.click(String(a.id), String(a.selector), Object.assign({}, a, { clickCount: 2 })),
-    'page.rightclick': async (a) => driver.click(String(a.id), String(a.selector), Object.assign({}, a, { button: 'right' })),
-    'page.hover': async (a) => driver.hover(String(a.id), String(a.selector), a || {}),
-    'page.drag': async (a) => driver.drag(String(a.id), String(a.from), String(a.to), a || {}),
-    'page.scroll': async (a) => driver.scroll(String(a.id), a || {}),
-    'page.press': async (a) => driver.press(String(a.id), String(a.key), a && a.selector ? String(a.selector) : null, a || {}),
-    'page.type': async (a) => driver.type(String(a.id), a && a.text != null ? a.text : '', a || {}),
+    'page.click': async (a, signal) => driver.click(String(a.id), String(a.selector), a || {}, signal),
+    'page.dblclick': async (a, signal) => driver.click(String(a.id), String(a.selector), Object.assign({}, a, { clickCount: 2 }), signal),
+    'page.rightclick': async (a, signal) => driver.click(String(a.id), String(a.selector), Object.assign({}, a, { button: 'right' }), signal),
+    'page.hover': async (a, signal) => driver.hover(String(a.id), String(a.selector), a || {}, signal),
+    'page.drag': async (a, signal) => driver.drag(String(a.id), String(a.from), String(a.to), a || {}, signal),
+    'page.scroll': async (a, signal) => driver.scroll(String(a.id), a || {}, signal),
+    'page.press': async (a, signal) => driver.press(String(a.id), String(a.key), a && a.selector ? String(a.selector) : null, a || {}, signal),
+    'page.type': async (a, signal) => driver.type(String(a.id), a && a.text != null ? a.text : '', a || {}, signal),
 
     // ── 读取 / 等待 / 判定 / 兜底 ─────────────────────────────────────────
-    'page.read': async (a) => driver.read(String(a.id), a || {}),
-    'page.screenshot': async (a) => driver.screenshot(String(a.id), a || {}),
-    'page.wait': async (a) => driver.waitFor(String(a.id), a || {}),
-    'page.expect': async (a) => driver.expect(String(a.id), a || {}),
-    'page.measure': async (a) => driver.measure(String(a.id), a || {}),
-    'page.code': async (a) => driver.code(String(a.id), String(a && a.code ? a.code : '')),
+    'page.read': async (a, signal) => driver.read(String(a.id), a || {}, signal),
+    'page.screenshot': async (a, signal) => driver.screenshot(String(a.id), a || {}, signal),
+    'page.wait': async (a, signal) => driver.waitFor(String(a.id), a || {}, signal),
+    'page.expect': async (a, signal) => driver.expect(String(a.id), a || {}, signal),
+    'page.measure': async (a, signal) => driver.measure(String(a.id), a || {}, signal),
+    'page.code': async (a, signal) => driver.code(String(a.id), String(a && a.code ? a.code : ''), signal),
   }
 
   // 日志只记"指挥了什么"，不落原文：填写的文字/代码只留长度（2026-10-19 拍板），
@@ -105,7 +108,9 @@ function startBridge(deps) {
       return
     }
     if (req.headers['x-anzio-token'] !== token) { fail(401, 'bad token'); return }
-    if (req.method !== 'POST' || !String(req.url).startsWith('/call')) { fail(404, 'not found'); return }
+    const isCall = req.method === 'POST' && String(req.url).startsWith('/call')
+    const isCancel = req.method === 'POST' && String(req.url).startsWith('/cancel')
+    if (!isCall && !isCancel) { fail(404, 'not found'); return }
     let body = ''
     let size = 0
     req.on('data', (chunk) => {
@@ -116,6 +121,24 @@ function startBridge(deps) {
     req.on('end', async () => {
       let payload = null
       try { payload = JSON.parse(body || '{}') } catch { fail(400, 'bad json'); return }
+
+      // ── 终止（2026-11-17）────────────────────────────────────────────────
+      // 用户按终止时，后端把在跑的调用逐个掐掉。为什么必须掐：一次 page.expect 能等满 45s、
+      // page.type 逐键能敲 70s，而同一页面的动作是串行队列 —— 不掐它，后面所有动作都排着队，
+      // 表现就是"点了终止还要等半天"。
+      if (isCancel) {
+        const callId = payload.callId === undefined || payload.callId === null ? null : String(payload.callId)
+        const cancelled = []
+        for (const [id, controller] of inFlight) {
+          if (callId !== null && id !== callId) continue
+          cancelled.push(id)
+          try { controller.abort() } catch { /* 忽略 */ }
+        }
+        log('bridge-cancel', { callId: callId, cancelled: cancelled.length })
+        try { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: true, cancelled: cancelled.length })) } catch { /* 忽略 */ }
+        return
+      }
+
       const method = String((payload && payload.method) || '')
       const args = (payload && payload.args) || {}
       // 页面 id 归一只在这一处做（补 `browser://` 前缀，见 browser.js 的 canonicalId）：页面 id 长得
@@ -125,17 +148,26 @@ function startBridge(deps) {
       if (args.id !== undefined) args.id = host.canonicalId(args.id)
       const fn = handlers[method]
       if (!fn) { fail(404, 'unknown method: ' + method); return }
+      const callId = payload.callId === undefined || payload.callId === null ? ('anon-' + (++callSeq)) : String(payload.callId)
+      const controller = new AbortController()
+      inFlight.set(callId, controller)
       const started = Date.now()
       try {
-        const result = await fn(args)
+        const result = await fn(args, controller.signal)
         log('bridge-call', { method: method, ms: Date.now() - started, args: summarizeArgs(args), result: summarizeResult(method, result) })
         res.writeHead(200, { 'content-type': 'application/json' })
         res.end(JSON.stringify({ ok: true, result: result }))
       } catch (e) {
         const message = String((e && e.message) || e)
-        log('bridge-call-failed', { method: method, ms: Date.now() - started, args: summarizeArgs(args), error: message })
-        res.writeHead(200, { 'content-type': 'application/json' })
-        res.end(JSON.stringify({ ok: false, error: message }))
+        // 被终止不是故障：单独一条日志，别混进"调用失败"里污染排查
+        log(controller.signal.aborted ? 'bridge-call-cancelled' : 'bridge-call-failed',
+          { method: method, ms: Date.now() - started, args: summarizeArgs(args), error: message })
+        try {
+          res.writeHead(200, { 'content-type': 'application/json' })
+          res.end(JSON.stringify({ ok: false, error: message }))
+        } catch { /* 调用方已经断开（fetch 被中止） */ }
+      } finally {
+        inFlight.delete(callId)
       }
     })
   })
