@@ -12,6 +12,245 @@ index b841d617f0..0a2ee429c7 100644
      "@deepseek-ai/dsh-tool-goal": "workspace:*",
      "@deepseek-ai/dsh-tool-jobs": "workspace:*",
      "@deepseek-ai/dsh-tool-pwsh": "workspace:*",
+diff --git a/apps/desktop/src/main.ts b/apps/desktop/src/main.ts
+index 1202670a3e..bb316e9ba2 100644
+--- a/apps/desktop/src/main.ts
++++ b/apps/desktop/src/main.ts
+@@ -26,6 +26,8 @@ import { resolveDesktopPaths } from './paths.ts'
+ import { DesktopProjectManager } from './project-manager.ts'
+ import { DesktopHostFatalError, DesktopHostProcess, DesktopHostUncleanExitError } from './host-process.ts'
+ import { DesktopPlatformView, PLATFORM_IPC, platformBounds } from './platform-view.ts'
++// 天工接入点①（补丁点清单第 1 条）：壳桥。官方壳起后端不会塞 ANZIO_BROWSER_* ⇒ 插件没有壳桥。
++import { installTiangongShell } from './tiangong-shell.ts'
+ import { installDesktopDirectoryPicker } from './directory-picker.ts'
+ import { installMicrophonePermissions } from './microphone-permissions.ts'
+ import { DesktopBackendController } from './backend-controller.ts'
+@@ -213,8 +215,8 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
+     show,
+     ...(process.platform === 'win32' && primary ? {
+       titleBarStyle: 'hidden' as const,
+-      titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT, color: chromeFallbackFill(),
+-        symbolColor: nativeTheme.shouldUseDarkColors ? '#f9fafb' : '#0f1115' },
++      // 天工接入点②：底色/符号色固定用天工那组（原为 chromeFallbackFill() 随主题换算，会与深色界面割裂）。
++      titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT, color: '#0D0D0F', symbolColor: '#D6D6D6' },
+     } : {}),
+     // hiddenInset places traffic lights inside the sidebar; sidebar vibrancy
+     // needs a transparent window background to show through the page.
+@@ -237,6 +239,9 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
+       devTools: true,
+     },
+   })
++  // 天工接入点③补：Windows 上 setApplicationMenu(null) 不会移除已显示的原生菜单栏，
++  // 窗口自身还要 removeMenu() 才真正消失（2026-11-18 实测：只把应用菜单设为 null，菜单栏仍在）。
++  if (process.platform === 'win32') window.removeMenu()
+   window.webContents.setWindowOpenHandler(({ url }) => {
+     if (['http:', 'https:'].includes(new URL(url).protocol)) void shell.openExternal(url)
+     return { action: 'deny' }
+@@ -978,7 +983,9 @@ async function main(): Promise<void> {
+     { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
+   ]
+   const refreshApplicationMenu = (): void => {
+-    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32' ? devToolsItems : [{
++    // 天工接入点③：Windows 不留应用菜单栏（core.md：顶部菜单栏明确不带）。
++    // 代价是 devToolsItems 里那条 F12 加速键一起失效；开发期 DevTools 由 DSH_DESKTOP_OPEN_DEVTOOLS 自动打开。
++    Menu.setApplicationMenu(process.platform === 'win32' ? null : Menu.buildFromTemplate([{
+       label: darwin ? app.name : currentDesktopLocale().messages.application,
+       submenu: [...applicationItems(), ...devToolsItems],
+     }, ...platformMenus()]))
+@@ -1053,7 +1060,11 @@ async function main(): Promise<void> {
+       // Empty colors precede client stylesheet installation; only CSS color values cross IPC.
+       const validColor = (value: unknown): value is string => typeof value === 'string'
+         && /^(?:#[\da-f]{3,8}|rgba?\([\d.,%\s]+\))$/iu.test(value)
+-      if (validColor(color) && validColor(symbolColor)) mainWindow.setTitleBarOverlay({ color, symbolColor })
++      // 天工接入点⑤：不接受页面算出来的颜色。官方用 --dsw-specific-sidebar-fill 换算标题栏底色，
++      // 那个值不等于天工标题栏的 #0D0D0F，会让系统按钮区出现一条异色带（2026-11-18 实测）。
++      if (validColor(color) && validColor(symbolColor)) {
++        mainWindow.setTitleBarOverlay({ color: '#0D0D0F', symbolColor: '#D6D6D6' })
++      }
+     })
+   }
+ 
+@@ -1285,6 +1296,11 @@ async function main(): Promise<void> {
+   })
+ 
+   mainWindow = createMainWindow()
++  // 天工接入点①的调用：必须在起后端（reconcileBackend）之前起好，否则第一个会话拿不到壳桥地址。
++  await installTiangongShell({
++    window: mainWindow,
++    log: (message) => { console.info(message) },
++  })
+   const manifest: unknown = JSON.parse(await readFile(join(app.getAppPath(), 'package.json'), 'utf8'))
+   if (typeof manifest !== 'object' || manifest === null) throw new Error('desktop policy: invalid application manifest')
+   const developmentPolicy = app.isPackaged ? undefined : process.env.DSH_DESKTOP_MANDATORY_UPDATE_CONFIG
+diff --git a/apps/desktop/src/preload-windows.ts b/apps/desktop/src/preload-windows.ts
+index 5b9ed75661..ea655443e6 100644
+--- a/apps/desktop/src/preload-windows.ts
++++ b/apps/desktop/src/preload-windows.ts
+@@ -2,7 +2,7 @@ import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
+ /** Synchronizes Windows context menus and caption colors with the application document. */
+ import { ipcRenderer } from 'electron'
+ import { DESKTOP_IPC } from './ipc.ts'
+-import { installWindowsMenu } from './preload-menu.ts'
++// 天工接入点④：官方在页面里自绘的 Windows 顶部菜单条不再安装（core.md：顶部菜单栏明确不带）。
+ 
+ /** Install the Windows-only titlebar marker and observe application language and palette changes. */
+ export function syncWindowsAppearance(): void {
+@@ -17,7 +17,8 @@ export function syncWindowsAppearance(): void {
+   const install = (): void => {
+     mark()
+     const root = document.documentElement
+-    const menu = installWindowsMenu()
++    // 空壳：保留 update/dispose 两个调用点，省得后面还要改三处。
++    const menu = { update: (): void => {}, dispose: (): void => {} }
+     const probe = document.createElement('span')
+     probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;background-color:var(--dsw-specific-sidebar-fill);color:var(--dsw-alias-label-primary)'
+     document.body.append(probe)
+diff --git a/apps/desktop/src/tiangong-shell.ts b/apps/desktop/src/tiangong-shell.ts
+new file mode 100644
+index 0000000000..ea872ec2e7
+--- /dev/null
++++ b/apps/desktop/src/tiangong-shell.ts
+@@ -0,0 +1,129 @@
++/**
++ * 天工壳桥接入层（自研，独立目录；官方源码只在本文件被 import 那一行与其调用点处接入）。
++ *
++ * 为什么需要它：天工插件内置浏览器那套（browser_* 工具、幻影、17 个工具）跑在后端子进程里，
++ * 它必须通过「壳桥」指挥 Electron 主进程里的 WebContentsView。壳桥的地址与口令历来是
++ * **壳起后端时用环境变量塞下去**的（ANZIO_BROWSER_BRIDGE / ANZIO_BROWSER_TOKEN）。
++ * 官方桌面壳起后端的代码路径不同，没人塞这两项 ⇒ 插件只能报「当前进程没有壳桥」。
++ * 这里按天工旧壳的顺序把三件挂好，再把地址与口令写回 process.env —— 官方起后端时
++ * 会完整继承 process.env（apps/desktop/src/node-environment.ts），因此不需要第二次接入。
++ */
++
++import { createRequire } from 'node:module'
++import { join } from 'node:path'
++import type { BrowserWindow } from 'electron'
++
++const requireShell = createRequire(import.meta.url)
++
++/** 天工壳半源码目录；换机或改布局时用环境变量覆盖，默认取本机开发位置。 */
++const SHELL_DIRECTORY = process.env.TIANGONG_SHELL_DIR ?? 'D:\\99DSH\\deepseek-harness-mine\\shell'
++
++/** 调试端口：优先用命令行已给的（开发模式官方会带 9222），否则退回天工的 9333。 */
++function browserDebugPort(): number {
++  const argument = process.argv.find(item => item.startsWith('--remote-debugging-port'))
++  const configured = argument === undefined
++    ? Number(process.env.ANZIO_BROWSER_DEBUG_PORT ?? '9333')
++    : Number(argument.split('=')[1])
++  return Number.isSafeInteger(configured) && configured > 0 && configured < 65_536 ? configured : 9333
++}
++
++export interface TiangongShellHandle {
++  readonly bridgeUrl: string
++  close(): void
++}
++
++interface TiangongBrowserHost {
++  phantom?: () => { on?: boolean }
++  sendToView?: (id: string, command: unknown) => number
++  sendAction?: (record: unknown) => void
++  reapplyIdentity?: () => void
++  [key: string]: unknown
++}
++
++interface TiangongDriver {
++  isConnected?: () => boolean
++  patchIdentityById?: (id: string) => void
++  close?: () => void | Promise<void>
++  [key: string]: unknown
++}
++
++interface TiangongBridge {
++  url: string
++  token: string
++  close?: () => void
++}
++
++/**
++ * 把内置浏览器宿主、Playwright 驱动层与壳桥挂到当前桌面壳上。
++ * 失败不抛给调用方：壳桥起不来时天工其余功能照常，只是 Agent 不能指挥浏览器。
++ */
++export async function installTiangongShell(options: {
++  window: BrowserWindow
++  log: (message: string) => void
++}): Promise<TiangongShellHandle | undefined> {
++  const log = options.log
++  let driver: TiangongDriver | undefined
++  try {
++    const browser = requireShell(join(SHELL_DIRECTORY, 'browser.js')) as {
++      installBrowserHost: (win: BrowserWindow, note: (message: string, meta?: unknown) => void, extra: Record<string, unknown>) => TiangongBrowserHost
++      CHROME_UA: string
++      CHROME_UA_METADATA: string
++    }
++    const driverModule = requireShell(join(SHELL_DIRECTORY, 'driver.js')) as {
++      createDriver: (options: Record<string, unknown>) => TiangongDriver
++    }
++    const bridgeModule = requireShell(join(SHELL_DIRECTORY, 'bridge.js')) as {
++      startBridge: (options: Record<string, unknown>) => Promise<TiangongBridge>
++    }
++
++    const host = browser.installBrowserHost(options.window, (message, meta) => {
++      log(`[tiangong][browser-host] ${message}${meta === undefined ? '' : ` ${JSON.stringify(meta)}`}`)
++    }, {
++      driverConnected: () => driver?.isConnected?.() === true,
++      requestIdentityPatch: (id: string) => {
++        try { driver?.patchIdentityById?.(id) } catch { /* 驱动层没装就跳过 */ }
++      },
++    })
++
++    driver = driverModule.createDriver({
++      port: browserDebugPort(),
++      onLog: (message: string, meta?: unknown) => {
++        log(`[tiangong][driver] ${message}${meta === undefined ? '' : ` ${JSON.stringify(meta)}`}`)
++      },
++      phantom: {
++        enabled: () => host.phantom?.().on === true,
++        send: (id: string, command: unknown) => host.sendToView?.(id, command) ?? 0,
++      },
++      onAction: (record: unknown) => { host.sendAction?.(record) },
++      chromeIdentity: { ua: browser.CHROME_UA, platform: 'Win32', metadata: browser.CHROME_UA_METADATA },
++      onDisconnect: () => {
++        try { host.reapplyIdentity?.() } catch { /* 退出流程里不用管 */ }
++      },
++    })
++
++    const bridge = await bridgeModule.startBridge({
++      driver,
++      host,
++      win: options.window,
++      log: (message: string, meta?: unknown) => {
++        if (message === 'bridge-call') return
++        log(`[tiangong][bridge] ${message}${meta === undefined ? '' : ` ${JSON.stringify(meta)}`}`)
++      },
++    })
++
++    process.env.ANZIO_BROWSER_BRIDGE = bridge.url
++    process.env.ANZIO_BROWSER_TOKEN = bridge.token
++    log(`[tiangong][bridge] listening ${bridge.url}`)
++
++    return {
++      bridgeUrl: bridge.url,
++      close: () => {
++        try { bridge.close?.() } catch { /* 已关闭 */ }
++        try { void driver?.close?.() } catch { /* 已关闭 */ }
++      },
++    }
++  } catch (error) {
++    log(`[tiangong][bridge] 壳桥启动失败（Agent 将无法指挥内置浏览器）：${error instanceof Error ? error.stack ?? error.message : String(error)}`)
++    return undefined
++  }
++}
+diff --git a/apps/desktop/src/windows-layout.ts b/apps/desktop/src/windows-layout.ts
+index 0ba4ad5c7e..84d67999f2 100644
+--- a/apps/desktop/src/windows-layout.ts
++++ b/apps/desktop/src/windows-layout.ts
+@@ -1,4 +1,5 @@
+ /** Shared geometry for the Windows main-window caption. */
+ 
+ /** Windows application titlebar height in device-independent pixels. */
+-export const WINDOWS_TITLEBAR_HEIGHT = 40
++// 44 = 天工界面 .dside-titlebar 的高度；官方原值 40 会让系统按钮那一条比天线标题栏矮 4px（2026-11-18 接入）。
++export const WINDOWS_TITLEBAR_HEIGHT = 44
 diff --git a/packages/api/session-controller/src/agent.ts b/packages/api/session-controller/src/agent.ts
 index 3f0fa77944..cfa45af5f5 100644
 --- a/packages/api/session-controller/src/agent.ts
@@ -1576,6 +1815,46 @@ index 6a11c44b56..f766376c7a 100644
  })
  
  it('opens an empty rename draft for unnamed history instead of its directory label', async () => {
+diff --git a/packages/experimental/hooks-claude-code/src/index.ts b/packages/experimental/hooks-claude-code/src/index.ts
+index afbc60de08..22d7420341 100644
+--- a/packages/experimental/hooks-claude-code/src/index.ts
++++ b/packages/experimental/hooks-claude-code/src/index.ts
+@@ -326,6 +326,26 @@ function blocksToText(content: ContentBlock[]): string {
+   return content.filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text').map(b => b.text).join('')
+ }
+ 
++/**
++ * The last assistant message's text, for the Stop payload's `last_assistant_message`.
++ * Without it a Stop hook has nothing to judge: `transcript_path` is empty (the
++ * persistence seam exposes no path), so the text has to come from the live log.
++ */
++function lastAssistantText(agent: Agent): string {
++  try {
++    const events = agent.session.snapshotEvents()
++    for (let i = events.length - 1; i >= 0; i--) {
++      const event = events[i]
++      if (!event || event.type !== 'assistant/message') continue
++      const content = (event.data as { message?: { content?: readonly ContentBlock[] } }).message?.content
++      if (Array.isArray(content)) return blocksToText([...content])
++    }
++  } catch {
++    // 读不到就当空串：钩子侧拿不到正文时自行决定放行，不因这里抛错打断回合收尾。
++  }
++  return ''
++}
++
+ function base(agent: Agent | undefined, event: string): Record<string, unknown> {
+   return {
+     session_id: agent?.session.header.id ?? '',
+@@ -349,7 +369,7 @@ function postToolPayload(exec: ToolExecution, result: ToolExecutionResult): Reco
+   return { ...base(exec.agent, 'PostToolUse'), tool_name: exec.name, tool_input: exec.arguments, tool_use_id: exec.callId, tool_response: blocksToText(result.content) }
+ }
+ function stopPayload(agent: Agent): Record<string, unknown> {
+-  return { ...base(agent, 'Stop'), stop_hook_active: false }
++  return { ...base(agent, 'Stop'), stop_hook_active: false, last_assistant_message: lastAssistantText(agent) }
+ }
+ /**
+  * Build a SubagentStart/SubagentStop payload from the CC base (the child's
 diff --git a/packages/interaction/user-approval/src/index.ts b/packages/interaction/user-approval/src/index.ts
 index 9a14f04d0b..105f53e828 100644
 --- a/packages/interaction/user-approval/src/index.ts
