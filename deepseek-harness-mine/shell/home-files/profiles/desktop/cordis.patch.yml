@@ -1,0 +1,161 @@
+# 天工在官方 desktop 壳里的装配单（装机种子）。
+#
+# 与同目录上级的 profiles\web\cordis.patch.yml（开发台/自建壳用）是同一套天工配置，
+# 差别只有两处「指向家目录的路径」：模板里写 {{HOME}}，首次启动由壳替换成真实家目录
+# （apps/desktop/src/tiangong-profile.ts），因此这份文件可以原样打进安装包。
+#
+# 已有 profile 不会被覆盖：壳只在装配单里找不到 dsh-ide 时才落这一份，并先备份原文件。
+
+# ── 平台外壳：整行走平台默认实现之外的处理 ─────────────────────────────
+# ui-layout 把「ctx.layout 服务 + panelInfo 席位 + AppFrame 注册」塞在同一个 effect 里，
+# 而 AppFrame 会声明 root 的子槽。天工自己是那个窗口，子槽必须由 dsh-ide 声明。
+- id: ui-layout
+  disabled: true
+
+# ── 去掉天工里"多余 / 点不动"的平台按钮 ───────────────────────────────
+# ① 会话日志导出（只有「下载 Session 日志」，没人用）；
+# ② ui-open-in-app 与它的 host 半（「在 <编辑器> 中打开工作目录」是逃生门，产品不要）；
+# ③ 右侧边栏开关由 dsh-ide 在自己面板范围内藏掉（关插件会让对话链 pending）。
+- id: session-log-download
+  disabled: true
+
+- id: ui-open-in-app
+  disabled: true
+
+- id: open-in-app
+  disabled: true
+
+# ── 官方反馈出入口：整条拆掉 ─────────────────────────────────────────
+# ui-message-feedback / message-feedback / command-feedback 是一条链，
+# 喂的是 DeepSeek 自己的反馈通道，天工没有任何消费者。
+- id: ui-message-feedback
+  disabled: true
+
+- id: message-feedback
+  disabled: true
+
+- id: command-feedback
+  disabled: true
+
+# ── Claude Code 钩子桥（Stop 收尾检查）───────────────────────────────
+# 装到自家机器后要启用：把 claude-hooks.json 放到 <家目录>\hooks\ 下，再放开下面这段。
+# 默认关闭的原因：钩子内容是每台机器自己的（命令指向各自的脚本），不能随安装包走。
+# - insert:
+#     - id: hooks-claude-code
+#       name: '@deepseek-ai/dsh-hooks-claude-code'
+#       config:
+#         configPath: '{{HOME}}\hooks\claude-hooks.json'
+
+# ── DSH IDE（应用本体）────────────────────────────────────────────
+# 打开页面直接就是 IDE 三栏（左：文件资源管理器 / 中：文件详情页 / 右：Agent 助手）。
+# 包装在 <家目录>\profiles\desktop\node_modules\dsh-ide（首次启动由壳从安装包复制）。
+- insert:
+    - id: dsh-ide
+      name: dsh-ide
+
+# ── 代码导航（LSP）：给 Agent 的"看得懂代码关系"能力 ──────────────────
+# 师傅（typescript-language-server + typescript）放数据目录，不随安装包走：
+#   <家目录>\tools\lsp\node_modules\...
+# 取用方式：node tools\npm-fetch.mjs <pkg>@<ver> --into <家目录>\tools\lsp
+# 文件不存在时只是这个语言服务器起不来，不影响其余功能。
+- insert:
+    - id: lsp
+      name: '@deepseek-ai/dsh-lsp'
+
+    - id: lsp-stdio
+      name: '@deepseek-ai/dsh-lsp-stdio'
+      config:
+        servers:
+          typescript:
+            command: node
+            args:
+              - '{{HOME}}\tools\lsp\node_modules\typescript-language-server\lib\cli.mjs'
+              - '--stdio'
+            extensionToLanguage:
+              '.ts': typescript
+              '.tsx': typescriptreact
+              '.mts': typescript
+              '.cts': typescript
+              '.js': javascript
+              '.jsx': javascriptreact
+              '.mjs': javascript
+              '.cjs': javascript
+
+    - id: tool-lsp
+      name: '@deepseek-ai/dsh-tool-lsp'
+
+# ── 产品默认值 ────────────────────────────────────────────────────
+- id: ui-settings-general
+  name: "@deepseek-ai/dsh-client-ui-settings-general"
+  config:
+    welcomeNoticeVersion: 2026-08-13.1
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: deepseek-official
+    model: deepseek-flash
+    reasoningEffort: max
+- id: permission
+  name: "@deepseek-ai/dsh-permission-presets"
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+    defaultPreset: danger-full-access
+- id: ui-theme
+  name: "@deepseek-ai/dsh-client-ui-theme"
+  config:
+    preference: dark
+# 默认模式 = 创造模式；settings 写的就是这个条目的 selectedDefault。
+- id: agent-preset-registry
+  config:
+    default: standard
+    selectedDefault: cordis
+# ── @ 文件候选：排除 Windows 回收站 ────────────────────────────────
+# ⚠ 这个配置是**整体替换**，必须写全默认表：漏一个就等于把 .git / node_modules 放回来。
+- id: file-reference-local
+  name: "@deepseek-ai/dsh-file-reference-local"
+  config:
+    excludedDirectories:
+      - .git
+      - node_modules
+      - dist
+      - build
+      - out
+      - coverage
+      - target
+      - .next
+      - .nuxt
+      - .turbo
+      - .venv
+      - __pycache__
+      - .pytest_cache
+      - .mypy_cache
+      - .gradle
+      - "$RECYCLE.BIN"
+- id: ui-chat
+  name: "@deepseek-ai/dsh-client-ui-chat"
+  config:
+    transcriptView: standard
+    performanceUsage: detailed
+- id: ui-settings
+  name: "@deepseek-ai/dsh-client-ui-settings"
+  config:
+    enabled: true
+- id: ui-settings-account
+  name: "@deepseek-ai/dsh-client-ui-settings-account"
+  config:
+    version: 1
+    step: done
+    usage: detailed
+    developerTools: true
+    purpose: null
+    process: standard
+    completion: api-key
