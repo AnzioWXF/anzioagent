@@ -102,8 +102,150 @@ index f08b783865..6c8ec99fa8 100644
        forceCodeSigning: !unsigned,
        signtoolOptions: {
          sign: windowsSigner,
+diff --git a/apps/desktop/scripts/smoke-packaged-runtime.ts b/apps/desktop/scripts/smoke-packaged-runtime.ts
+index b91030008b..994ac6294a 100644
+--- a/apps/desktop/scripts/smoke-packaged-runtime.ts
++++ b/apps/desktop/scripts/smoke-packaged-runtime.ts
+@@ -1,5 +1,6 @@
+ /** Validate the assembled application, including native Office conversion outside ASAR. */
+ import { join } from 'node:path'
++import { readdirSync } from 'node:fs'
+ import { parseArgs } from 'node:util'
+ import { resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
+ import { readDesktopRuntime, verifyDesktopRuntime } from '../src/runtime-tree.ts'
+@@ -15,7 +16,13 @@ const artifacts = values.unsigned ? paths.unsignedArtifacts : paths.artifacts
+ const application = windows ? join(artifacts, 'win-unpacked')
+   : join(artifacts, target === 'mac-arm64' ? 'mac-arm64' : 'mac', 'DeepSeek Harness.app', 'Contents')
+ const resources = join(application, windows ? 'resources' : 'Resources')
+-const executable = windows ? join(application, 'DeepSeek Harness.exe') : join(application, 'MacOS', 'DeepSeek Harness')
++// 天工接入点⑱：产品名改成天工后 exe 名跟着变，这里不能写死官方名（2026-11-19 打包就死在 ENOENT）。
++const windowsExecutable = (): string => {
++  const exe = readdirSync(application).find((name) => name.toLowerCase().endsWith('.exe'))
++  if (exe === undefined) throw new Error(`dsh desktop: no executable under ${application}`)
++  return join(application, exe)
++}
++const executable = windows ? windowsExecutable() : join(application, 'MacOS', 'DeepSeek Harness')
+ const descriptor = await verifyDesktopRuntime(paths.dsh, readDesktopRuntime(paths.dsh).release.version,
+   resolveDesktopPackageTarget(target))
+ if (windows && !values.unsigned) await verifyWindowsCode(application)
+diff --git a/apps/desktop/src/locale.ts b/apps/desktop/src/locale.ts
+index 5d9d4607c7..5abf7696b7 100644
+--- a/apps/desktop/src/locale.ts
++++ b/apps/desktop/src/locale.ts
+@@ -31,17 +31,17 @@ export const en = {
+   application: 'Application',
+   fileMenu: 'File',
+   closePage: 'Close Page or Window',
+-  aboutMenu: 'About DeepSeek Harness',
+-  aboutProduct: 'DeepSeek Harness',
++  aboutMenu: 'About 天工',
++  aboutProduct: '天工',
+   aboutVersion: 'Version V{version}',
+-  hideApplication: 'Hide DeepSeek Harness',
++  hideApplication: 'Hide 天工',
+   hideOtherApplications: 'Hide Others',
+   showAllApplications: 'Show All',
+-  quitApplication: 'Quit DeepSeek Harness',
+-  openApplication: 'Open DeepSeek Harness',
++  quitApplication: 'Quit 天工',
++  openApplication: 'Open 天工',
+   quit: 'Quit',
+   cancel: 'Cancel',
+-  quitTitle: 'Quit DeepSeek Harness?',
++  quitTitle: 'Quit 天工?',
+   quitActiveTasks: 'Running tasks will be interrupted.',
+   quitScheduledTasks: 'Scheduled tasks will not run while the app is closed.',
+   quitActiveAndScheduledTasks: 'Running tasks will be interrupted, and scheduled tasks will not run while the app is closed.',
+@@ -56,7 +56,7 @@ export const en = {
+   copy: 'Copy',
+   paste: 'Paste',
+   selectAll: 'Select All',
+-  startupFailed: 'DeepSeek Harness is unavailable',
++  startupFailed: '天工 is unavailable',
+   fatalSummary: 'The application could not start or stopped unexpectedly.',
+   startupAddressInUse: 'Another DSH instance (such as dsh web or the desktop app) is running. They cannot start at the same time. Quit the other running DSH instance, then restart.',
+   diagnosticTruncated: '… Error details shortened.',
+@@ -66,10 +66,10 @@ export const en = {
+   restartApplication: 'Restart',
+   recoveryOperationFailed: 'The recovery operation failed',
+   disableThirdPartyPlugins: 'Disable third-party plugins, back up profile patch, and restart',
+-  welcomeTitle: 'DeepSeek Harness',
+-  welcomeBrand: 'DeepSeek Harness',
++  welcomeTitle: '天工',
++  welcomeBrand: '天工',
+   welcomeTaglineBefore: 'Welcome to ',
+-  welcomeTaglineBrand: 'DeepSeek Harness',
++  welcomeTaglineBrand: '天工',
+   welcomeTaglineAfter: '',
+   welcomeDescription: 'Build potential. Explore intelligence.',
+   welcomeAuthStarting: 'Opening sign in…',
+@@ -130,7 +130,7 @@ export const en = {
+   updateTasksUnavailable: 'Task status is unavailable. Try updating again when the workspace is ready.',
+   updateStopFailed: 'Could not safely stop the tasks. The update has not been installed. Please try again later.',
+   updateTechnicalDetails: 'View technical details',
+-  updateTitle: 'DeepSeek Harness Update',
++  updateTitle: '天工 Update',
+   updateAvailable: 'New version available: {version}',
+   updateDetail: 'Once the download is complete, you can install the update and restart the app.',
+   installAndRestart: 'Install and Restart',
+@@ -202,17 +202,17 @@ export const zh = {
+   application: '应用',
+   fileMenu: '文件',
+   closePage: '关闭页面或窗口',
+-  aboutMenu: '关于 DeepSeek Harness',
+-  aboutProduct: 'DeepSeek Harness',
++  aboutMenu: '关于 天工',
++  aboutProduct: '天工',
+   aboutVersion: '版本 V{version}',
+-  hideApplication: '隐藏 DeepSeek Harness',
++  hideApplication: '隐藏 天工',
+   hideOtherApplications: '隐藏其他',
+   showAllApplications: '显示全部',
+-  quitApplication: '退出 DeepSeek Harness',
+-  openApplication: '打开 DeepSeek Harness',
++  quitApplication: '退出 天工',
++  openApplication: '打开 天工',
+   quit: '退出',
+   cancel: '取消',
+-  quitTitle: '退出 DeepSeek Harness？',
++  quitTitle: '退出 天工？',
+   quitActiveTasks: '当前正在运行的任务将会中断',
+   quitScheduledTasks: '应用关闭期间，定时任务不会运行',
+   quitActiveAndScheduledTasks: '当前正在运行的任务将会中断，且应用关闭期间，定时任务不会运行',
+@@ -227,7 +227,7 @@ export const zh = {
+   copy: '复制',
+   paste: '粘贴',
+   selectAll: '全选',
+-  startupFailed: 'DeepSeek Harness 无法使用',
++  startupFailed: '天工 无法使用',
+   fatalSummary: '应用无法启动或已意外停止。',
+   startupAddressInUse: '有其他正在运行的 DSH（如其他 dsh web、桌面端），无法同时启动，请退出其他正在运行的 DSH 后重启。',
+   diagnosticTruncated: '… 错误详情已截短。',
+@@ -237,10 +237,10 @@ export const zh = {
+   restartApplication: '重启',
+   recoveryOperationFailed: '恢复操作失败',
+   disableThirdPartyPlugins: '禁用第三方插件、备份 profile patch 并重启',
+-  welcomeTitle: 'DeepSeek Harness',
+-  welcomeBrand: 'DeepSeek Harness',
++  welcomeTitle: '天工',
++  welcomeBrand: '天工',
+   welcomeTaglineBefore: '欢迎使用 ',
+-  welcomeTaglineBrand: 'DeepSeek Harness',
++  welcomeTaglineBrand: '天工',
+   welcomeTaglineAfter: '',
+   welcomeDescription: '组装无限可能，共探智能上限',
+   welcomeAuthStarting: '正在打开登录…',
+@@ -301,7 +301,7 @@ export const zh = {
+   updateTasksUnavailable: '无法确认任务状态，请在工作区就绪后重试更新。',
+   updateStopFailed: '未能安全停止任务，更新尚未安装，请稍后重试。',
+   updateTechnicalDetails: '查看技术详情',
+-  updateTitle: 'DeepSeek Harness 更新',
++  updateTitle: '天工 更新',
+   updateAvailable: '发现新版本 {version}',
+   updateDetail: '下载完成后，可安装并重启应用。',
+   installAndRestart: '安装并重启',
 diff --git a/apps/desktop/src/main.ts b/apps/desktop/src/main.ts
-index 1202670a3e..13e81913d7 100644
+index 1202670a3e..22253574a5 100644
 --- a/apps/desktop/src/main.ts
 +++ b/apps/desktop/src/main.ts
 @@ -26,6 +26,16 @@ import { resolveDesktopPaths } from './paths.ts'
@@ -163,17 +305,23 @@ index 1202670a3e..13e81913d7 100644
      } : {}),
      // hiddenInset places traffic lights inside the sidebar; sidebar vibrancy
      // needs a transparent window background to show through the page.
-@@ -237,6 +262,9 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
+@@ -237,6 +262,15 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
        devTools: true,
      },
    })
 +  // 天工接入点③补：Windows 上 setApplicationMenu(null) 不会移除已显示的原生菜单栏，
 +  // 窗口自身还要 removeMenu() 才真正消失（2026-11-18 实测：只把应用菜单设为 null，菜单栏仍在）。
 +  if (process.platform === 'win32') window.removeMenu()
++  // 天工接入点⑰：窗口标题会被页面的 document.title（官方前端的 "DeepSeek Harness"）接管，
++  // 再带进任务栏按钮与 Alt+Tab，所以主窗口要挡住这个事件并把标题钉成天工。
++  if (primary) {
++    window.on('page-title-updated', (event) => { event.preventDefault() })
++    window.setTitle('天工')
++  }
    window.webContents.setWindowOpenHandler(({ url }) => {
      if (['http:', 'https:'].includes(new URL(url).protocol)) void shell.openExternal(url)
      return { action: 'deny' }
-@@ -314,6 +342,25 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
+@@ -314,6 +348,25 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
  }
  
  async function main(): Promise<void> {
@@ -199,7 +347,7 @@ index 1202670a3e..13e81913d7 100644
    const desktopSettings = readDesktopSettings(app.getPath('userData'))
    void pruneCrashReports(app.getPath('logs'))
    const journalDirectory = process.env.DSH_DESKTOP_UPDATE_JOURNAL_DIR
-@@ -326,6 +373,13 @@ async function main(): Promise<void> {
+@@ -326,6 +379,13 @@ async function main(): Promise<void> {
      : join(process.resourcesPath, 'runtime', 'primary-runtime')
    const activeProject = paths.profile
    const manager = new DesktopProjectManager(paths, resources)
@@ -213,7 +361,16 @@ index 1202670a3e..13e81913d7 100644
    // Dock and Finder launches inherit only launchd's environment; every Host shares one login-shell read.
    const loginShellRead = new AbortController()
    // The probe runs in its own process group, which outlives Desktop unless the read is aborted.
-@@ -978,7 +1032,9 @@ async function main(): Promise<void> {
+@@ -929,7 +989,7 @@ async function main(): Promise<void> {
+   const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'icon-windows.png')
+     : join(process.resourcesPath, 'icon.png')
+   app.setAboutPanelOptions({
+-    applicationName: 'DeepSeek Harness',
++    applicationName: '天工',
+     applicationVersion: app.getVersion(),
+     // The release has no separate build number; omit Electron's bundle version.
+     version: '',
+@@ -978,7 +1038,9 @@ async function main(): Promise<void> {
      { role: 'toggleDevTools', visible: false, accelerator: 'F12' },
    ]
    const refreshApplicationMenu = (): void => {
@@ -224,7 +381,7 @@ index 1202670a3e..13e81913d7 100644
        label: darwin ? app.name : currentDesktopLocale().messages.application,
        submenu: [...applicationItems(), ...devToolsItems],
      }, ...platformMenus()]))
-@@ -1053,7 +1109,11 @@ async function main(): Promise<void> {
+@@ -1053,7 +1115,11 @@ async function main(): Promise<void> {
        // Empty colors precede client stylesheet installation; only CSS color values cross IPC.
        const validColor = (value: unknown): value is string => typeof value === 'string'
          && /^(?:#[\da-f]{3,8}|rgba?\([\d.,%\s]+\))$/iu.test(value)
@@ -237,7 +394,7 @@ index 1202670a3e..13e81913d7 100644
      })
    }
  
-@@ -1285,6 +1345,29 @@ async function main(): Promise<void> {
+@@ -1285,6 +1351,29 @@ async function main(): Promise<void> {
    })
  
    mainWindow = createMainWindow()
@@ -1388,6 +1545,48 @@ index 9005150af0..b458e43e1a 100644
  })
  
  /** Correlated retry-chain keyed Chat renderer. */
+diff --git a/packages/client/ui-chat/src/client/chat/TurnCostPill.tsx b/packages/client/ui-chat/src/client/chat/TurnCostPill.tsx
+new file mode 100644
+index 0000000000..ba5a0fa77a
+--- /dev/null
++++ b/packages/client/ui-chat/src/client/chat/TurnCostPill.tsx
+@@ -0,0 +1,36 @@
++/** Estimated per-Turn charge, seated beside the Turn-usage pill. */
++
++import type { TurnTokenUsage } from '../contract/chat-nodes.ts'
++import type { ChatViewSlotProps } from '../contract/slots.ts'
++import { estimateTurnCost, formatTurnCost } from './turn-cost.ts'
++import css from './TurnUsagePanel.module.css'
++
++export interface TurnCostPillProps {
++  readonly usage: TurnTokenUsage
++  /** This Turn's tail time, which picks the peak/off-peak rate. */
++  readonly time: number
++  /** Billed server-side search calls in this Turn. */
++  readonly searches?: number
++  /** The owning view's locale seat, passed down as a plain prop. */
++  readonly t: ChatViewSlotProps['t']
++}
++
++/**
++ * Reading-only charge pill: nothing to open, so it carries no hover
++ * affordance and no dialog.
++ * @param props - Turn usage, tail time, locale seat.
++ * @returns the pill, or null when the Turn cannot be priced.
++ */
++export function TurnCostPill({ usage, time, searches = 0, t }: TurnCostPillProps) {
++  const estimate = estimateTurnCost(usage, time, searches)
++  if (estimate === null) return null
++  return (
++    <span className={`${css.root} ${css.costRoot}`} data-turn-cost={estimate.peak ? 'peak' : 'off-peak'}>
++      <span className={css.cost} title={t('message.turnUsage.costHint')}>
++        <span className={css.label}>
++          {t('message.turnUsage.cost', { cost: formatTurnCost(estimate) })}
++        </span>
++      </span>
++    </span>
++  )
++}
 diff --git a/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx b/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx
 index a3d58a8cfe..8f276c01e1 100644
 --- a/packages/client/ui-chat/src/client/chat/TurnTailNodeView.tsx
@@ -1480,6 +1679,134 @@ index 460d1092a2..5933906780 100644
              <dt>{t('message.turnUsage.output')}</dt>
              <dd>
                {formatExactCount(usage.outputTokens, t)}
+diff --git a/packages/client/ui-chat/src/client/chat/turn-cost.ts b/packages/client/ui-chat/src/client/chat/turn-cost.ts
+new file mode 100644
+index 0000000000..e941e5268f
+--- /dev/null
++++ b/packages/client/ui-chat/src/client/chat/turn-cost.ts
+@@ -0,0 +1,122 @@
++/**
++ * Turn cost estimate from provider-reported tokens and DeepSeek's published
++ * price table, plus the per-call charge for server-side web search. There is no
++ * per-request billing API (the account balance endpoint is the only official
++ * money-related endpoint), so a turn's cost can only be priced locally: exact
++ * tokens × the published per-million rate, plus billed searches × per-call rate.
++ *
++ * Prices are CNY, copied from
++ * https://api-docs.deepseek.com/zh-cn/quick_start/pricing on 2026-10-21.
++ * When DeepSeek changes its table these constants are the one place to edit.
++ */
++
++import type { TurnTokenUsage } from '../contract/chat-nodes.ts'
++
++interface ModelRate {
++  /** Cached input (cache hit) tokens. */
++  readonly cacheRead: number
++  /** Uncached input (cache miss) tokens. */
++  readonly input: number
++  readonly output: number
++}
++
++interface ModelRates {
++  readonly peak: ModelRate
++  readonly offPeak: ModelRate
++}
++
++const RATES: Readonly<Record<string, ModelRates>> = {
++  'deepseek-flash': {
++    peak: { cacheRead: 0.04, input: 2, output: 8 },
++    offPeak: { cacheRead: 0.02, input: 1, output: 4 },
++  },
++  'deepseek-v4-pro': {
++    peak: { cacheRead: 0.3, input: 9, output: 27 },
++    offPeak: { cacheRead: 0.15, input: 4.5, output: 13.5 },
++  },
++}
++
++/** Retired names DeepSeek still accepts and still bills at Flash rates. */
++const ALIASES: Readonly<Record<string, string>> = {
++  'deepseek-v4-flash': 'deepseek-flash',
++  'deepseek-v4-flash-vision-exp': 'deepseek-flash',
++}
++
++const BEIJING_OFFSET_MS = 8 * 3_600_000
++
++/** Server-side `Search` calls: CNY per successful request (5元 per 1,000). */
++const SEARCH_CNY_PER_CALL = 0.005
++
++/**
++ * Harness-driven server-side search only starts billing at 2026-11-01 00:00
++ * Beijing time; before that the official table charges nothing for it, so
++ * pricing it early would over-report every search-heavy Turn.
++ */
++const SEARCH_BILLING_START_MS = Date.UTC(2026, 10, 1) - BEIJING_OFFSET_MS
++
++/**
++ * Peak billing runs on Beijing-time weekdays 09:00–12:00 and 14:00–18:00.
++ * Chinese public holidays bill off-peak but no holiday calendar is available
++ * here, so their requests price as peak — an over-estimate of about 2× on
++ * those days, never an under-estimate.
++ * @param time - epoch ms of the request (this turn's tail).
++ * @returns whether peak rates apply.
++ */
++export function isPeakTime(time: number): boolean {
++  const beijing = new Date(time + BEIJING_OFFSET_MS)
++  const day = beijing.getUTCDay()
++  if (day === 0 || day === 6) return false
++  const hour = beijing.getUTCHours()
++  return (hour >= 9 && hour < 12) || (hour >= 14 && hour < 18)
++}
++
++export interface TurnCostEstimate {
++  /** Estimated charge in CNY, tokens plus billed searches. */
++  readonly cny: number
++  readonly peak: boolean
++  /** The search-call part of {@link cny}; 0 when none were billed. */
++  readonly searchCny: number
++}
++
++/**
++ * Price one Turn.
++ * @param usage - exact provider-reported buckets for the whole Turn.
++ * @param time - epoch ms used to pick the peak/off-peak rate and to decide
++ *   whether search billing has started.
++ * @param searches - billed server-side search calls in this Turn (0 when none).
++ * @returns the estimate, or null when the model is unknown to the table or the
++ * Turn mixes models (its tokens cannot be split across rates).
++ */
++export function estimateTurnCost(usage: TurnTokenUsage, time: number, searches = 0): TurnCostEstimate | null {
++  const routes = usage.routes
++  const first = routes?.[0]
++  if (routes === undefined || first === undefined) return null
++  const model = first.model
++  if (!routes.every(route => route.model === model)) return null
++  const rates = RATES[ALIASES[model] ?? model]
++  if (rates === undefined) return null
++  const peak = isPeakTime(time)
++  const rate = peak ? rates.peak : rates.offPeak
++  const cacheRead = usage.cacheReadTokens ?? 0
++  // Cache writes are billed as plain misses: DeepSeek reports no such bucket,
++  // but another provider on the same model would count toward input.
++  const input = usage.uncachedInputTokens + (usage.cacheWriteTokens ?? 0)
++  const tokenCny = (cacheRead * rate.cacheRead + input * rate.input + usage.outputTokens * rate.output) / 1_000_000
++  const searchCny = time >= SEARCH_BILLING_START_MS
++    ? Math.max(0, searches) * SEARCH_CNY_PER_CALL
++    : 0
++  return { cny: tokenCny + searchCny, peak, searchCny }
++}
++
++/**
++ * Round for display: cents are noise below ¥0.01, where four decimals keep the
++ * reading non-zero for short turns.
++ * @param estimate - priced Turn.
++ * @returns the amount without a currency mark.
++ */
++export function formatTurnCost(estimate: TurnCostEstimate): string {
++  const value = estimate.cny
++  if (value >= 0.01) return value.toFixed(2)
++  if (value >= 0.0001) return value.toFixed(4)
++  return '<0.0001'
++}
 diff --git a/packages/client/ui-chat/src/client/contract/chat-nodes.ts b/packages/client/ui-chat/src/client/contract/chat-nodes.ts
 index cade646b1c..bda447f09a 100644
 --- a/packages/client/ui-chat/src/client/contract/chat-nodes.ts
@@ -2035,6 +2362,44 @@ index 5564aea9b6..b0a6057272 100644
  }
  
  /** Package-private operations injected into the resident composer bar. */
+diff --git a/packages/client/ui-conversation/src/client/host-layout.ts b/packages/client/ui-conversation/src/client/host-layout.ts
+new file mode 100644
+index 0000000000..7bc76ebb61
+--- /dev/null
++++ b/packages/client/ui-conversation/src/client/host-layout.ts
+@@ -0,0 +1,32 @@
++/**
++ * Composer layout a host may declare.
++ *
++ * A host that replaces the frame root (a desktop shell embedding this
++ * conversation surface — an IDE that owns its own workspace and session
++ * chrome) owns the arrangement of the new-session controls. The shipped
++ * layout puts the workspace picker and the agent-preset chip in a row above
++ * the composer card; a host whose workspace surface lives elsewhere can ask
++ * for that row to be dropped and for the preset control to ride inside the
++ * card's tool row instead.
++ *
++ * Read at render time from a process-wide global, so a host can declare it
++ * before the surface mounts. Absent → the shipped arrangement, untouched.
++ */
++
++/** The host's composer-layout declaration. */
++export interface HostComposerLayout {
++  /**
++   * Render the new-session agent-preset control inside the composer tool row
++   * and drop the hero's workspace/preset row entirely.
++   */
++  readonly presetInToolRow?: boolean
++}
++
++/**
++ * Read the host's declaration.
++ * @returns the declared layout, or an empty object when the host made none.
++ */
++export function hostComposerLayout(): HostComposerLayout {
++  const declared = (globalThis as { __DSH_HOST_COMPOSER__?: HostComposerLayout }).__DSH_HOST_COMPOSER__
++  return declared ?? {}
++}
 diff --git a/packages/client/ui-conversation/src/client/skeleton/ContextMeter.module.css b/packages/client/ui-conversation/src/client/skeleton/ContextMeter.module.css
 index 7952f18006..7cb6347286 100644
 --- a/packages/client/ui-conversation/src/client/skeleton/ContextMeter.module.css
