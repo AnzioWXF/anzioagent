@@ -9,7 +9,7 @@
 //     ⚠ 刻意**不调 preventDefault**：VSCode 的浏览器视图也是只上报、不拦截，页面自己的快捷键照旧生效。
 //
 //  ② 「Agent幻影」的指针层（第三期）：往页面里注入一个**不吃鼠标事件**的指针 + 点击波纹，
-//     由壳发指令驱动（移动 / 按下 / 松开 / 拖拽 / 淡入淡出 / 速度档）。
+//     由壳发指令驱动（移动 / 按下 / 松开 / 拖拽 / 淡入淡出）。
 //     ⚠ 为什么画在**页面内部**而不是天工页面里：原生视图永远盖在天工页面之上，外层 DOM 画什么都看不见；
 //       而 `position:fixed` 是相对视口定位 ⇒ 页面滚动时指针不动，语义上就等于屏幕上的鼠标，正是要的效果。
 //       坐标直接用**页面的 CSS 像素**（Playwright 的 boundingBox 就是这个坐标系）—— 不需要在
@@ -63,7 +63,6 @@ window.addEventListener('keydown', (event) => {
   let cursor = null
   let trail = null
   let on = true
-  let speed = 1
   let pos = { x: -60, y: -60 }
   let raf = 0
   let fadeTimer = null
@@ -121,8 +120,7 @@ window.addEventListener('keydown', (event) => {
   function durationFor(from, to, forced) {
     if (typeof forced === 'number' && isFinite(forced)) return Math.max(0, forced)
     const dist = Math.sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y))
-    const base = Math.max(120, Math.min(620, dist * 1.15))
-    return Math.round(base / Math.max(0.25, speed))
+    return Math.round(Math.max(120, Math.min(620, dist * 1.15)))
   }
   const easeOut = (t) => 1 - Math.pow(1 - t, 3)
 
@@ -245,8 +243,7 @@ window.addEventListener('keydown', (event) => {
         }
         return
       }
-      if (cmd.type === 'speed') { speed = Math.max(0.25, Math.min(4, Number(cmd.value) || 1)); return }
-      if (!on) return                                  // 关掉时：不画、不动，但**动作照做**（由驱动层负责）
+      if (!on) return                                  // 关掉时：不画、不动（动作直接执行，由驱动层负责）
       if (cmd.type === 'move') { moveTo(Number(cmd.x) || 0, Number(cmd.y) || 0, cmd.duration); return }
       if (cmd.type === 'press') { press(Number(cmd.x), Number(cmd.y), cmd.button); return }
       if (cmd.type === 'release') { release(); scheduleFade(); return }
@@ -268,7 +265,7 @@ window.addEventListener('keydown', (event) => {
   try {
     window.__anzioPhantom = {
       version: 1,
-      state: function () { return { on: on, speed: speed, x: Math.round(pos.x), y: Math.round(pos.y), visible: state.visible, moves: state.moves, presses: state.presses, ripples: state.ripples, lastCommand: state.lastCommand, lastPress: state.lastPress } },
+      state: function () { return { on: on, x: Math.round(pos.x), y: Math.round(pos.y), visible: state.visible, moves: state.moves, presses: state.presses, ripples: state.ripples, lastCommand: state.lastCommand, lastPress: state.lastPress } },
       command: command,
     }
   } catch { /* 非浏览器环境 */ }

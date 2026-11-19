@@ -5874,13 +5874,14 @@ window.__ModuleLoader__.load({
           onClick: function () { if (st.url && bridge.openExternal) { try { bridge.openExternal(st.url); } catch (e) { /* 忽略 */ } } },
         }, ticon('external', 13)),
         h('button', { className: 'dside-browser-btn', title: '开发者工具 (F12)', onClick: function () { act('devtools'); } }, ticon('tool', 14)),
-        // 幻影开关（设计定稿 §4.4）：**只在浏览器工具栏**，不进设置页。默认开；
-        // 关掉只是"不演给人看"，Agent 的动作照做（幻影是可视化，不是闸门）。
+        // 幻影开关（设计定稿 §4.4）：**只在浏览器工具栏**，不进设置页。默认开。
+        // 它是"演不演 + 快不快"的同一个开关（2026-11-19 用户定）：开 = 看得到指针、动作按真人节奏；
+        // 关 = 不演、动作直接执行。
         h('button', {
           className: 'dside-browser-btn' + (st.phantomOn ? ' on' : ''),
           title: st.phantomOn
-            ? 'Agent幻影：开（Agent 操作时能看到指针与点击波纹）。点一下关掉——关掉后动作照样执行，只是不演'
-            : 'Agent幻影：关（动作照做，但不显示指针与波纹）。点一下打开',
+            ? 'Agent幻影：开（能看到指针与点击波纹，动作按真人节奏）。点一下关闭——关闭后不显示指针，动作直接执行、更快'
+            : 'Agent幻影：关（不显示指针，动作直接执行）。点一下开启',
           onClick: function () {
             var next = !st.phantomOn;
             setRef.current({ phantomOn: next });

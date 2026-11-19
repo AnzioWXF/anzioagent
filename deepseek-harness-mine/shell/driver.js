@@ -1035,25 +1035,60 @@ function createDriver(opts) {
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-  // ── 人手动作层（2026-11-09）────────────────────────────────────────────────
+  // ── 人手动作层（2026-11-09 立，2026-11-19 改由幻影开关决定走不走）──────────────
   // 为什么要有这一层：Playwright 的 locator.click() 把"移动 → 按下 → 抬起"一次性派发完，
   // 页面收到的几个事件落在同一毫秒（2026-11-05 实测：一次点击 7 个事件全在同一毫秒、坐标都是终点）。
   // 平台风控认的正是这个 —— 人手做不到零毫秒按下抬起，也做不到指针瞬移。
-  // ⚠ 拟人化必须做在**真实事件**上：幻影关掉也照走人类节奏。幻影从此只负责"画"，
-  //   不再兼任"快慢"的闸门（old 口径"幻影关掉动作立刻执行"已废）。
+  // ⚠ 2026-11-19 用户定死：**幻影开关就是"快慢"的闸门**。开 = 演给人看 + 真实动作走人类节奏；
+  //   关 = 不演、也不模拟，动作直接执行。旧注释「幻影关掉也照走人类节奏」是错的设计，已废。
   const HUMAN = {
-    speed: 1,                                  // 全局倍速：1 = 真人节奏
-    stepMin: 8, stepMax: 25,                   // 两个 mousemove 之间的间隔
+    stepMin: 8, stepMax: 25,                   // 两个 mousemove 之间的间隔（只在"有等待"的那部分步上用）
     arriveMin: 70, arriveMax: 210,             // 移到位 → 按下
     pressMin: 55, pressMax: 128,               // 按下 → 抬起（加上 CDP 往返开销，实测落在真人 80~140ms 区间）
     afterMin: 130, afterMax: 420,              // 一次动作做完的收尾停顿
-    keyMin: 35, keyMax: 165,                   // 逐键间隔
+    keyMin: 20, keyMax: 110,                   // 上一键抬起 → 下一键按下
+    tapMin: 55, tapMax: 115,                   // 单个键按住时长（真人 60~120ms，键盘以前完全没做这一段）
     wordPauseMin: 60, wordPauseMax: 240,       // 词与词之间
     thinkChance: 0.1, thinkMin: 350, thinkMax: 1100,  // 打字中间"想一下"
     overshootChance: 0.18,                     // 移动冲过头再折回的概率
   }
   const rnd = (min, max) => min + Math.random() * (max - min)
   const rndInt = (min, max) => Math.round(rnd(min, max))
+
+  // 幻影开着才模拟人类。没给 phantom 通道时按"开"处理（不会误把拟人关掉）。
+  const humanOn = () => {
+    try { return !!(phantom && typeof phantom.enabled === 'function' ? phantom.enabled() : true) } catch { return true }
+  }
+  // 两档统一的等待入口：关档一律不等待
+  const humanSleep = async (min, max) => {
+    if (!humanOn()) return
+    await sleep(rndInt(min, max))
+  }
+  // 步间隔分层抽样，不做均匀分布。
+  // 实测（2026-11-19）：配 8~25ms，页面收到的间隔却几乎清一色 33ms —— 每步一次 CDP 往返，
+  // 加上系统定时器 15.6ms 的粒度，等待被顶到整格上。所以多数步干脆不等（让 CDP 往返本身当节奏），
+  // 少数步给明显停顿，分布才散得开。
+  const stepGap = () => {
+    const r = Math.random()
+    if (r < 0.45) return 0
+    if (r < 0.8) return rndInt(HUMAN.stepMin, HUMAN.stepMax)
+    if (r < 0.95) return rndInt(30, 55)
+    return rndInt(70, 130)
+  }
+  // 敲一个键：开档 = 按下 → 停 55~115ms → 抬起；关档 = 一次性派发。
+  // 为什么不能继续用 keyboard.type/press：那两条内部把 down 与 up 连着发，页面收到的
+  // keydown→keyup 只有 1ms（2026-11-19 实测，这一点比鼠标的破绽更硬）。
+  async function keyTap(page, key) {
+    const combo = String(key)
+    const parts = combo.split('+').filter(function (x) { return x !== '' })
+    if (!humanOn()) { await page.keyboard.press(combo); return }
+    // ⚠ down/up 各自只认**单个**键名：'Control+A' 这种组合必须拆开按、逆序抬，
+    //   直接 down('Control+A') 不会报错也不会发事件（2026-11-19 实测）⇒ 全选那一步曾经空转，
+    //   能清空全靠 fill 失败前顺手做了全选，属于偶然，不能指望。
+    for (let i = 0; i < parts.length; i++) await page.keyboard.down(parts[i])
+    await sleep(rndInt(HUMAN.tapMin, HUMAN.tapMax))
+    for (let i = parts.length - 1; i >= 0; i--) await page.keyboard.up(parts[i])
+  }
 
   // 中文切成"输入法一次上屏的长度"：按标点断句，句内 4 字以上再随机断开。
   // 为什么不是逐字：拼音输入法打中文时，页面收到的是**整词落字**，不是一串单字；
@@ -1096,6 +1131,13 @@ function createDriver(opts) {
     const dist = Math.hypot(to.x - from.x, to.y - from.y)
     if (dist < 1.5) { pointerAt.set(key, { x: to.x, y: to.y }); return }
 
+    // 关档（幻影关）：一步到位。命中验证在 pointAt 里照做，少的只是"走位"这段时间。
+    if (!humanOn()) {
+      try { await page.mouse.move(to.x, to.y) } catch { /* 页面没了也把落点记下去 */ }
+      pointerAt.set(key, { x: to.x, y: to.y })
+      return
+    }
+
     // 过冲：人手不总落正中心，偶尔冲过 8~26px 再折回来（太精准反而假）
     let mid = null
     if (!o.noOvershoot && dist > 140 && Math.random() < HUMAN.overshootChance) {
@@ -1108,21 +1150,22 @@ function createDriver(opts) {
       ? [mid, { x: to.x, y: to.y }]
       : [{ x: to.x, y: to.y }]
 
-    const speed = Math.max(0.25, HUMAN.speed)
     for (const dest of legs) {
       const cur = pointerAt.get(key) || from
       const legDist = Math.hypot(dest.x - cur.x, dest.y - cur.y)
       if (legDist < 0.5) continue
-      const steps = Math.max(3, Math.min(42, Math.round(legDist / 11) + rndInt(-2, 4)))
+      // 十几像素的微调：真人几乎看不出移动过程，走 1~2 步、不铺满一路
+      const steps = legDist < 12
+        ? rndInt(1, 2)
+        : Math.max(3, Math.min(42, Math.round(legDist / 11) + rndInt(-2, 4)))
       // 先排好每一步该等多久：既给人手节奏，也用来算这段路的总时长
       const gaps = []
       let total = 0
       for (let i = 0; i < steps; i++) {
-        const g = Math.max(1, Math.round(rnd(HUMAN.stepMin, HUMAN.stepMax) / speed))
+        const g = stepGap()
         gaps.push(g)
         total += g
       }
-      // 幻影按同一时长演这段路（关闭时也发，页面自己会忽略绘制）
       if (phantom && !o.silent) {
         try { phantom.send(String(id), { type: 'move', x: dest.x, y: dest.y, duration: total }) } catch { /* 演不了就只干活 */ }
       }
@@ -1134,7 +1177,7 @@ function createDriver(opts) {
         const ny = cur.y + (dest.y - cur.y) * t + (last ? 0 : rnd(-2.5, 2.5))
         try { await page.mouse.move(nx, ny) } catch { break }
         pointerAt.set(key, { x: nx, y: ny })
-        await sleep(gaps[i - 1])
+        if (gaps[i - 1] > 0) await sleep(gaps[i - 1])
       }
       pointerAt.set(key, { x: dest.x, y: dest.y })
     }
@@ -1404,28 +1447,28 @@ function createDriver(opts) {
         throw await translateActionError(page, target, new Error('取不到可点区域'), '点击')
       }
       // 到位后先停一眼：人在按下之前会确认落点
-      await sleep(Math.round(rnd(HUMAN.arriveMin, HUMAN.arriveMax) / Math.max(0.25, HUMAN.speed)))
+      await humanSleep(HUMAN.arriveMin, HUMAN.arriveMax)
       throwIfAborted(signal)
-      if (phantom) phantom.send(String(id), { type: 'press', button: o.button || 'left', x: at.x, y: at.y })
+      if (humanOn() && phantom) phantom.send(String(id), { type: 'press', button: o.button || 'left', x: at.x, y: at.y })
       const button = o.button || 'left'
       const count = Math.max(1, Number(o.clickCount) || 1)
       try {
         for (let n = 0; n < count; n++) {
-          if (n > 0) await sleep(Math.round(rnd(60, 120) / Math.max(0.25, HUMAN.speed)))
+          if (n > 0) await humanSleep(60, 120)
           // ⚠ clickCount 必须随次数递增：浏览器靠它算 event.detail，detail 到 2 才派发 dblclick。
           //   少了它，双击就只是"点了两次"，页面永远收不到 dblclick。
           await page.mouse.down({ button: button, clickCount: n + 1 })
-          await sleep(Math.round(rnd(HUMAN.pressMin, HUMAN.pressMax) / Math.max(0.25, HUMAN.speed)))
+          await humanSleep(HUMAN.pressMin, HUMAN.pressMax)
           await page.mouse.up({ button: button, clickCount: n + 1 })
         }
       } catch (e) {
         try { await page.mouse.up({ button: button }) } catch { /* 可能本来就没按下 */ }
         throw await translateActionError(page, target, e, '点击')
       } finally {
-        if (phantom) phantom.send(String(id), { type: 'release' })
+        if (humanOn() && phantom) phantom.send(String(id), { type: 'release' })
       }
       // 点完不会立刻扑向下一个目标
-      await sleep(Math.round(rnd(HUMAN.afterMin, HUMAN.afterMax) / Math.max(0.25, HUMAN.speed)))
+      await humanSleep(HUMAN.afterMin, HUMAN.afterMax)
       await settle(page, signal)
       throwIfAborted(signal)
       noteActionUrl(id, page)
@@ -1451,7 +1494,7 @@ function createDriver(opts) {
           await target.loc.hover({ timeout: T_ACT, force: !!(o.force) || !!target.forced })
         } catch (e) { throw await translateActionError(page, target, e, '悬停') }
       } else {
-        await sleep(Math.round(rnd(HUMAN.arriveMin, HUMAN.arriveMax) / Math.max(0.25, HUMAN.speed)))
+        await humanSleep(HUMAN.arriveMin, HUMAN.arriveMax)
       }
       return { id: String(id), hovered: labelOf(target), index: target.index, matched: target.total, visibleCount: target.visible.length }
     },
@@ -1463,7 +1506,6 @@ function createDriver(opts) {
       const b = await resolveTarget(page, to, o)
       // ⚠ dragAndDrop 只吃选择器，会绕过刚做完的候选检查 → 自己走"走过去 + 按下 + 分步拖 + 松开"
       const identity = await noteIdentity(page, id)
-      const speed = Math.max(0.25, HUMAN.speed)
       const bb2 = await b.loc.boundingBox({ timeout: T_ACT }).catch(() => null)
       const dest = bb2
         ? { x: bb2.x + bb2.width * rnd(0.42, 0.58), y: bb2.y + bb2.height * rnd(0.42, 0.58) }
@@ -1471,23 +1513,23 @@ function createDriver(opts) {
       try {
         const at = await pointAt(id, page, a.loc, { force: !!o.force || !!a.forced, verb: '拖拽' })
         if (!at) throw new Error('取不到可点区域')
-        await sleep(Math.round(rnd(HUMAN.arriveMin, HUMAN.arriveMax) / speed))
+        await humanSleep(HUMAN.arriveMin, HUMAN.arriveMax)
         // 幻影这边演一整条拖拽轨迹（它自己插值），真实指针则在下面一点点挪 —— 两条通道各司其职
-        if (phantom && dest) {
+        if (humanOn() && phantom && dest) {
           try { phantom.send(String(id), { type: 'drag', from: at, to: dest }) } catch { /* 演不了就只干活 */ }
         }
         await page.mouse.down()
-        await sleep(Math.round(rnd(HUMAN.pressMin, HUMAN.pressMax) / speed))
+        await humanSleep(HUMAN.pressMin, HUMAN.pressMax)
         if (dest) {
           await humanMove(id, page, dest, { noOvershoot: true, silent: true })
-          await sleep(Math.round(rnd(80, 220) / speed))       // 松手前会稳一下
+          await humanSleep(80, 220)       // 松手前会稳一下
         }
         await page.mouse.up()
       } catch (e) {
         try { await page.mouse.up() } catch { /* 可能本来就没按下 */ }
         throw await translateActionError(page, a, e, '拖拽')
       }
-      await sleep(Math.round(rnd(HUMAN.afterMin, HUMAN.afterMax) / speed))
+      await humanSleep(HUMAN.afterMin, HUMAN.afterMax)
       await settle(page, signal)
       throwIfAborted(signal)
       noteActionUrl(id, page)
@@ -1509,9 +1551,14 @@ function createDriver(opts) {
       }
       for (let i = 0; i < parts.length; i++) recordKey(parts[i], 'down')
       try {
-        if (target) await target.loc.press(combo, { timeout: T_ACT, force: !!(options && options.force) || !!target.forced })
-        else await page.keyboard.press(combo)
+        if (target) {
+          // 元素级按键：Playwright 会自己先聚焦再派发，拆开反而多一处失败点，保持原样
+          await target.loc.press(combo, { timeout: T_ACT, force: !!(options && options.force) || !!target.forced })
+        } else {
+          await keyTap(page, combo)
+        }
       } catch (e) {
+        try { for (let i = parts.length - 1; i >= 0; i--) await page.keyboard.up(parts[i]) } catch { /* 键可能没按下 */ }
         for (let i = parts.length - 1; i >= 0; i--) recordKey(parts[i], 'up')
         throw target ? await translateActionError(page, target, e, '按键') : e
       }
@@ -1538,23 +1585,22 @@ function createDriver(opts) {
       const before = target ? await target.loc.evaluate(VALUE_PROBE).catch(() => null) : null
       const sensitive = before ? !!before.sensitive : false
       const identity = await noteIdentity(page, id)
-      const speed = Math.max(0.25, HUMAN.speed)
       if (target) {
         // 先点一下聚焦（指针真的走过去，人看得见"它点进了哪个输入框"）
         const at = await pointAt(id, page, target.loc, { force: !!target.forced, verb: '写入前的聚焦点击' })
         if (!at) throw await translateActionError(page, target, new Error('取不到可点区域'), '写入前的聚焦点击')
-        await sleep(Math.round(rnd(HUMAN.arriveMin, HUMAN.arriveMax) / speed))
-        if (phantom) phantom.send(String(id), { type: 'press', x: at.x, y: at.y })
+        await humanSleep(HUMAN.arriveMin, HUMAN.arriveMax)
+        if (humanOn() && phantom) phantom.send(String(id), { type: 'press', x: at.x, y: at.y })
         try {
           await page.mouse.down()
-          await sleep(Math.round(rnd(HUMAN.pressMin, HUMAN.pressMax) / speed))
+          await humanSleep(HUMAN.pressMin, HUMAN.pressMax)
           await page.mouse.up()
         } catch (e) {
           throw await translateActionError(page, target, e, '写入前的聚焦点击')
         } finally {
-          if (phantom) phantom.send(String(id), { type: 'release' })
+          if (humanOn() && phantom) phantom.send(String(id), { type: 'release' })
         }
-        await sleep(Math.round(rnd(HUMAN.afterMin, HUMAN.afterMax) / speed))
+        await humanSleep(HUMAN.afterMin, HUMAN.afterMax)
       }
       const s = String(text == null ? '' : text)
       const ascii = /^[\x20-\x7E]*$/.test(s)
@@ -1562,34 +1608,53 @@ function createDriver(opts) {
       let cleared = false
       const overwrite = o.mode !== 'append'
       if (overwrite && target) {
-        try { await target.loc.fill(''); cleared = true } catch {
-          // fill 动不了的（非表单元素）→ 全选再删
-          await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A')
-          await page.keyboard.press('Delete')
-          cleared = true
+        if (humanOn()) {
+          // 开档不走 fill：fill('') 是"全选 + 一次瞬发 Delete"，键盘按下只有 0.5ms（2026-11-19 实测），
+          // 而且它内部发了 Delete 却不让我们知道（事件流里凭空多一个键）。这里自己按真人顺序来。
+          try {
+            await keyTap(page, process.platform === 'darwin' ? 'Meta+A' : 'Control+A')
+            await sleep(rndInt(60, 180))
+            await keyTap(page, 'Delete')
+            cleared = true
+          } catch { cleared = false }
+        } else {
+          try { await target.loc.fill(''); cleared = true } catch { cleared = false }
+        }
+        if (!cleared) {
+          // 兜底：全选再删（contenteditable 之类 fill 动不了的）
+          try {
+            await keyTap(page, process.platform === 'darwin' ? 'Meta+A' : 'Control+A')
+            await keyTap(page, 'Delete')
+            cleared = true
+          } catch { cleared = false }
         }
       }
       // 记账要在**动作之前**：键流的意义是"人正看着它敲"，滞后了就成回放了
       recordText(s, ascii, sensitive)
-      // 打字节奏（2026-11-09 改）：以前 ASCII 用固定 delay、中文整段一次上屏 ——
-      // 固定间隔本身就是机器指纹，整段上屏更是（人不可能一秒吐出八百字）。
-      // 现在 ASCII 逐键带随机间隔、词后多停、偶尔长停顿；中文按"输入法整词上屏"分批进，
-      // 这也符合真人用拼音输入法打中文时系统看到的样子（整词一次落字，不是逐字母）。
+      // 打字节奏（2026-11-09 立，2026-11-19 挂到幻影开关上）：
+      // 开档 = ASCII 逐键"按下 → 停 55~115ms → 抬起"、键间隔随机、词后多停、偶尔长停顿；
+      //        中文按"输入法整词上屏"分批进（真人打中文是整词落字，不是逐字母）。
+      // 关档 = 整段一次发完（用户 2026-11-19 定：关掉开关就是不模拟、直接执行）。
       // ⚠ 分批 insertText 会放大 input 次数（防抖请求变多），这是拟人的代价。
       const perChar = !!o.perChar
       const fixedGap = o.interval !== undefined ? Math.max(0, Number(o.interval) || 0) : null
       let chunks = 0
-      if (ascii) {
+      if (!humanOn()) {
+        // 一次性派发：keyboard.type 内部把整段的 down/up 连着发完，不留人工停顿
+        if (ascii) await page.keyboard.type(s)
+        else await page.keyboard.insertText(s)
+        chunks = 1
+      } else if (ascii) {
         for (const ch of s) {
           // 逐键是最长的等待源（长文几十秒）：每敲一个之前先看有没有被终止
           throwIfAborted(signal)
-          await page.keyboard.type(ch)
+          await keyTap(page, ch)
           const gap = fixedGap !== null ? fixedGap : rndInt(HUMAN.keyMin, HUMAN.keyMax)
-          await sleep(Math.round(gap / speed))
+          await sleep(gap)
           if (/[\s,.;:!?]/.test(ch) && Math.random() < 0.5) {
-            await sleep(Math.round(rnd(HUMAN.wordPauseMin, HUMAN.wordPauseMax) / speed))
+            await sleep(rndInt(HUMAN.wordPauseMin, HUMAN.wordPauseMax))
           } else if (Math.random() < 0.02) {
-            await sleep(Math.round(rnd(HUMAN.thinkMin, HUMAN.thinkMax) / speed))
+            await sleep(rndInt(HUMAN.thinkMin, HUMAN.thinkMax))
           }
         }
       } else {
@@ -1598,15 +1663,15 @@ function createDriver(opts) {
         for (const piece of pieces) {
           throwIfAborted(signal)
           await page.keyboard.insertText(piece)
-          await sleep(Math.round(rnd(HUMAN.wordPauseMin, HUMAN.wordPauseMax) / speed))
+          await sleep(rndInt(HUMAN.wordPauseMin, HUMAN.wordPauseMax))
           if (Math.random() < HUMAN.thinkChance) {
-            await sleep(Math.round(rnd(HUMAN.thinkMin, HUMAN.thinkMax) / speed))
+            await sleep(rndInt(HUMAN.thinkMin, HUMAN.thinkMax))
           }
         }
       }
       if (o.submit && ascii) {
         throwIfAborted(signal)
-        recordKey('Enter', 'down'); await page.keyboard.press('Enter'); recordKey('Enter', 'up')
+        recordKey('Enter', 'down'); await keyTap(page, 'Enter'); recordKey('Enter', 'up')
       }
       await settle(page, signal)
       noteActionUrl(id, page)
@@ -1645,12 +1710,11 @@ function createDriver(opts) {
       }
       // 用真实滚轮事件，不直接改 scrollTop：Agent 的动作必须和人手一致（幻影也要能演）
       // ⚠ 一次 wheel 到底是最明显的机器特征：人是一段段滚、并且越滚越慢（惯性）。
-      //   这里按总量切成 3~8 段，段间带随机间隔与递减幅度。
+      //   开档按总量切成 3~8 段、段间带随机间隔；关档一次滚到位（用户 2026-11-19 定）。
       const totalDy = Math.abs(dy)
-      const segs = dy === 0 ? 1 : Math.max(3, Math.min(8, Math.round(totalDy / 260) + rndInt(0, 2)))
+      const segs = !humanOn() || dy === 0 ? 1 : Math.max(3, Math.min(8, Math.round(totalDy / 260) + rndInt(0, 2)))
       let sentY = 0
       let sentX = 0
-      const scale = Math.max(0.25, HUMAN.speed)
       for (let i = 1; i <= segs; i++) {
         throwIfAborted(signal)
         const last = i === segs
@@ -1661,7 +1725,7 @@ function createDriver(opts) {
         sentY = wantY
         sentX = wantX
         if (stepX !== 0 || stepY !== 0) await page.mouse.wheel(stepX, stepY)
-        if (!last) await sleep(Math.round(rnd(35, 110) / scale))
+        if (!last) await sleep(rndInt(35, 110))
       }
       // ⚠ 滚轮是**异步**的（合成器拿到事件才滚）→ 不等它落下去，紧接着的读页面/截图会拿到滚动前
       //   那一帧，Agent 就会以为"没滚动"。这里等的是"位置真的变了"这个**条件**（rAF 轮询到条件成立

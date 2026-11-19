@@ -258,18 +258,18 @@ function installBrowserHost(win, noteFn, options) {
   const emitNav = (entry) => send(Object.assign({ type: 'nav', id: entry.id }, navState(entry)))
 
   // ── Agent幻影（第三期）：把"演给人看"的指令发给页面里的指针层 ──────────────────
-  // 开关与速度档是**全局**的（工具栏上那一个开关，设计定稿 §4.4）；关掉时照样发指令，
-  // 但页面那边会忽略绘制 —— 动作本身永远照做（幻影只是"演"，不是"闸门"）。
-  const phantom = { on: true, speed: 1 }
+  // 开关是**全局**的（工具栏上那一个开关，设计定稿 §4.4），而且它同时管两件事：
+  // 开 = 页面画指针、驱动层走人类节奏；关 = 都不做，动作直接执行（2026-11-19 用户定）。
+  // 速度档已撤（同日）：它只管页面动画、管不到真实节奏，是个"看着变了实际没变"的假旋钮。
+  const phantom = { on: true }
 
-  // 指针要走多久，由**这里**决定（页面只负责按给它的时长演）：远距离慢、近距离快，再按速度档缩放。
+  // 指针要走多久，由**这里**决定（页面只负责按给它的时长演）：远距离慢、近距离快。
   // 这是"像真人"的第一条，也是驱动层要等的时间 —— 两处必须是同一个数，所以只在这里算一次。
   function pointerMs(from, to) {
     const a = from || { x: 0, y: 0 }
     const b = to || { x: 0, y: 0 }
     const dist = Math.sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y))
-    const base = Math.max(120, Math.min(620, dist * 1.15))
-    return Math.round(base / Math.max(0.25, phantom.speed))
+    return Math.round(Math.max(120, Math.min(620, dist * 1.15)))
   }
 
   // 给某个视图的页面发一条幻影指令；返回"驱动层该等多久"（毫秒）
@@ -299,7 +299,6 @@ function installBrowserHost(win, noteFn, options) {
   function phantomSetup(entry) {
     try {
       entry.view.webContents.send('anzio-phantom', { type: 'on', value: phantom.on })
-      entry.view.webContents.send('anzio-phantom', { type: 'speed', value: phantom.speed })
     } catch { /* 忽略 */ }
   }
 
@@ -536,18 +535,14 @@ function installBrowserHost(win, noteFn, options) {
     try { bounds = entry.view.getBounds ? entry.view.getBounds() : null } catch { bounds = null }
     return Object.assign({ ok: true, id: entry.id, visible: !!entry.visible, bounds, rect: entry.rect }, navState(entry))
   })
-  // 幻影开关（渲染层 → 壳）：全局生效。关掉的只是"演给人看"—— Agent 的动作照做（设计定稿 §4.4）
+  // 幻影开关（渲染层 → 壳）：全局生效。开 = 演 + 真实动作走人类节奏；关 = 不演、动作直接执行（设计定稿 §4.4）
   handle('anzio-browser:phantom', (opts) => {
     const o = opts || {}
     if (o.on !== undefined) phantom.on = !!o.on
-    if (o.speed !== undefined) phantom.speed = Math.max(0.25, Math.min(4, Number(o.speed) || 1))
-    for (const entry of entries.values()) {
-      sendToView(entry.id, { type: 'on', value: phantom.on })
-      if (o.speed !== undefined) sendToView(entry.id, { type: 'speed', value: phantom.speed })
-    }
-    return { ok: true, on: phantom.on, speed: phantom.speed }
+    for (const entry of entries.values()) sendToView(entry.id, { type: 'on', value: phantom.on })
+    return { ok: true, on: phantom.on }
   })
-  handle('anzio-browser:phantom-state', () => ({ ok: true, on: phantom.on, speed: phantom.speed }))
+  handle('anzio-browser:phantom-state', () => ({ ok: true, on: phantom.on }))
 
   handle('anzio-browser:create-id', () => ({ ok: true, id: 'browser-' + (++seq) + '-' + Date.now().toString(36) }))
   // 页面重新加载后渲染层的浏览器标签状态全没了，但原生视图还活着 → 由渲染层开局清场，避免留下无主的视图
@@ -582,7 +577,7 @@ function installBrowserHost(win, noteFn, options) {
   return {
     create, destroy, canonicalId, setBounds, setVisible, entries,
     sendToView: sendToView, sendAction: sendAction, reapplyIdentity,
-    phantom: () => ({ on: phantom.on, speed: phantom.speed }),
+    phantom: () => ({ on: phantom.on }),
   }
 }
 
