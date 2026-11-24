@@ -836,10 +836,10 @@ index 0000000000..e469374669
 +}
 diff --git a/apps/desktop/src/tiangong-profile.ts b/apps/desktop/src/tiangong-profile.ts
 new file mode 100644
-index 0000000000..d4dac308c4
+index 0000000000..5ca111d88f
 --- /dev/null
 +++ b/apps/desktop/src/tiangong-profile.ts
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,71 @@
 +/**
 + * 天工家目录种子（自研，官方源码只在 main.ts 的调用点接入）。
 + *
@@ -868,6 +868,17 @@ index 0000000000..d4dac308c4
 +  log: (message: string) => void
 +}): void {
 +  const log = options.log
++  const home = dirname(dirname(options.profile))
++  // 凭证种子（2026-11-24）：绿色版/新机器把 credentials.yaml 放在 exe 旁边，首启拷进家目录。
++  // 家目录已有凭证就不动（不覆盖用户自己填的）。凭证是明文 YAML、不绑机器，拷过去即可用；
++  // 但它是账号 Key —— 打包分发时不要默认带上，由用的人自己放。
++  const credentialSource = join(dirname(process.execPath), 'credentials.yaml')
++  const credentialTarget = join(home, '.credentials.yaml')
++  if (existsSync(credentialSource) && !existsSync(credentialTarget)) {
++    mkdirSync(home, { recursive: true })
++    copyFileSync(credentialSource, credentialTarget)
++    log('[tiangong][profile] 已从安装目录导入凭证')
++  }
 +  const pluginSource = join(options.resources, 'tiangong', 'plugin')
 +  const pluginTarget = join(options.profile, 'node_modules', 'dsh-ide')
 +  if (existsSync(join(pluginSource, 'package.json'))) {
@@ -897,7 +908,6 @@ index 0000000000..d4dac308c4
 +    return
 +  }
 +  if (existing !== '') copyFileSync(patchPath, `${patchPath}.bak-tiangong`)
-+  const home = dirname(dirname(options.profile))
 +  writeFileSync(patchPath, readFileSync(templatePath, 'utf8').split('{{HOME}}').join(home), 'utf8')
 +  log(`[tiangong][profile] 装配单已落 ${patchPath}`)
 +}

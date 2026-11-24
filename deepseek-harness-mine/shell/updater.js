@@ -19,7 +19,9 @@ const fsp = require('fs/promises')
 const path = require('path')
 const crypto = require('crypto')
 
-const FEED_DEFAULT = 'D:\\000AnzioAgent\\_updates'
+// 更新源默认 = 安装目录自己的 _updates（按 exe 位置算，绿色版解压到别处也跟着走）。
+// 以前写死 'D:\000AnzioAgent\_updates'：换台机器解压到别的路径就永远查不到更新（2026-11-24 修）。
+const feedDefault = (installDir) => path.join(installDir, '_updates')
 
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return fallback }
@@ -76,7 +78,7 @@ class Updater {
   config() {
     const c = readJson(this.configFile, {})
     return {
-      feed: c.feed || FEED_DEFAULT,
+      feed: c.feed || feedDefault(this.installDir),
       autoCheck: c.autoCheck !== false,
       checkIntervalMs: c.checkIntervalMs || 30 * 60 * 1000,
       source: c.source || 'local',      // local=目录；http=以后接自建注册表
@@ -343,4 +345,4 @@ class Updater {
   }
 }
 
-module.exports = { Updater, compareVersion, FEED_DEFAULT }
+module.exports = { Updater, compareVersion, feedDefault }

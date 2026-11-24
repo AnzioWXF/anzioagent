@@ -1091,19 +1091,44 @@ export default {
     // `TerminalSendOperation.readOutput()`、输出经行消毒器投影、无流式订阅、无 resize），
     // 那是给 Agent"发一条命令读一段输出"用的；交互式终端 UI（逐字符输入、ANSI 颜色、
     // 进度条回车、Ctrl+C、窗口尺寸）必须自己开真 PTY。
-    // node-pty 是**原生模块**，插件目录 require 不到 → 从**检出目录**的 subprocess-local
-    // 包解析（pnpm 符号链接）；应用本来就跑在检出目录上（§3），所以这条依赖成立。
-    const harnessRoot = (() => {
-      if (process.env.DSH_HARNESS) return process.env.DSH_HARNESS
-      const m = String(process.argv[1] || '').match(/^(.*?)[\\/]apps[\\/]cli[\\/]/i)
-      return m ? m[1] : 'D:\\99DSH\\deepseek-harness-mine\\harness'
+    // node-pty 是**原生模块**，插件目录 require 不到 → 从引擎所在根解析。
+    // 两种形态的根与包路径都不同，必须都试：
+    //   开发检出：<harness>\packages\subprocess\subprocess-local（pnpm 符号链接到根 node_modules）
+    //   打包版：  <安装目录>\resources\app.asar\dsh\node_modules\@deepseek-ai\dsh-subprocess-local
+    // 2026-11-24 前的写法只认检出目录（写死 D:\99DSH 兜底），换台机器找不到模块 ⇒ 终端整体不可用。
+    const ptyModuleRoots = (() => {
+      const roots = []
+      if (process.env.DSH_HARNESS) roots.push(process.env.DSH_HARNESS)
+      const argv1 = String(process.argv[1] || '')
+      const cli = argv1.match(/^(.*?)[\\/]apps[\\/]cli[\\/]/i)
+      if (cli) roots.push(cli[1])
+      const asar = argv1.match(/^(.*?[\\/]app\.asar[\\/]dsh)(?:[\\/]|$)/i)
+      if (asar) roots.push(asar[1])
+      // 打包版最稳的锚：exe 旁边的 resources（argv 在 --expose-internals 启动下不可靠）
+      roots.push(path.join(path.dirname(process.execPath), 'resources', 'app.asar', 'dsh'))
+      roots.push('D:\\99DSH\\deepseek-harness-mine\\harness')
+      return roots
     })()
     let ptyMod = null
     let ptyLoadError = null
-    try {
-      const req = createRequire(path.join(harnessRoot, 'packages', 'subprocess', 'subprocess-local', 'package.json'))
-      ptyMod = req('node-pty')
-    } catch (e) { ptyLoadError = errOf(e) }
+    for (const root of ptyModuleRoots) {
+      for (const entry of [
+        path.join(root, 'packages', 'subprocess', 'subprocess-local', 'package.json'),
+        path.join(root, 'node_modules', '@deepseek-ai', 'dsh-subprocess-local', 'package.json'),
+        path.join(root, 'package.json'),
+      ]) {
+        try {
+          ptyMod = createRequire(entry)('node-pty')
+          break
+        } catch (e) { ptyLoadError = errOf(e) }
+      }
+      if (ptyMod) break
+    }
+    if (ptyMod === null) {
+      trace({ level: 'error', kind: 'terminal', msg: 'pty-unavailable-at-startup', meta: { error: ptyLoadError, tried: ptyModuleRoots } })
+    } else {
+      ptyLoadError = null
+    }
 
     const TERM_MAX_CHUNKS = 4000            // 每会话输出块上限（防内存爆）
     const TERM_MAX_BYTES = 512 * 1024       // 每会话输出字节上限
