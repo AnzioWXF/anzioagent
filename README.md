@@ -58,15 +58,44 @@
 
 ## 怎么跑
 
-**现在还做不到 clone 下来就能跑。** 说清现状比给一套装不上的步骤有用：
+前置：Windows x64、Node.js（引擎要求 `^22.19.0 || >=24.0.0`）、pnpm 11。
 
-- 安装包没有对外发布过
-- 脚本、路径、更新源都按开发机硬编码（`D:\99DSH` / `D:\000AnzioAgent`）
-- 引擎需要先套我们那份补丁，再按五步重建产物
+clone 下来只有源码和一份引擎原样快照，**没有构建产物**，所以第一次要先重建引擎：
 
-想看它是怎么做的，直接读代码。想真的跑起来或者改它，[DEVELOPING.md](DEVELOPING.md) 里有完整的现状、目录布局和重建步骤——能跑通，但要照着把你的路径改进去。
+```powershell
+# 1. 快照 → 应用要跑的那棵
+Copy-Item -Recurse deepseek-harness-origin deepseek-harness-mine\harness
+cd deepseek-harness-mine\harness
 
-把安装整理成任何人都能复现的一条路，是接下来要做的事。
+# 2. 让这棵自己当 git 根：快照不自带 .git，不 init 的话 git apply 会拿外层仓库当归宿、把补丁全部跳过
+git init
+
+# 3. 套我们对引擎的补丁
+git apply ..\..\patches\engine-0.2.1-alpha.2-ours.patch
+
+# 4. 装依赖 + 重建产物（官方 build 脚本会被 pnpm 依赖检查拦住，按这五步走）
+pnpm install --prefer-offline --ignore-scripts
+pnpm exec tsc -b tsconfig.host.json
+#   建两个空占位 lib/types/index.js、lib/types/startup.js，内容都是 export {}
+pnpm exec tsdown --config-loader native --env.DSH_BUILD_FACE host
+pnpm exec tsc -b tsconfig.client.json
+pnpm exec tsdown --config-loader native --env.DSH_BUILD_FACE client
+```
+
+然后打包装机（首次要下载 Electron 二进制，直连不通就设镜像，见 [DEVELOPING.md](DEVELOPING.md)）：
+
+```powershell
+cd ..\shell
+pnpm install
+cd ..\..\tools
+pwsh -File install-app.ps1 -Build
+```
+
+装完双击 `天工.exe` 就是三栏工作面。默认装在 `%LOCALAPPDATA%\Programs\Tiangong`，换位置用 `-InstallDir` 或环境变量 `TIANGONG_INSTALL_DIR`。
+
+**所有脚本的路径都从自己的位置推导**（`tools\_paths.ps1`）：clone 到哪个盘、哪个目录都不用改。安装目录是唯一推导不出来的东西，所以留了上面那两级覆盖。
+
+只想在浏览器里先看一眼界面、不打包：`pwsh -File tools\dev-web.ps1` → `http://127.0.0.1:3080`。那是开发台（引擎原装界面、插件停用），细节在 [DEVELOPING.md](DEVELOPING.md)。
 
 ## 技术
 

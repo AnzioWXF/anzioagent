@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // 会话文件诊断（用框架自己的 zstd 帧扫描器；会话是「头帧 + 事件批帧」的多帧 zstd）
 // 用法: node --import tsx/esm tools/dump-session.mjs [session.v3.jsonl.zstd 路径] [尾部事件数]
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -7,7 +8,7 @@ import { scanZstdFrames, decompressZstdFrame } from 'file:///D:/99DSH/deepseek-h
 let file = process.argv[2]
 const tail = Number(process.argv[3] || 10)
 if (!file) {
-  const base = 'D:\\99DSH\\app-home\\sessions'
+  const base = `${__TIANGONG_ROOT}\\app-home\\sessions`
   const all = []
   for (const ws of readdirSync(base)) {
     for (const s of readdirSync(join(base, ws))) {

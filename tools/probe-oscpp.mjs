@@ -1,9 +1,10 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // probe-oscpp.mjs — 定点量"真机按一次 Ctrl+` 到底发生了什么"
 // 手法：页内 keydown 记录器 + **每 100ms 轮询终端面板是否存在**，画出真实时间线；
 //       对比 CDP 注入 vs 真 OS 按键（keybd_event）。
-// 用法: node D:\99DSH\tools\probe-oscpp.mjs
+// 用法: node tools\probe-oscpp.mjs
 import { spawn, spawnSync } from 'node:child_process'
-const EXE = 'D:\\000AnzioAgent\\天工.exe'
+const EXE = `${__TIANGONG_INSTALL}\\天工.exe`
 const CDP_PORT = 9223
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 

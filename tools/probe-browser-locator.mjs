@@ -1,9 +1,10 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // 探针：验内置浏览器动作层的「选择器解析 / 写入语义 / 断言四态 / 布局度量 /
 //       提示消息缓冲 / 渲染安定 / 加载元数据 / 登录态指纹 / 失败翻译」。
 // 为什么要有它：这几条改的是"操作的是不是目标、写进去的是不是对的数据、结论是不是当前状态"，
 // 靠肉眼看界面验不出来（多命中时点错的那一下，界面上完全正常）。
 // 做法：本机起一个静态服务（带 ETag），用无头 Edge 打开，标上 __anzioBrowserViewId，再让 driver 认成自家页面。
-//   node D:\99DSH\tools\probe-browser-locator.mjs
+//   node tools\probe-browser-locator.mjs
 import { spawn } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { createServer } from 'node:http'
@@ -11,7 +12,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
-const SHELL = 'D:\\99DSH\\deepseek-harness-mine\\shell'
+const SHELL = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\shell`
 const require = createRequire(path.join(SHELL, 'package.json'))
 const { chromium } = require('playwright-core')
 const { createDriver } = require(path.join(SHELL, 'driver.js'))

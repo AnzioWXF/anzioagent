@@ -28,15 +28,17 @@ const { probePort, parseUrl, ensureIdeHome, buildLaunchCommand } = require('./ba
     buildLaunchCommand('node x.js web --port 9999', 3081) === 'node x.js web --port 9999')
 
   // 独立 home 初始化（共享配置 junction + 独立 settings）
-  const ok = ensureIdeHome('D:\\99DSH\\app-home', 'D:\\99DSH\\dev-home\\profiles\\web')
-  check('ensureIdeHome returns ok', ok === true)
   const fs = require('fs')
   const path = require('path')
-  const link = path.join('D:\\99DSH\\app-home', 'profiles', 'web')
+  const REPO_ROOT = path.resolve(__dirname, '..', '..')   // 本文件在 deepseek-harness-mine\shell 下
+  const APP_HOME = path.join(REPO_ROOT, 'app-home')
+  const ok = ensureIdeHome(APP_HOME, path.join(REPO_ROOT, 'dev-home', 'profiles', 'web'))
+  check('ensureIdeHome returns ok', ok === true)
+  const link = path.join(APP_HOME, 'profiles', 'web')
   check('profiles/web exists', fs.existsSync(link))
   check('shared config visible through junction', fs.existsSync(path.join(link, 'cordis.patch.yml')))
   check('dsh-ide plugin visible through junction', fs.existsSync(path.join(link, 'ide', 'dsh-ide', 'lib', 'client.js')))
-  check('independent settings.yaml', fs.existsSync(path.join('D:\\99DSH\\app-home', 'settings.yaml')))
+  check('independent settings.yaml', fs.existsSync(path.join(APP_HOME, 'settings.yaml')))
 
   console.log(failed ? 'SOME TESTS FAILED' : 'ALL TESTS PASSED')
   process.exit(failed ? 1 : 0)

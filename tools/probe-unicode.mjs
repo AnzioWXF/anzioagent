@@ -1,18 +1,19 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // probe-unicode.mjs — 两个问题的"一手证据"探针（只测量、不改产品代码）：
 //   ① 编辑器对易混淆字符（U+FF09「）」等）的高亮：DOM 里长什么样？关掉哪个选项才真消失？
 //   ② 设置面板下方「安装位置…」那一片为什么一直闪：数一数 DOM 变更 / 请求次数。
 //
-// 用法：node D:\99DSH\tools\probe-unicode.mjs
+// 用法：node tools\probe-unicode.mjs
 // 依赖隔离测试家目录（先跑 tools\dev-testhome.ps1 刷插件代码），自起 3082 后端 + 无头 Edge。
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync, openSync, closeSync } from 'node:fs'
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3087)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = process.env.DSH_E2E_HOME || 'D:\\99DSH\\.smoke-home'
-const WS = process.env.DSH_E2E_WS || 'D:\\99DSH\\.smoke-ws'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_probe_unicode_' + PORT + '.log'
+const HOME_DIR = process.env.DSH_E2E_HOME || `${__TIANGONG_ROOT}\\.smoke-home`
+const WS = process.env.DSH_E2E_WS || `${__TIANGONG_ROOT}\\.smoke-ws`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_probe_unicode_` + PORT + '.log'
 const CDP_PORT = 9870 + Math.floor(Math.random() * 90)
 const FIX = WS + '\\_probe_unicode.txt'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -74,7 +75,7 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
@@ -100,7 +101,7 @@ async function main() {
     // 一行里同时放：半角括号 + 全角右括号（U+FF09）+ 零宽空格（U+200B）
     writeFileSync(FIX, 'const a = foo(x)\uff09; // \u200bzero-width\ntext \u4e2d\u6587\u6807\u70b9\u3002\n')
 
-    const userDir = 'D:\\99DSH\\.edge-probe-uni-' + process.pid
+    const userDir = `${__TIANGONG_ROOT}\\.edge-probe-uni-` + process.pid
     try { rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 }) } catch { /* ignore */ }
     browser = spawn(findBrowser(), [
       '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',

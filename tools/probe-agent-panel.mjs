@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // probe-agent-panel.mjs — 验证"平台原生会话"是否挂进了天工右侧面板（A 方案）
 // 用法：node tools/probe-agent-panel.mjs "<带 token 的 3082 url>"
 // 探针：右侧 .dside-agent-platform 里是否出现平台会话的 DOM（消息/输入框/浮层），
@@ -19,7 +20,7 @@ function findBrowser() {
   ]) if (existsSync(c)) return c
   throw new Error('no browser')
 }
-const userDir = join('D:\\99DSH', '.edge-panel-' + process.pid)
+const userDir = join(`${__TIANGONG_ROOT}`, '.edge-panel-' + process.pid)
 rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
 const proc = spawn(findBrowser(), [
   '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',

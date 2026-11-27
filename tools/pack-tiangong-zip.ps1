@@ -4,7 +4,7 @@
 # 解压后双击 天工.exe 即用。首次启动会在 %LOCALAPPDATA%\Tiangong\home 自建家目录并装好插件与装配单。
 #
 # 不带的东西（带上去只会添乱）：
-#   tiangong-home.txt  家目录指针 —— 它写的是本机路径，带过去会把新机器的数据指到 D:\99DSH\app-home
+#   tiangong-home.txt  家目录指针 —— 它写的是本机路径，带过去会把新机器的数据指到 <仓库根>\app-home
 #   version.json       更新基线 —— 属于"已安装"状态，不是发行内容
 #   updater.json / updater-state.json / _updates / _staging   本机更新链路的状态与包
 #
@@ -14,19 +14,20 @@
 # 用法：
 #   pwsh -File tools\pack-tiangong-zip.ps1
 #   pwsh -File tools\pack-tiangong-zip.ps1 -WithCredentials
-#   pwsh -File tools\pack-tiangong-zip.ps1 -Source D:\000AnzioAgent -Out D:\temp\tiangong.zip
+#   pwsh -File tools\pack-tiangong-zip.ps1 -Source <安装目录> -Out D:\temp\tiangong.zip
 
 [CmdletBinding()]
 param(
   [string]$Source = '',
   [string]$Out = '',
-  [string]$HomeDir = 'D:\99DSH\app-home',
+  [string]$HomeDir = '',
   [switch]$WithCredentials
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '_paths.ps1')
+if (-not $HomeDir) { $HomeDir = $appHomeDir }
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
 if ($Source -eq '') {
   $Source = Join-Path $repoRoot 'deepseek-harness-mine\harness\apps\desktop\.desktop-build\targets\win-x64\unsigned-artifacts\win-unpacked'
 }

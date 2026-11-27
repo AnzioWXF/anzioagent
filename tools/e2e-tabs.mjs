@@ -1,7 +1,8 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // ⑮ 标签三件套 E2E：预览模式（VSCode preview editor）+ 标签右键菜单 + 固定标签（pin）
-// 用法: node D:\99DSH\tools\e2e-tabs.mjs
-//   自起隔离测试后端（DSH_HOME=D:\99DSH\.smoke-home，先跑 tools\dev-testhome.ps1 刷新插件代码）
-//   + 无头 Edge/Chrome（CDP）真浏览器 + **专用安静工作区**（D:\99DSH\.smoke-ws，自建自清）。
+// 用法: node tools\e2e-tabs.mjs
+//   自起隔离测试后端（DSH_HOME=<仓库根>\.smoke-home，先跑 tools\dev-testhome.ps1 刷新插件代码）
+//   + 无头 Edge/Chrome（CDP）真浏览器 + **专用安静工作区**（<仓库根>\.smoke-ws，自建自清）。
 //
 // 为什么用专用工作区：测试家目录里拷来的会话 cwd 可能是 `D:\`（整盘）—— 那样树根是整块盘、
 //   fs.watch 每秒几十次变更 → 树每秒重列，fixture 在树里会"忽隐忽现"（上一轮 30 项里 18 项假 FAIL
@@ -14,10 +15,10 @@ import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync, openSync, c
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3082)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = process.env.DSH_E2E_HOME || 'D:\\99DSH\\.smoke-home'   // 隔离测试家目录（绝不用 DSH_HOME，见 §6 60）
-const WS = process.env.DSH_E2E_WS || 'D:\\99DSH\\.smoke-ws'             // 专用测试工作区
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\temp\\_e2etabs_backend_' + PORT + '.log'   // 测试垃圾统一落 temp（2026-09-22）
+const HOME_DIR = process.env.DSH_E2E_HOME || `${__TIANGONG_ROOT}\\.smoke-home`   // 隔离测试家目录（绝不用 DSH_HOME，见 §6 60）
+const WS = process.env.DSH_E2E_WS || `${__TIANGONG_ROOT}\\.smoke-ws`             // 专用测试工作区
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\temp\\_e2etabs_backend_` + PORT + '.log'   // 测试垃圾统一落 temp（2026-09-22）
 const TRACE_LOG = HOME_DIR + '\\logs\\ide-trace.log'
 const CDP_PORT = 9900 + Math.floor(Math.random() * 90)
 const P = (n) => WS + '\\_e2etabs_' + n + '.txt'
@@ -135,7 +136,7 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
@@ -165,8 +166,8 @@ async function main() {
     writeFileSync(P('e'), 'e line1\ne line2\n')
     const A = '_e2etabs_a.txt', B = '_e2etabs_b.txt', C = '_e2etabs_c.txt', D = '_e2etabs_d.txt', E = '_e2etabs_e.txt'
 
-    // 临时浏览器 profile 一律落 temp（00devCore §0.5），别落 D:\99DSH 根
-    const userDir = 'D:\\99DSH\\temp\\.edge-e2etabs-tmp-' + process.pid
+    // 临时浏览器 profile 一律落 temp（00devCore §0.5），别落 <仓库根> 根
+    const userDir = `${__TIANGONG_ROOT}\\temp\\.edge-e2etabs-tmp-` + process.pid
     try { rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 }) } catch (e) { /* Windows 文件锁：临时 profile 删不掉不影响结论 */ }
     browser = spawn(findBrowser(), [
       '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
@@ -505,7 +506,7 @@ async function main() {
     killTree(backend.pid)
     await sleep(1500)
     try { rmSync(WS, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 }) } catch { /* 自清兜底 */ }
-    try { rmSync('D:\\99DSH\\.edge-e2etabs-tmp-' + process.pid, { recursive: true, force: true }) } catch { /* 自清兜底 */ }
+    try { rmSync(`${__TIANGONG_ROOT}\\.edge-e2etabs-tmp-` + process.pid, { recursive: true, force: true }) } catch { /* 自清兜底 */ }
   }
 
   const failed = results.filter((r) => !r.ok)

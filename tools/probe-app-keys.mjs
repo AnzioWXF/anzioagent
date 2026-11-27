@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // probe-app-keys.mjs — **真机**键位验证（2026-09-21）
 // 为什么要单独一套：无头浏览器 ≠ 应用。壳（Electron main.js）的 before-input-event 会在按键
 // 到达页面**之前**拦掉它，浏览器里根本复现不出来 —— 用户报的 "Ctrl+A 全选无效" 就是这么来的。
@@ -5,14 +6,14 @@
 //   ① CDP 注入键（会走壳的 before-input-event，用 Ctrl+R 做对照证明这条路径是活的）
 //   ② **真 OS 按键**（user32 keybd_event，窗口必须先在前台；脚本每次都核对前台窗口标题，
 //      不是天工就拒发，避免把按键打到用户别的窗口里）
-// 用法: node D:\99DSH\tools\probe-app-keys.mjs
-//   （会自动启动 D:\000AnzioAgent\天工.exe --remote-debugging-port=9223，跑完关掉它）
+// 用法: node tools\probe-app-keys.mjs
+//   （会自动启动 <安装目录>\天工.exe --remote-debugging-port=9223，跑完关掉它）
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, rmSync } from 'node:fs'
 
-const EXE = 'D:\\000AnzioAgent\\天工.exe'
+const EXE = `${__TIANGONG_INSTALL}\\天工.exe`
 const CDP_PORT = 9223
-const WS = 'D:\\99DSH\\.smoke-ws-keys'
+const WS = `${__TIANGONG_ROOT}\\.smoke-ws-keys`
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const out = []
 function log(s) { console.log(s); out.push(s) }
@@ -54,7 +55,7 @@ Start-Sleep -Milliseconds 120
 
 async function main() {
   if (!existsSync(EXE)) throw new Error('找不到 ' + EXE)
-  rmSync('D:\\99DSH\\_probe_app_keys.log', { force: true })
+  rmSync(`${__TIANGONG_ROOT}\\_probe_app_keys.log`, { force: true })
   // 起应用（带调试端口）
   const app = spawn(EXE, ['--remote-debugging-port=' + CDP_PORT], { detached: true, stdio: 'ignore' })
   app.unref()
@@ -211,7 +212,7 @@ async function main() {
       verdict('B4 [真机] Ctrl+B 显隐侧边栏（对照组）', !!b1 && !!b2, JSON.stringify({ r5, b1, b2 }))
       // 轨迹佐证：router 命中会写 kind=shortcut 埋点（用户下次报障也靠它一眼定位）
       try {
-        const logTxt = (await import('node:fs')).readFileSync('D:\\99DSH\\app-home\\logs\\ide-trace.log', 'utf8').trim().split('\n').slice(-400)
+        const logTxt = (await import('node:fs')).readFileSync(`${__TIANGONG_ROOT}\\app-home\\logs\\ide-trace.log`, 'utf8').trim().split('\n').slice(-400)
           .filter((l) => l.indexOf('"shortcut"') >= 0).slice(-8).map((l) => { try { const o = JSON.parse(l); return o.ts.slice(11, 19) + ' ' + (o.meta && o.meta.id) + '=' + (o.meta && o.meta.keys) } catch { return '' } })
         log('  轨迹里的快捷键命中记录（最近 8 条）：\n    ' + logTxt.join('\n    '))
       } catch (e) { log('  读轨迹失败：' + e.message) }

@@ -1,6 +1,7 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // ⑬ 集成终端 E2E（真 PTY + 真浏览器 + CDP 真实键盘输入）
-// 用法: node D:\99DSH\tools\e2e13.mjs
-//   （自起测试后端，默认 3082；DSH_HOME=D:\99DSH\app-home）
+// 用法: node tools\e2e13.mjs
+//   （自起测试后端，默认 3082；DSH_HOME=<仓库根>\app-home）
 // 验的是：Ctrl+` 开面板 → xterm 渲染 → host 起真 PTY → 键盘输入真的进 shell →
 //   输出回显（含 **ANSI 原始转义序列**，这是平台件做不到的）→ resize → 关闭时回收会话。
 import { spawn } from 'node:child_process'
@@ -9,9 +10,9 @@ import { join } from 'node:path'
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3082)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = 'D:\\99DSH\\app-home'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_e2e13_backend_' + PORT + '.log'
+const HOME_DIR = `${__TIANGONG_ROOT}\\app-home`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_e2e13_backend_` + PORT + '.log'
 const CDP_PORT = 9900 + Math.floor(Math.random() * 90)
 const MARK = 'TERM_E2E_MARK_9137'
 
@@ -51,7 +52,7 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
@@ -69,7 +70,7 @@ async function main() {
   }
   if (!token) throw new Error('no token in backend log')
 
-  const userDir = join('D:\\99DSH', '.edge-e2e13-tmp-' + process.pid)
+  const userDir = join(`${__TIANGONG_ROOT}`, '.edge-e2e13-tmp-' + process.pid)
   try { rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 }) } catch (e) { /* Windows 文件锁：临时 profile 删不掉不影响结论 */ }
   const browser = spawn(findBrowser(), [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
@@ -285,7 +286,7 @@ try {
   try { if (handles && handles.browser) killTree(handles.browser.pid) } catch { /* ignore */ }
   try { if (handles && handles.backend) killTree(handles.backend.pid) } catch { /* ignore */ }
   await sleep(1500)
-  try { rmSync(join('D:\\99DSH', '.edge-e2e13-tmp-' + process.pid), { recursive: true, force: true }) } catch { /* ignore */ }
+  try { rmSync(join(`${__TIANGONG_ROOT}`, '.edge-e2e13-tmp-' + process.pid), { recursive: true, force: true }) } catch { /* ignore */ }
   console.log('[e2e13] cleanup done')
 }
 process.exit(handles && handles.ok ? 0 : 1)

@@ -1,9 +1,10 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // e2e-changestatus.mjs — 「本轮改动」审阅状态持久化 E2E（2026-09-17 用户实测 bug 的回归套件）
 //
 // 背景：点「全部保留」后只改了内存 ref，重开软件又从会话事件重新投影 → 改动全变回"待审阅"。
 // 修法：状态落 localStorage（{ [sessionId]: { 'turn|path': 'kept'|'undone' } }）。
 //
-// 用法：node D:\99DSH\tools\e2e-changestatus.mjs "<带 token 的 app url>"
+// 用法：node tools\e2e-changestatus.mjs "<带 token 的 app url>"
 // 前置：一个跑在 3082 的测试后端（DSH_HOME 指向临时家目录，见 README 配方），且该 home 里有
 //       带「工具改动」的会话。脚本自带浏览器（headless Edge），**profile 目录固定**，
 //       因为要验证"重新加载页面后状态还在"——随机 profile 会把 localStorage 一起丢掉。
@@ -16,7 +17,7 @@ if (!URL_) { console.log('用法: node e2e-changestatus.mjs "<带 token 的 app 
 const KEEP_PROFILE = process.env.KEEP_PROFILE === '1'
 const PORT = 9700 + Math.floor(Math.random() * 200)
 const H = 'http://127.0.0.1:' + PORT
-const userDir = join('D:\\99DSH', '.edge-changestatus')
+const userDir = join(`${__TIANGONG_ROOT}`, '.edge-changestatus')
 
 function findBrowser() {
   for (const c of [

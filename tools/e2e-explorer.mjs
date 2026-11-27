@@ -1,18 +1,19 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // e2e-explorer.mjs — 资源管理器标题栏动作 + 内联新建 E2E（2026-09-21 第二轮）
 // 覆盖：标题栏四个动作（新建文件 / 新建文件夹 / 折叠所有文件夹 / 刷新）的**可见性**（VSCode 的
 // alwaysShowHeaderActions 默认 false = 悬停才显示）、内联新建行的**目标层级**（文件夹内 / 文件所在目录 /
 // 根）、Enter 真的落盘、Esc 不留垃圾文件、折叠全部、刷新、零未捕获异常。
 // 用 CDP 真鼠标点击（不是页内 .click()），因为要顺带验"悬停才出现"这条。
-// 用法: node D:\99DSH\tools\e2e-explorer.mjs
+// 用法: node tools\e2e-explorer.mjs
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, openSync, closeSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3082)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = process.env.DSH_E2E_HOME || 'D:\\99DSH\\.smoke-home'
-const WS = process.env.DSH_E2E_WS || 'D:\\99DSH\\.smoke-ws-expl'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_e2eexpl_backend_' + PORT + '.log'
+const HOME_DIR = process.env.DSH_E2E_HOME || `${__TIANGONG_ROOT}\\.smoke-home`
+const WS = process.env.DSH_E2E_WS || `${__TIANGONG_ROOT}\\.smoke-ws-expl`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_e2eexpl_backend_` + PORT + '.log'
 const CDP_PORT = 9600 + Math.floor(Math.random() * 90)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -42,14 +43,14 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
   backend.on('exit', (c) => { backendExit = c })
   let browser = null
-  // 临时浏览器 profile 一律落 temp（00devCore §0.5），别落 D:\99DSH 根
-  const userDir = 'D:\\99DSH\\temp\\.edge-e2eexpl-tmp-' + process.pid
+  // 临时浏览器 profile 一律落 temp（00devCore §0.5），别落 <仓库根> 根
+  const userDir = `${__TIANGONG_ROOT}\\temp\\.edge-e2eexpl-tmp-` + process.pid
   try {
     let token = ''
     const t0 = Date.now()

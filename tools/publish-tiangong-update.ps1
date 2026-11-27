@@ -5,7 +5,7 @@
 # 不在增量链路里** —— 它换版本才动，走整包重装。
 #
 # 用法：
-#   powershell -ExecutionPolicy Bypass -File D:\99DSH\tools\publish-tiangong-update.ps1 -Notes "改了 xxx"
+#   powershell -ExecutionPolicy Bypass -File tools\publish-tiangong-update.ps1 -Notes "改了 xxx"
 #   ... -Version 1.6.1        # 指定版本（默认：已安装 +1 patch）
 #   ... -Full                 # 全量（基线为空时自动等价于全量）
 #   ... -SkipPlugin / -SkipShell
@@ -15,10 +15,10 @@
 param(
   [string]$Version = '',
   [string]$Notes = '',
-  [string]$InstallDir = 'D:\000AnzioAgent',
-  [string]$ShellDir = 'D:\99DSH\deepseek-harness-mine\shell',
-  [string]$PluginDir = 'D:\99DSH\deepseek-harness-mine\plugin',
-  [string]$HomeDir = 'D:\99DSH\app-home',
+  [string]$InstallDir = '',
+  [string]$ShellDir = '',
+  [string]$PluginDir = '',
+  [string]$HomeDir = '',
   [string]$ProfileName = 'desktop',
   [switch]$Full,
   [switch]$SkipShell,
@@ -29,6 +29,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '_paths.ps1')
+if (-not $InstallDir) { $InstallDir = $installDirDefault }
+if (-not $ShellDir) { $ShellDir = $shellDirRepo }
+if (-not $PluginDir) { $PluginDir = $pluginDirRepo }
+if (-not $HomeDir) { $HomeDir = $appHomeDir }
+
 $exeName = '天工.exe'
 
 function Get-Sha256($p) { (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower() }

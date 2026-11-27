@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // e2e-snapshot-ui.mjs — "反悔药"的**真浏览器**端到端：状态栏入口 → 快照面板 → 立即快照
 //   → 磁盘改/增/删 → 看差异（复用差异浮层）→ 真实 window.confirm → 还原 → 核对磁盘真值
 // 用法：node tools/e2e-snapshot-ui.mjs "<带 token 的 3082 url>"
@@ -11,9 +12,9 @@ const TOKEN_URL = process.argv[2]
 if (!TOKEN_URL) { console.log('usage: node tools/e2e-snapshot-ui.mjs <tokenUrl>'); process.exit(1) }
 const ORIGIN = new URL(TOKEN_URL).origin
 const API = ORIGIN + '/dsh-ide'
-const FIX = join('D:\\99DSH', '.snapfix-ui')
+const FIX = join(`${__TIANGONG_ROOT}`, '.snapfix-ui')
 // ⚠ 别读 process.env.DSH_HOME（harness shell 里带的是开发台家目录，见 §6 31）
-const SNAP = join(process.env.DSH_E2E_HOME || 'D:\\99DSH\\.smoke-home', 'snapshots')
+const SNAP = join(process.env.DSH_E2E_HOME || `${__TIANGONG_ROOT}\\.smoke-home`, 'snapshots')
 const WS = join(SNAP, createHash('sha1').update(FIX.toLowerCase()).digest('hex').slice(0, 16))
 
 const results = []
@@ -46,7 +47,7 @@ function findBrowser() {
   ]) if (existsSync(c)) return c
   throw new Error('no browser')
 }
-const userDir = join('D:\\99DSH', '.edge-snap-' + process.pid)
+const userDir = join(`${__TIANGONG_ROOT}`, '.edge-snap-' + process.pid)
 rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
 const proc = spawn(findBrowser(), [
   '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',

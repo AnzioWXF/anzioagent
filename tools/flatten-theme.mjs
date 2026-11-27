@@ -1,6 +1,6 @@
 // 拍平 VS Code theme-defaults 的 include 链 → 自包含 monaco 主题 JSON。
 // 用法: node tools/flatten-theme.mjs <dark|light>
-// 输出: D:\99DSH\dev-home\profiles\web\ide\dsh-ide\static\themes\<mode>-modern.json
+// 输出: <仓库根>\dev-home\profiles\web\ide\dsh-ide\static\themes\<mode>-modern.json
 // include 语义: colors 沿链由深到浅合并(浅层覆盖深层);
 // tokenColors 取链上第一个自带该键的文件(与 VS Code 继承语义一致)。
 import { writeFileSync } from 'node:fs'

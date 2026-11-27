@@ -1,24 +1,25 @@
 ﻿# run-e2e.ps1 — 并行跑 E2E 套件（解决"每次回归串行等 8-9 分钟"的问题）
 #
 # 用法：
-#   pwsh -File D:\99DSH\tools\run-e2e.ps1                 # smoke（默认）：3 套并行，约 1.5-2 分钟
-#   pwsh -File D:\99DSH\tools\run-e2e.ps1 -Mode full      # 全部套件，约 4-5 分钟
-#   pwsh -File D:\99DSH\tools\run-e2e.ps1 -Suites e2e-keys.mjs,e2e-explorer.mjs
-#   pwsh -File D:\99DSH\tools\run-e2e.ps1 -SkipSync       # 跳过 sync/testhome（只跑不改代码时）
+#   pwsh -File tools\run-e2e.ps1                 # smoke（默认）：3 套并行，约 1.5-2 分钟
+#   pwsh -File tools\run-e2e.ps1 -Mode full      # 全部套件，约 4-5 分钟
+#   pwsh -File tools\run-e2e.ps1 -Suites e2e-keys.mjs,e2e-explorer.mjs
+#   pwsh -File tools\run-e2e.ps1 -SkipSync       # 跳过 sync/testhome（只跑不改代码时）
 #
 # 设计要点（都是踩过坑换来的）：
 #   · 每套给**不同端口**（都认 DSH_E2E_PORT）→ 可以真并行；同家目录的套件并行没问题，
 #     但因为都要扫树/写会话，**应用家目录那三套（e2e12/e2e13/e2e-fsrev）串行跑**，避免互相干扰。
 #   · 跑之前默认查链接 + `dev-testhome.ps1`：**e2e12/e2e13/e2e-fsrev 用的是应用家目录**，
 #     它里面那份插件是指向真源的目录链接，不刷新并行组的 home 就会测到旧代码给出假绿（§6 83 的账）。
-#   · 输出落 D:\99DSH\_e2e-logs\<suite>.log，终端只打"每套一行 + 失败项"，避免长输出冲上下文。
+#   · 输出落 <仓库根>\_e2e-logs\<suite>.log，终端只打"每套一行 + 失败项"，避免长输出冲上下文。
 param(
   [ValidateSet('smoke', 'full')][string]$Mode = 'smoke',
   [string[]]$Suites = @(),
   [switch]$SkipSync
 )
 $ErrorActionPreference = 'Stop'
-$root = 'D:\99DSH'
+. (Join-Path $PSScriptRoot '_paths.ps1')
+$root = $repoRoot
 $tools = Join-Path $root 'tools'
 $logDir = Join-Path $root '_e2e-logs'
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
@@ -41,11 +42,11 @@ $SERIAL = @('e2e12.mjs', 'e2e13.mjs', 'e2e-fsrev.mjs')
 #   并在同一份会话/trace 里打架 → 实测出现假 FAIL（e2e-keys 从 23/23 掉到 21/23，单独跑又全绿）。
 #   home 只有 ~30MB，克隆一份几秒钟，比"跑了半天发现是串扰"便宜得多。
 $HOME_FOR = @{
-  'e2e-keys.mjs'     = 'D:\99DSH\.smoke-home-keys'
-  'e2e-explorer.mjs' = 'D:\99DSH\.smoke-home-explorer'
-  'e2e-tabs.mjs'     = 'D:\99DSH\.smoke-home-tabs'
-  'e2e-resize.mjs'   = 'D:\99DSH\.smoke-home-resize'
-  'e2e-media.mjs'    = 'D:\99DSH\.smoke-home-media'
+  'e2e-keys.mjs'     = Join-Path $root '.smoke-home-keys'
+  'e2e-explorer.mjs' = Join-Path $root '.smoke-home-explorer'
+  'e2e-tabs.mjs'     = Join-Path $root '.smoke-home-tabs'
+  'e2e-resize.mjs'   = Join-Path $root '.smoke-home-resize'
+  'e2e-media.mjs'    = Join-Path $root '.smoke-home-media'
 }
 
 if ($Suites.Count -gt 0) {
@@ -65,19 +66,19 @@ function Clear-Port([int]$p) {
 }
 
 # 顺手清掉上一轮没删掉的临时浏览器 profile（Windows 文件锁会在套件收尾时报错并留下垃圾）
-# 落点已改成 D:\99DSH\temp（§0.5：临时垃圾统一落 temp），这里跟着改。
+# 落点已改成 <仓库根>\temp（§0.5：临时垃圾统一落 temp），这里跟着改。
 # ⚠ 用 node 的 rmSync 而不是 Remove-Item：环境的批量删除保护会拦下这种大目录（>500 项），
 #   而且它**不是** -ErrorAction SilentlyContinue 能吞掉的错误 —— 直接把脚本中断（2026-09-30 实测）。
-New-Item -ItemType Directory -Force -Path 'D:\99DSH\temp' | Out-Null
-Get-ChildItem 'D:\99DSH\temp' -Directory -Filter '.edge-*' -Force -ErrorAction SilentlyContinue |
+New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
+Get-ChildItem $tempDir -Directory -Filter '.edge-*' -Force -ErrorAction SilentlyContinue |
   ForEach-Object { node -e 'require("fs").rmSync(process.argv[1],{recursive:true,force:true,maxRetries:10,retryDelay:120})' $_.FullName }
 
 if (-not $SkipSync) {
-  # 插件源码只有一份（D:\99DSH\deepseek-harness-mine\plugin），两个家目录里都是指向它的目录链接
+  # 插件源码只有一份（<仓库根>\deepseek-harness-mine\plugin），两个家目录里都是指向它的目录链接
   # ⇒ 没有"同步"这回事了，只需确认链接还在（2026-10-12 目录迁移后）
   Write-Host '== 检查插件链接（应用家目录那几套跑的就是这份真源）==' -ForegroundColor Cyan
-  $pluginRoot = 'D:\99DSH\deepseek-harness-mine\plugin'
-  foreach ($h in @('D:\99DSH\app-home', 'D:\99DSH\dev-home')) {
+  $pluginRoot = $pluginDirRepo
+  foreach ($h in @($appHomeDir, $devHomeDir)) {
     $lnk = Join-Path $h 'profiles\web\ide\dsh-ide'
     $it = Get-Item -LiteralPath $lnk -Force -ErrorAction SilentlyContinue
     if ($it -and $it.LinkType -eq 'Junction' -and (($it.Target -join '') -eq $pluginRoot)) {
@@ -114,7 +115,7 @@ function Start-Suite([string]$s) {
   Clear-Port $p
   $log = Join-Path $logDir ($s -replace '\.mjs$', '.log')
   $env:DSH_E2E_PORT = "$p"
-  $env:DSH_E2E_HOME = if ($HOME_FOR.ContainsKey($s)) { $HOME_FOR[$s] } else { 'D:\99DSH\.smoke-home' }
+  $env:DSH_E2E_HOME = if ($HOME_FOR.ContainsKey($s)) { $HOME_FOR[$s] } else { Join-Path $root '.smoke-home' }
   $psi = Start-Process -FilePath 'node' -ArgumentList @((Join-Path $tools $s)) `
     -RedirectStandardOutput $log -RedirectStandardError ($log + '.err') -PassThru -NoNewWindow
   return [pscustomobject]@{ Name = $s; Port = $p; Proc = $psi; Log = $log; Sw = [System.Diagnostics.Stopwatch]::StartNew() }

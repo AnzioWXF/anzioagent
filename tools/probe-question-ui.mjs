@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // probe-question-ui.mjs — 决定性验证：平台"提问卡片"是否真的会出现在天工右侧面板里
 // 用法：node tools/probe-question-ui.mjs "<带 token 的 3082 url>" ["自定义提问指令"]
 // 做法：真键盘输入（CDP Input.insertText + Enter）→ 等 Agent 调用 ask_user_question
@@ -21,7 +22,7 @@ function findBrowser() {
   ]) if (existsSync(c)) return c
   throw new Error('no browser')
 }
-const userDir = join('D:\\99DSH', '.edge-q-' + process.pid)
+const userDir = join(`${__TIANGONG_ROOT}`, '.edge-q-' + process.pid)
 rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
 const proc = spawn(findBrowser(), ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
   '--window-size=1440,900', `--remote-debugging-port=${PORT}`, `--user-data-dir=${userDir}`, 'about:blank'], { stdio: 'ignore' })

@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // e2e-theme-colors.mjs — 编辑器配色「选中态可辨认」探针（2026-09-21）
 //
 // 起因（用户报障）："文字选中的时候的背景颜色，跟光标聚焦到附近时文字的背景色一模一样，
@@ -13,16 +14,16 @@
 //   **真正喂给 monaco 的色板对象**抓下来（这是"monaco 到底收到什么"的第一手证据，不是读我们的源文件），
 //   再断言三个色**两两不同**且与 VSCode 规格一致；另外顺带断言编辑器右上角不再有「保存」按钮。
 //
-// 用法: node D:\99DSH\tools\e2e-theme-colors.mjs   （自起隔离测试后端 + 无头 Edge，自建自清）
+// 用法: node tools\e2e-theme-colors.mjs   （自起隔离测试后端 + 无头 Edge，自建自清）
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, openSync, closeSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3099)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = process.env.DSH_E2E_HOME || 'D:\\99DSH\\.smoke-home-colors'
-const WS = process.env.DSH_E2E_WS || 'D:\\99DSH\\.smoke-ws-colors'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_e2ecolors_backend_' + PORT + '.log'
+const HOME_DIR = process.env.DSH_E2E_HOME || `${__TIANGONG_ROOT}\\.smoke-home-colors`
+const WS = process.env.DSH_E2E_WS || `${__TIANGONG_ROOT}\\.smoke-ws-colors`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_e2ecolors_backend_` + PORT + '.log'
 const CDP_PORT = 9700 + Math.floor(Math.random() * 90)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -61,13 +62,13 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
   backend.on('exit', (c) => { backendExit = c })
   let browser = null
-  const userDir = 'D:\\99DSH\\.edge-e2ecolors-tmp-' + process.pid
+  const userDir = `${__TIANGONG_ROOT}\\.edge-e2ecolors-tmp-` + process.pid
   try {
     let token = ''
     const t0 = Date.now()

@@ -4,22 +4,29 @@
 # 本地副本 + 这个脚本 = 一条命令拿到权威答案（示例见 00devCore §7「规格优先本地副本」）。
 #
 # 用法：
-#   pwsh -File D:\99DSH\tools\vscode-src.ps1 "explorer.newFile"                 # 全库搜，最多 40 条
-#   pwsh -File D:\99DSH\tools\vscode-src.ps1 "alwaysShowHeaderActions" -Max 10
-#   pwsh -File D:\99DSH\tools\vscode-src.ps1 "MenuId.ViewTitle" -Path src\vs\workbench\contrib\files
-#   pwsh -File D:\99DSH\tools\vscode-src.ps1 "new-folder" -Files                # 只列命中文件
-#   pwsh -File D:\99DSH\tools\vscode-src.ps1 "Sash" -Path src\vs\base\browser\ui\sash -Max 20
+#   pwsh -File tools\vscode-src.ps1 "explorer.newFile"                 # 全库搜，最多 40 条
+#   pwsh -File tools\vscode-src.ps1 "alwaysShowHeaderActions" -Max 10
+#   pwsh -File tools\vscode-src.ps1 "MenuId.ViewTitle" -Path src\vs\workbench\contrib\files
+#   pwsh -File tools\vscode-src.ps1 "new-folder" -Files                # 只列命中文件
+#   pwsh -File tools\vscode-src.ps1 "Sash" -Path src\vs\base\browser\ui\sash -Max 20
 param(
   [Parameter(Mandatory = $true, Position = 0)][string]$Pattern,
   [string]$Path = '',
   [int]$Max = 40,
   [switch]$Files,
-  [string]$Src = 'D:\04other\vscode-src'
+  [string]$Src = ''
 )
 $ErrorActionPreference = 'Continue'
+. (Join-Path $PSScriptRoot '_paths.ps1')
+# 源码副本不是仓库的一部分（解压后 1GB+）：环境变量 > 既有副本 > 仓库 temp 下
+if (-not $Src) {
+  $Src = if ($env:TIANGONG_VSCODE_SRC) { $env:TIANGONG_VSCODE_SRC }
+  elseif (Test-Path -LiteralPath 'D:\04other\vscode-src\package.json') { 'D:\04other\vscode-src' }
+  else { Join-Path $tempDir 'vscode-src' }
+}
 if (-not (Test-Path (Join-Path $Src 'package.json'))) {
   Write-Host "本地源码副本不存在：$Src" -ForegroundColor Red
-  Write-Host "先跑：node D:\99DSH\tools\fetch-vscode-src.mjs   （或加 --version x.y.z 指定版本）" -ForegroundColor Yellow
+  Write-Host "先跑：node tools\fetch-vscode-src.mjs   （或加 --version x.y.z 指定版本）" -ForegroundColor Yellow
   exit 2
 }
 $verLine = ''
@@ -29,7 +36,7 @@ if (-not (Test-Path $target)) { Write-Host "路径不存在：$target" -Foregrou
 
 # 优先用检出目录里自带的 ripgrep（比 Select-String 快几十倍），找不到再退回 Select-String
 $rg = $null
-$cand = Get-ChildItem 'D:\99DSH\deepseek-harness-mine\harness\node_modules\.pnpm' -Directory -Filter '@vscode+ripgrep-win32-x64*' -ErrorAction SilentlyContinue | Select-Object -First 1
+$cand = Get-ChildItem (Join-Path $harnessDir 'node_modules\.pnpm') -Directory -Filter '@vscode+ripgrep-win32-x64*' -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($cand) {
   $p = Join-Path $cand.FullName 'node_modules\@vscode\ripgrep-win32-x64\bin\rg.exe'
   if (Test-Path $p) { $rg = $p }

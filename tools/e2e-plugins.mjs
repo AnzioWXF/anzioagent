@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // e2e-plugins.mjs — 🧩 插件面板「全量透明」探针（2026-09-22）
 //
 // 起因（用户原话）："后端那一大批插件也要在这里显示，万一我以后要针对后端插件进行改动呢？
@@ -7,17 +8,17 @@
 // 改后：① 插件树 = `ctx.loader.entries()` 全量（含纯后端插件与停用行，带状态/来源组/包说明）
 //       ② 前端 bundle（浏览器侧模块表）③ 动态插件；外加过滤条（全部/带前端/纯后端/已停用）。
 //
-// 用法: node D:\99DSH\tools\e2e-plugins.mjs
+// 用法: node tools\e2e-plugins.mjs
 //   ⚠ 测试家目录必须先用 dev-testhome.ps1 -TestHome <路径> 生成过（§6 90①），否则插件不挂载。
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, openSync, closeSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3095)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = process.env.DSH_E2E_HOME || 'D:\\99DSH\\.smoke-home-composer'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_e2eplugins_backend_' + PORT + '.log'
-const SHOT = 'D:\\99DSH\\_e2e-logs\\plugins-' + Date.now() + '.png'
+const HOME_DIR = process.env.DSH_E2E_HOME || `${__TIANGONG_ROOT}\\.smoke-home-composer`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_e2eplugins_backend_` + PORT + '.log'
+const SHOT = `${__TIANGONG_ROOT}\\_e2e-logs\\plugins-` + Date.now() + '.png'
 const CDP_PORT = 9700 + Math.floor(Math.random() * 90)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -75,13 +76,13 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
   backend.on('exit', (c) => { backendExit = c })
   let browser = null
-  const userDir = 'D:\\99DSH\\.edge-e2eplugins-tmp-' + process.pid
+  const userDir = `${__TIANGONG_ROOT}\\.edge-e2eplugins-tmp-` + process.pid
   try {
     let token = ''
     const t0 = Date.now()
@@ -230,7 +231,7 @@ async function main() {
 
     await sleep(300)
     const shot = await cdp('Page.captureScreenshot', { format: 'png' })
-    if (shot && shot.data) { mkdirSync('D:\\99DSH\\_e2e-logs', { recursive: true }); writeFileSync(SHOT, Buffer.from(shot.data, 'base64')); console.log('[SHOT] ' + SHOT) }
+    if (shot && shot.data) { mkdirSync(`${__TIANGONG_ROOT}\\_e2e-logs`, { recursive: true }); writeFileSync(SHOT, Buffer.from(shot.data, 'base64')); console.log('[SHOT] ' + SHOT) }
 
     check('P16 页面零未捕获异常', pageErrors.length === 0, pageErrors.join(' | '))
     const pass = results.filter((r) => r.ok).length

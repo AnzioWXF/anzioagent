@@ -18,16 +18,29 @@ app.setPath('userData', path.join(app.getPath('appData'), 'dsh-ide-desktop'))
 
 // ---- 配置（环境变量可覆盖）----
 // 注意：**应用只认自己的 ANZIO_* 变量**，不读 DSH_* —— 否则从别的 DSH 会话里启动
-// （比如开发台终端里 Start-Process）会继承 DSH_HOME=D:\99DSH\dev-home，把应用后端指到开发台
+// （比如开发台终端里 Start-Process）会继承开发台的 DSH_HOME，把应用后端指到开发台
 // 的 profile 上（表现为"打开是标准 Web 界面、dsh-ide 插件不挂载"，2026-09-16 踩到）。
 const DSH_URL = process.env.ANZIO_DSH_URL || 'http://127.0.0.1:3081'
-const DSH_DIR = process.env.ANZIO_DSH_DIR || 'D:\\99DSH\\deepseek-harness-mine\\harness'
+// 路径从本文件位置推导（开发期 __dirname = <仓库根>\deepseek-harness-mine\shell），换机器不用改。
+const MINE_DIR = path.resolve(__dirname, '..')
+const REPO_ROOT = path.resolve(MINE_DIR, '..')
+const DSH_DIR = process.env.ANZIO_DSH_DIR || (app.isPackaged ? path.join(process.resourcesPath, 'harness') : path.join(MINE_DIR, 'harness'))
 // 默认跑 tsdown 构建产物（apps/cli/lib/bin.js，冷启动 ~2s；tsx 源码模式冷启
 // 动 ~38s，2026-09-02 启动优化）。开发调试可用 ANZIO_DSH_LAUNCH 覆盖回 tsx 模式。
 // --no-open：壳自己开窗口，别再抢系统默认浏览器（踩坑：后端把浏览器也拉起来过）。
 const DSH_LAUNCH = process.env.ANZIO_DSH_LAUNCH || 'node apps/cli/lib/bin.js web --no-open'
-const DSH_HOME = process.env.ANZIO_DSH_HOME || 'D:\\99DSH\\app-home'
-// 安装目录 = exe 所在目录（固定路径 D:\000AnzioAgent，2026-09-16 起）。
+// 家目录口径与官方桌面端一致：TIANGONG_HOME > exe 旁 tiangong-home.txt > 用户目录 > 仓库根 app-home
+function resolveDefaultHome() {
+  if (process.env.TIANGONG_HOME) return process.env.TIANGONG_HOME
+  if (!app.isPackaged) return path.join(REPO_ROOT, 'app-home')
+  try {
+    const ptr = fs.readFileSync(path.join(path.dirname(process.execPath), 'tiangong-home.txt'), 'utf8').trim()
+    if (ptr) return ptr
+  } catch { /* 没有指针文件就走默认 */ }
+  return path.join(process.env.LOCALAPPDATA || app.getPath('appData'), 'Tiangong', 'home')
+}
+const DSH_HOME = process.env.ANZIO_DSH_HOME || resolveDefaultHome()
+// 安装目录 = exe 所在目录（2026-09-16 起不依赖启动参数）。
 // resources/app/main.js → 上两级就是安装根；环境变量可覆盖（开发/调试用）。
 const INSTALL_DIR = process.env.ANZIO_INSTALL_DIR || (app.isPackaged ? path.resolve(__dirname, '..', '..') : __dirname)
 // 显示名 = 天工（2026-09-17 用户拍板改名）。窗口标题 / 启动画面 / 对话框 / 任务栏都用它；

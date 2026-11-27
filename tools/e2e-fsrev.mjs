@@ -1,6 +1,7 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // DSH IDE 资源管理器自动刷新 E2E（CDP 真浏览器 + 真实磁盘改动）
-// 用法: node D:\99DSH\tools\e2e-fsrev.mjs
-//   （自起测试后端，默认 3082；DSH_HOME=D:\99DSH\app-home；fixture 自建自清 —— 踩坑 21）
+// 用法: node tools\e2e-fsrev.mjs
+//   （自起测试后端，默认 3082；DSH_HOME=<仓库根>\app-home；fixture 自建自清 —— 踩坑 21）
 // 验的是：磁盘变了（Agent / 外部编辑器 / git 建改删文件）资源管理器**不用手点 ⟳**
 //   就跟着变；展开的子目录也刷新；忽略表目录（node_modules）不触发刷新；
 //   以及原有交互（展开 / 点文件开标签 / 手动刷新 / Ctrl+B）没被改坏。
@@ -10,9 +11,9 @@ import { join } from 'node:path'
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3082)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = 'D:\\99DSH\\app-home'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_e2e_fsrev_backend_' + PORT + '.log'
+const HOME_DIR = `${__TIANGONG_ROOT}\\app-home`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_e2e_fsrev_backend_` + PORT + '.log'
 const TRACE = join(HOME_DIR, 'logs', 'ide-trace.log')
 const FIX = '_e2e_fsrev'
 const CDP_PORT = 9700 + Math.floor(Math.random() * 400)
@@ -73,7 +74,7 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   backend.on('exit', (code) => { backendExit = code })
@@ -92,7 +93,7 @@ async function main() {
   console.log('[info] backend up on ' + PORT)
 
   // ── 2) 起无头浏览器 → CDP ──────────────────────────────────────
-  const userDir = join('D:\\99DSH', '.edge-fsrev-tmp-' + process.pid)
+  const userDir = join(`${__TIANGONG_ROOT}`, '.edge-fsrev-tmp-' + process.pid)
   try { rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 }) } catch (e) { /* Windows 文件锁：临时 profile 删不掉不影响结论 */ }
   browser = spawn(findBrowser(), [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
@@ -187,7 +188,7 @@ async function main() {
   // ⑮ 起：把活动根指到**专用安静工作区**再测。这个家目录当前会话的 cwd 可能是整盘 `D:\`
   // —— 那样 fs.watch 每秒几十次变更、树不停重列，本套件会出假 FAIL（2026-09-21 实测 2 项）。
   // ⚠ 必须在页面就绪之后 POST：客户端加载时会按"当前会话 cwd"上报一次 active-root，早了会被它覆盖。
-  const WS = process.env.DSH_E2E_WS || 'D:\\99DSH\\.smoke-wsfs'
+  const WS = process.env.DSH_E2E_WS || `${__TIANGONG_ROOT}\\.smoke-wsfs`
   rmSync(WS, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
   mkdirSync(WS, { recursive: true })
   writeFileSync(join(WS, 'root-marker.txt'), 'root\n')   // 用来确认"树真的切到新根了"
@@ -288,11 +289,11 @@ try {
   try { if (browser) killTree(browser.pid) } catch { /* ignore */ }
   try { if (backend) killTree(backend.pid) } catch { /* ignore */ }
   await sleep(1500)
-  try { rmSync(join('D:\\99DSH', '.edge-fsrev-tmp-' + process.pid), { recursive: true, force: true }) } catch { /* ignore */ }
+  try { rmSync(join(`${__TIANGONG_ROOT}`, '.edge-fsrev-tmp-' + process.pid), { recursive: true, force: true }) } catch { /* ignore */ }
   // 自清 fixture（无论成败；后端可能已被杀 → 用探针里记下的根兜底）
-  const fixRoot = ROOT_SEEN || 'D:\\99DSH\\dshworkspace2'
+  const fixRoot = ROOT_SEEN || `${__TIANGONG_ROOT}\\dshworkspace2`
   try { rmSync(join(fixRoot, FIX), { recursive: true, force: true }) } catch { /* ignore */ }
-  if (process.env.DSH_E2E_WS || ROOT_SEEN === 'D:\\99DSH\\.smoke-wsfs') {
+  if (process.env.DSH_E2E_WS || ROOT_SEEN === `${__TIANGONG_ROOT}\\.smoke-wsfs`) {
     try { rmSync(fixRoot, { recursive: true, force: true }) } catch { /* ignore */ }
   }
   console.log('[e2e-fsrev] cleanup done (fixture removed, backend/browser killed)')

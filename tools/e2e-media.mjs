@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // e2e-media.mjs — 媒体预览 E2E（2026-09-23，用户报障"天工打不开图片"→ 对齐 VSCode）
 //
 // 覆盖（每条都对应一个**可量化的运行时真相**，不是"看起来对"）：
@@ -9,8 +10,8 @@
 //   · 二进制：.bin（含 \0）→ VSCode 那套占位卡（不是报错、更不是把标签关掉）；
 //           「仍以文本方式打开」→ 强制按文本读出内容
 //   · 音频（真 WAV）/视频（按扩展名路由）→ 原生 controls 元素
-// 用法: pwsh -File D:\99DSH\tools\run-e2e.ps1 -Suites e2e-media.mjs
-//   或: node D:\99DSH\tools\e2e-media.mjs
+// 用法: pwsh -File tools\run-e2e.ps1 -Suites e2e-media.mjs
+//   或: node tools\e2e-media.mjs
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync, openSync, closeSync, rmSync, mkdirSync } from 'node:fs'
 import { deflateSync } from 'node:zlib'
@@ -18,10 +19,10 @@ import { createHash } from 'node:crypto'
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3098)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = process.env.DSH_E2E_HOME || 'D:\\99DSH\\.smoke-home-media'
-const WS = process.env.DSH_E2E_WS || 'D:\\99DSH\\.smoke-ws-media'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_e2emedia_backend_' + PORT + '.log'
+const HOME_DIR = process.env.DSH_E2E_HOME || `${__TIANGONG_ROOT}\\.smoke-home-media`
+const WS = process.env.DSH_E2E_WS || `${__TIANGONG_ROOT}\\.smoke-ws-media`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_e2emedia_backend_` + PORT + '.log'
 const CDP_PORT = 9700 + Math.floor(Math.random() * 80)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -107,14 +108,14 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
   backend.on('exit', (c) => { backendExit = c })
   let browser = null
-  // 临时浏览器 profile 一律落 temp（00devCore §0.5），别落 D:\99DSH 根
-  const userDir = 'D:\\99DSH\\temp\\.edge-e2emedia-tmp-' + process.pid
+  // 临时浏览器 profile 一律落 temp（00devCore §0.5），别落 <仓库根> 根
+  const userDir = `${__TIANGONG_ROOT}\\temp\\.edge-e2emedia-tmp-` + process.pid
   try {
     let token = ''
     const t0 = Date.now()
@@ -249,7 +250,7 @@ async function main() {
     async function shot(name) {
       try {
         const r = await cdp('Page.captureScreenshot', { format: 'png' })
-        if (r && r.data) writeFileSync('D:\\99DSH\\_e2e-logs\\' + name + '.png', Buffer.from(r.data, 'base64'))
+        if (r && r.data) writeFileSync(`${__TIANGONG_ROOT}\\_e2e-logs\\` + name + '.png', Buffer.from(r.data, 'base64'))
       } catch { /* 截图失败不影响断言 */ }
     }
     async function openNode(name) {

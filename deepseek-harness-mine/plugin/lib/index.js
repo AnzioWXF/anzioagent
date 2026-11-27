@@ -386,8 +386,7 @@ const SESSION_MAX_BYTES = 4 * 1024 * 1024
 // 这几个前缀整棵跳过（2026-09-20，配合"盘符根也能当工作区"那一刀）。
 const snapExcludeRoots = () => [
   process.env.DSH_HOME,
-  process.env.ANZIO_INSTALL_DIR,
-  'D:\\000AnzioAgent',   // 安装目录默认值（§3：更新源/基线/脚本都绑死它）
+  process.env.ANZIO_INSTALL_DIR,   // 壳起后端时会设，打包版就是安装目录
 ].filter(Boolean)
 const snapWsKey = (root) => createHash('sha1').update(String(root).toLowerCase()).digest('hex').slice(0, 16)
 const readDirSafe = async (dir) => { try { return await readdir(dir, { withFileTypes: true }) } catch { return [] } }
@@ -1201,7 +1200,6 @@ export default {
       if (asar) roots.push(asar[1])
       // 打包版最稳的锚：exe 旁边的 resources（argv 在 --expose-internals 启动下不可靠）
       roots.push(path.join(path.dirname(process.execPath), 'resources', 'app.asar', 'dsh'))
-      roots.push('D:\\99DSH\\deepseek-harness-mine\\harness')
       return roots
     })()
     let ptyMod = null

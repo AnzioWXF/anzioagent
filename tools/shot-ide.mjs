@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // shot-ide.mjs — 给 IDE 页面拍张图（"眼睛验收"用：改皮肤/布局后自己先看一眼）
 // 用法：node tools/shot-ide.mjs <带 token 的 url> <out.png> [要打开的文件路径]
 // 流程：① 用带 token 的 URL 首访（种认证 cookie）→ ② 再导航到干净 URL（可选 ?file= 深链）
@@ -21,7 +22,7 @@ function findBrowser() {
   ]) if (existsSync(c)) return c
   throw new Error('no browser')
 }
-const userDir = join('D:\\99DSH', '.edge-shot-' + process.pid)
+const userDir = join(`${__TIANGONG_ROOT}`, '.edge-shot-' + process.pid)
 rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
 const proc = spawn(findBrowser(), [
   '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',

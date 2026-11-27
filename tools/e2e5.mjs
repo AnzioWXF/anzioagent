@@ -1,6 +1,7 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // ⑤ LSP 语言智能 E2E（CDP 真浏览器 + 真 monaco 语言服务）
-// 用法: node D:\99DSH\tools\e2e5.mjs
-//   （自起测试后端，默认 3082；DSH_HOME=D:\99DSH\app-home；fixture 自建自清）
+// 用法: node tools\e2e5.mjs
+//   （自起测试后端，默认 3082；DSH_HOME=<仓库根>\app-home；fixture 自建自清）
 // 验的是 monaco 内建语言服务（TS/JS/JSON/CSS/HTML，跑在 web worker 里）在**本应用里**
 //   到底哪些能力已经能用：补全 / 悬停 / 同文件与跨文件转到定义 / 文档符号 / 重命名 /
 //   格式化 / 诊断。第一轮是"探明现状"，失败项 = 待接的活。
@@ -10,9 +11,9 @@ import { join } from 'node:path'
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3082)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = 'D:\\99DSH\\app-home'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_e2e5_backend_' + PORT + '.log'
+const HOME_DIR = `${__TIANGONG_ROOT}\\app-home`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_e2e5_backend_` + PORT + '.log'
 const TRACE = join(HOME_DIR, 'logs', 'ide-trace.log')
 const FIX = '_e2e5'
 const CDP_PORT = 9700 + Math.floor(Math.random() * 400)
@@ -142,7 +143,7 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
@@ -193,7 +194,7 @@ async function main() {
   writeFileSync(tsCfgPath, TSCONFIG)
 
   // ── 浏览器 ─────────────────────────────────────────────────────
-  const userDir = join('D:\\99DSH', '.edge-e2e5-tmp-' + process.pid)
+  const userDir = join(`${__TIANGONG_ROOT}`, '.edge-e2e5-tmp-' + process.pid)
   rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
   const browser = spawn(findBrowser(), [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
@@ -575,8 +576,8 @@ try {
   try { if (handles && handles.browser) killTree(handles.browser.pid) } catch { /* ignore */ }
   try { if (handles && handles.backend) killTree(handles.backend.pid) } catch { /* ignore */ }
   await sleep(1500)
-  try { rmSync(join('D:\\99DSH', '.edge-e2e5-tmp-' + process.pid), { recursive: true, force: true }) } catch { /* ignore */ }
-  const root = globalThis.__ROOT || 'D:\\99DSH\\dshworkspace2'
+  try { rmSync(join(`${__TIANGONG_ROOT}`, '.edge-e2e5-tmp-' + process.pid), { recursive: true, force: true }) } catch { /* ignore */ }
+  const root = globalThis.__ROOT || `${__TIANGONG_ROOT}\\dshworkspace2`
   try { rmSync(join(root, FIX), { recursive: true, force: true }) } catch { /* ignore */ }
   // 第三方类型 fixture：本来没有 node_modules 就整个删掉；本来有就只删我们建的那个假包
   try {

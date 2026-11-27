@@ -1,6 +1,6 @@
 ﻿# make-logo.ps1 — build the app icon assets from the master logo PNG.
 #
-#   pwsh -ExecutionPolicy Bypass -File D:\99DSH\tools\make-logo.ps1
+#   pwsh -ExecutionPolicy Bypass -File tools\make-logo.ps1
 #
 # Input : D:\logoV2p.png  (1024x1024, opaque white background)
 # Output: <OutDir>\icon.png        512x512  window icon + electron-builder icon
@@ -15,14 +15,19 @@
 # (22% corner radius) with the art bled to the edges; everything outside the
 # rounded rect stays transparent. Re-run this script whenever the logo changes.
 param(
-  [string]$Source = 'D:\logoV2p.png',
-  [string]$OutDir = 'D:\99DSH\deepseek-harness-mine\shell\assets',
-  [string]$B64File = 'D:\99DSH\tools\.logo64.b64.txt',
+  [string]$Source = '',
+  [string]$OutDir = '',
+  [string]$B64File = '',
   [double]$RadiusRatio = 0.22,
   [int[]]$IcoSizes = @(16, 24, 32, 48, 64, 128, 256)
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '_paths.ps1')
+# 主素材不进仓（原图 1024px，只留成品）：放 temp\logoV2p.png 或 -Source 指过去
+if (-not $Source) { $Source = Join-Path $tempDir 'logoV2p.png' }
+if (-not $OutDir) { $OutDir = Join-Path $shellDirRepo 'assets' }
+if (-not $B64File) { $B64File = Join-Path $PSScriptRoot '.logo64.b64.txt' }
 Add-Type -AssemblyName System.Drawing
 
 if (-not (Test-Path -LiteralPath $Source)) { throw "logo source not found: $Source" }

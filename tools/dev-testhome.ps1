@@ -2,12 +2,12 @@
 # 验证 IDE 插件的改动（含 host 半）。
 #
 # 用法：
-#   pwsh -File D:\99DSH\tools\dev-testhome.ps1              # 首次建 or 只刷新插件代码
-#   pwsh -File D:\99DSH\tools\dev-testhome.ps1 -Rebuild     # 连家目录一起重建（会话数据重新拷）
-#   pwsh -File D:\99DSH\tools\dev-testhome.ps1 -Clean       # 收工清理（先摘 junction 再删）
+#   pwsh -File tools\dev-testhome.ps1              # 首次建 or 只刷新插件代码
+#   pwsh -File tools\dev-testhome.ps1 -Rebuild     # 连家目录一起重建（会话数据重新拷）
+#   pwsh -File tools\dev-testhome.ps1 -Clean       # 收工清理（先摘 junction 再删）
 #
 # 起后端（另开一条，放后台）：
-#   $env:DSH_HOME='D:\99DSH\.smoke-home'; node D:\99DSH\deepseek-harness-mine\harness\apps\cli\lib\bin.js web --port 3082 --no-open
+#   $env:DSH_HOME='<仓库根>\.smoke-home'; node deepseek-harness-mine\harness\apps\cli\lib\bin.js web --port 3082 --no-open
 #
 # 踩过的坑（见 00devCore §6 49）：
 #   · 别整目录 robocopy 家目录：pnpm 符号链接 + 被应用占用的文件会让它卡死（默认 /R=1000000）
@@ -16,13 +16,17 @@
 param(
   [switch]$Rebuild,
   [switch]$Clean,
-  [string]$TestHome = 'D:\99DSH\.smoke-home',
-  [string]$AppHome = 'D:\99DSH\app-home',
+  [string]$TestHome = '',
+  [string]$AppHome = '',
   # 插件真源（家目录里那两份都是指向它的目录链接，2026-10-12 目录迁移后）
-  [string]$DevPlugin = 'D:\99DSH\deepseek-harness-mine\plugin'
+  [string]$DevPlugin = ''
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '_paths.ps1')
+if (-not $TestHome) { $TestHome = Join-Path $repoRoot '.smoke-home' }
+if (-not $AppHome) { $AppHome = $appHomeDir }
+if (-not $DevPlugin) { $DevPlugin = $pluginDirRepo }
 
 function Remove-TestHome($dir) {
   if (-not (Test-Path -LiteralPath $dir)) { return }
@@ -71,4 +75,4 @@ $h4 = (Get-FileHash "$TestHome\profiles\web\ide\dsh-ide\lib\index.js" -Algorithm
 $sess = (Get-ChildItem "$TestHome\sessions" -Recurse -File -EA 0 | Measure-Object).Count
 Write-Host ("  测试 home : {0}   （client {1} / index {2}  一致={3}）  会话文件 {4} 个" -f `
   $TestHome, $h2, $h4, (($h1 -eq $h2) -and ($h3 -eq $h4)), $sess)
-Write-Host '  起后端 : $env:DSH_HOME=''D:\99DSH\.smoke-home''; node D:\99DSH\deepseek-harness-mine\harness\apps\cli\lib\bin.js web --port 3082 --no-open'
+Write-Host ("  起后端 : `$env:DSH_HOME='{0}'; node `"{1}`" web --port 3082 --no-open" -f $TestHome, (Join-Path $harnessDir 'apps\cli\lib\bin.js'))

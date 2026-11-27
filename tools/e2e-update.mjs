@@ -1,12 +1,13 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // AnzioAgent 内置更新器 E2E（真机：跑安装目录里的真 exe，不是无头浏览器）
-// 前置：D:\000AnzioAgent 已安装旧版本；更新源 D:\000AnzioAgent\_updates 已有更新的 latest.json
+// 前置：<安装目录> 已安装旧版本；更新源 <安装目录>\_updates 已有更新的 latest.json
 // 用法: node tools/e2e-update.mjs
 // 验的是：版本徽标/检查更新 → 下载校验落地 staging → 退出后助手脚本覆盖文件 → 自动重启 → 新版本生效（IDE 正常渲染）
 import { spawn, spawnSync } from 'node:child_process'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-const INSTALL = 'D:\\000AnzioAgent'
+const INSTALL = `${__TIANGONG_INSTALL}`
 const EXE = join(INSTALL, 'AnzioAgent.exe')
 const VERSION_FILE = join(INSTALL, 'version.json')
 const CDP_PORT = 9223

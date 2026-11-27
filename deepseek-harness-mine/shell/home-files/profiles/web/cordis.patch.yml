@@ -72,21 +72,24 @@
     - id: lsp-stdio
       name: '@deepseek-ai/dsh-lsp-stdio'
       config:
-        servers:
-          typescript:
-            command: node
-            args:
-              - 'D:\99DSH\app-home\tools\lsp\node_modules\typescript-language-server\lib\cli.mjs'
-              - '--stdio'
-            extensionToLanguage:
-              '.ts': typescript
-              '.tsx': typescriptreact
-              '.mts': typescript
-              '.cts': typescript
-              '.js': javascript
-              '.jsx': javascriptreact
-              '.mjs': javascript
-              '.cjs': javascript
+        # 语言师傅装在数据目录 <家目录>\tools\lsp，不跟程序走 ⇒ 路径每台机器不同。
+        # 这份是开发台/自建壳的装配单，没有 {{HOME}} 替换环节（只有 profiles\desktop 那份由壳替换），
+        # 所以这里留空；要用的机器把下面 typescript 整段解注、路径换成本机家目录。
+        servers: {}
+        # typescript:
+        #   command: node
+        #   args:
+        #     - '<家目录>\tools\lsp\node_modules\typescript-language-server\lib\cli.mjs'
+        #     - '--stdio'
+        #   extensionToLanguage:
+        #     '.ts': typescript
+        #     '.tsx': typescriptreact
+        #     '.mts': typescript
+        #     '.cts': typescript
+        #     '.js': javascript
+        #     '.jsx': javascriptreact
+        #     '.mjs': javascript
+        #     '.cjs': javascript
 
     - id: tool-lsp
       name: '@deepseek-ai/dsh-tool-lsp'

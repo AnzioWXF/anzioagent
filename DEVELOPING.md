@@ -35,17 +35,19 @@ patches\    引擎补丁（我们对官方 checkout 的改动）
 
 **这个目录从今往后当只读的官方原件用**：别在里面装依赖、别在里面改代码 —— 它一改，跟官方比对和跟版重套就都没了基准。
 
-应用实际跑的是 `D:\99DSH\deepseek-harness-mine\harness`，它 = **这份快照 + 我们的补丁**（补丁改动不提交，永久留在工作区）。
+应用实际跑的是 `deepseek-harness-mine\harness`（仓里没有这棵，clone 后要按下面建出来），它 = **这份快照 + 我们的补丁**（补丁改动不提交，永久留在工作区）。
 
-**换机 / 重建顺序**：
+**换机 / 重建顺序**（在仓库根执行）：
 
 ```powershell
 # 1. 把仓里的快照变成应用要跑的那棵
-Copy-Item -Recurse D:\99DSH\deepseek-harness-origin D:\99DSH\deepseek-harness-mine\harness
-# 2. 套补丁（补丁里的改动：会话与对话节点契约、ui-settings-general 挂主区、快捷键表、host 布局、审批四按钮等）
-cd D:\99DSH\deepseek-harness-mine\harness
-git apply D:\99DSH\patches\engine-0.2.1-alpha.2-ours.patch
-# 3. 装依赖 + 重建产物（见下）
+Copy-Item -Recurse deepseek-harness-origin deepseek-harness-mine\harness
+# 2. 让这棵自己当 git 根：快照不自带 .git，不 init 的话 git apply 会拿外层仓库当归宿、把补丁全部跳过
+cd deepseek-harness-mine\harness
+git init
+# 3. 套补丁（补丁里的改动：会话与对话节点契约、ui-settings-general 挂主区、快捷键表、host 布局、审批四按钮等）
+git apply ..\..\patches\engine-0.2.1-alpha.2-ours.patch
+# 4. 装依赖 + 重建产物（见下）
 ```
 
 想改成"官方 git 仓 + 补丁"的老办法也行：clone 官方、checkout 同一个提交、套同一份补丁 —— 快照就是为"官方仓不可达 / 该提交被删"这种情况留的底，两种做法拿到的树一样。
@@ -58,17 +60,28 @@ git apply D:\99DSH\patches\engine-0.2.1-alpha.2-ours.patch
 
 ```powershell
 pnpm install --prefer-offline --ignore-scripts
-tsc -b tsconfig.host.json
-# 建两个空占位 lib/types/index.js、lib/types/startup.js，内容 export {}（绕开根包缺入口）
-tsdown --config-loader native --env.DSH_BUILD_FACE host
-# 前端面同理：tsc -b tsconfig.client.json → 同一条 tsdown 换 --env.DSH_BUILD_FACE client
+
+# 官方脚本没写的前置：先把 host 面编出来，否则 tsdown 找不到入口
+pnpm exec tsc -b tsconfig.host.json
+
+# 根包缺入口，官方构建会在这里挂：手建两个占位（内容就是 export {}）
+New-Item -ItemType Directory -Force lib\types | Out-Null
+Set-Content lib\types\index.js 'export {}'
+Set-Content lib\types\startup.js 'export {}'
+
+pnpm exec tsdown --config-loader native --env.DSH_BUILD_FACE host
+
+# 前端面同理
+pnpm exec tsc -b tsconfig.client.json
+pnpm exec tsdown --config-loader native --env.DSH_BUILD_FACE client
 ```
 
 ## 跑起来
 
+- **从零到第一次启动**：见 [README.md](README.md)「怎么跑」（重建引擎 → 打包装机 → 双击）
 - **开发台**（Web 界面调插件）：双击 `tools\dev-web.bat`，起 3080，插件真源直接生效
-- **天工应用**：装好的程序在 `D:\000AnzioAgent`，数据在家目录 `D:\99DSH\app-home`（本仓不含数据，含会话与凭证）
-- **E2E**：`tools\run-e2e.ps1`，日志落 `_e2e-logs\`
+- **天工应用**：程序在安装目录（`tools\_paths.ps1` 推导，默认 `%LOCALAPPDATA%\Programs\Tiangong`），数据在家目录（开发机上就是仓库根的 `app-home`；本仓不含数据，含会话与凭证）
+- **E2E**：`tools\run-e2e.ps1`，日志落仓库根 `_e2e-logs\`
 
 改动生效方式：插件与壳改完都要**重开天工**（插件 bundle 由后端缓存在进程内）。
 
@@ -78,7 +91,7 @@ tsdown --config-loader native --env.DSH_BUILD_FACE host
 # 装机 / 修复（必须现打，不带 -Build 会直接报错停住）
 tools\install-app.ps1 -Build
 
-# 发增量更新包到更新源 D:\000AnzioAgent\_updates
+# 发增量更新包到更新源 <安装目录>\_updates
 tools\publish-update.ps1
 ```
 
@@ -93,7 +106,7 @@ $env:ELECTRON_BUILDER_BINARIES_MIRROR = 'https://npmmirror.com/mirrors/electron-
 
 ## 约定
 
-- 脚本与壳里的路径**按 `D:\99DSH` 硬编码**（工作目录、数据目录、更新源），换机要连带改
+- 脚本里的路径**从脚本自身位置推导**（`tools\_paths.ps1`），clone 到哪个盘、哪个目录都不用改。安装目录推导不出来，顺序是：`TIANGONG_INSTALL_DIR` > 既有安装（`D:\000AnzioAgent` 有 exe 就用它） > `%LOCALAPPDATA%\Programs\Tiangong`
 - 界面全部走 `--dsw-*` 主题 token，不硬编码颜色
 - 许可证：本项目与引擎补丁均为 MIT（见 [LICENSE](LICENSE)；引擎版权归 DeepSeek，见官方仓库 LICENSE）
 - `.gitignore` 是白名单（`/*` 全忽略、逐个放开）：**根目录新增文件必须同步加白名单**，否则 add 会被静默挡掉

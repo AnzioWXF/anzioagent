@@ -2260,7 +2260,7 @@ window.__ModuleLoader__.load({
         showForm
           ? h('div', { className: 'dside-srv-form' },
               h('input', { className: 'dside-srv-input', placeholder: '名字（随便起，如 腾讯云）', value: form.name, onChange: function (e) { upd('name', e.target.value) } }),
-              h('input', { className: 'dside-srv-input', placeholder: '地址，如 106.52.222.167', value: form.host, onChange: function (e) { upd('host', e.target.value) } }),
+              h('input', { className: 'dside-srv-input', placeholder: '地址，如 192.168.1.10', value: form.host, onChange: function (e) { upd('host', e.target.value) } }),
               h('div', { className: 'dside-srv-form-row' },
                 h('input', { className: 'dside-srv-input', placeholder: '端口 22', value: form.port, onChange: function (e) { upd('port', e.target.value) } }),
                 h('input', { className: 'dside-srv-input', placeholder: '用户 root', value: form.user, onChange: function (e) { upd('user', e.target.value) } }),

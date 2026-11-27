@@ -1,7 +1,7 @@
-# publish-update.ps1 — 发布一个更新包到安装目录的更新源（默认 D:\000AnzioAgent\_updates）
+# publish-update.ps1 — 发布一个更新包到安装目录的更新源（默认 <安装目录>\_updates）
 #
 # 用法：
-#   powershell -ExecutionPolicy Bypass -File D:\99DSH\tools\publish-update.ps1 -Notes "改了 xxx"
+#   powershell -ExecutionPolicy Bypass -File tools\publish-update.ps1 -Notes "改了 xxx"
 #   ... -Version 1.3.5          # 指定版本（默认：已安装版本 +1 patch）
 #   ... -Full                   # 全量包（含 Electron 运行时/exe，Electron 升级时才用）
 #   ... -SkipPlugin / -SkipShell
@@ -14,10 +14,10 @@
 param(
   [string]$Version = '',
   [string]$Notes = '',
-  [string]$InstallDir = 'D:\000AnzioAgent',
-  [string]$ShellDir = 'D:\99DSH\deepseek-harness-mine\shell',
-  [string]$DevPlugin = 'D:\99DSH\dev-home\profiles\web\ide\dsh-ide',
-  [string]$AppHome = 'D:\99DSH\app-home',
+  [string]$InstallDir = '',
+  [string]$ShellDir = '',
+  [string]$DevPlugin = '',
+  [string]$AppHome = '',
   [switch]$Full,
   [switch]$SkipShell,
   [switch]$SkipPlugin,
@@ -27,6 +27,12 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '_paths.ps1')
+if (-not $InstallDir) { $InstallDir = $installDirDefault }
+if (-not $ShellDir) { $ShellDir = $shellDirRepo }
+if (-not $DevPlugin) { $DevPlugin = Join-Path $devHomeDir 'profiles\web\ide\dsh-ide' }
+if (-not $AppHome) { $AppHome = $appHomeDir }
+
 $exeName = '天工.exe'   # 安装目录里的 exe 名（2026-09-17 改名天工）
 function Get-Sha256($p) { (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower() }
 function Rel($base, $full) { $full.Substring($base.Length + 1) -replace '\\', '/' }
@@ -205,8 +211,8 @@ Write-Host ''
 Write-Host ("发布完成: {0}" -f $latestFile)
 Write-Host ("应用侧：打开 天工 会自动提示（或点标题栏版本号 / Ctrl+Shift+U）")
 
-# ── 顺手把这一版的源码也发到个人网站（每版一份、永不覆盖）──────────────
-# 位置：https://fengyingyang.cn/tiangong/  （站点根下的独立目录，不碰主站、不改 nginx）
+# ── 顺手把这一版的源码也发到静态站点（每版一份、永不覆盖）──────────────
+# 位置由 publish-source.ps1 的 -PublicBase 决定（见 tools\publish-source.local.ps1）。
 # 失败**只告警不中断**：应用更新是主线，源码存档是附带产物。
 if (-not $SkipSource -and -not $DryRun) {
   Write-Host ''

@@ -1,15 +1,16 @@
-# install-app.ps1 — 把 DSH IDE 壳"安装"到固定目录（默认 D:\000AnzioAgent）
+# install-app.ps1 — 把 DSH IDE 壳"安装"到安装目录（默认见 _paths.ps1）
 #
 # 用法：
-#   powershell -ExecutionPolicy Bypass -File D:\99DSH\tools\install-app.ps1            # 用现有 release\win-unpacked 安装/修复
-#   powershell -ExecutionPolicy Bypass -File D:\99DSH\tools\install-app.ps1 -Build     # 先 electron-builder 打包再安装
+#   powershell -ExecutionPolicy Bypass -File tools\install-app.ps1            # 用现有 release\win-unpacked 安装/修复
+#   powershell -ExecutionPolicy Bypass -File tools\install-app.ps1 -Build     # 先 electron-builder 打包再安装
+#   安装目录可改：-InstallDir <路径> 或环境变量 TIANGONG_INSTALL_DIR
 #
 # 做的事：①（可选）打包 ② 停掉正在运行的旧实例 ③ 镜像到安装目录（保留 version.json / updater.json / _updates / _staging）
 #         ④ 写 version.json（含逐文件 sha256，作为"已安装基线"，publish-update 靠它算增量）
 #         ⑤ 确保 updater.json（更新源=安装目录下 _updates）⑥ 建桌面快捷方式
 param(
-  [string]$InstallDir = 'D:\000AnzioAgent',
-  [string]$ShellDir = 'D:\99DSH\deepseek-harness-mine\shell',
+  [string]$InstallDir = '',
+  [string]$ShellDir = '',
   [string]$BuildDir = '',
   [string]$Version = '',
   [switch]$Build,
@@ -18,7 +19,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-# 安装目录里的 exe 名（2026-09-17 改名天工；安装目录 D:\000AnzioAgent 仍是 ASCII 路径，
+. (Join-Path $PSScriptRoot '_paths.ps1')
+if (-not $InstallDir) { $InstallDir = $installDirDefault }
+if (-not $ShellDir) { $ShellDir = $shellDirRepo }
+
+# 安装目录里的 exe 名（2026-09-17 改名天工；安装目录是 ASCII 路径，
 # 更新源/基线/脚本全绑这个路径，不随产品名变）
 $exeName = '天工.exe'
 
@@ -124,7 +129,7 @@ if (-not (Test-Path -LiteralPath $exeTarget)) { throw "安装目录里找不到 
 # 人定的规则必须放在人能看见、能同步的地方，统一由 D:\00memory\AGENTS.md 说了算，
 # 不许在产品安装目录里另生一份。
 # 源 = $ShellDir\home-files\**，目标 = 应用家目录下的同名相对路径。
-$appHome = 'D:\99DSH\app-home'
+$appHome = $appHomeDir
 $homeFilesSrc = Join-Path $ShellDir 'home-files'
 if (Test-Path -LiteralPath $homeFilesSrc) {
   foreach ($f in (Get-ChildItem -LiteralPath $homeFilesSrc -Recurse -File -Force)) {

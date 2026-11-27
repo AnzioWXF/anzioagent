@@ -1,7 +1,8 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // e2e-snapshot.mjs — 工作区快照 / 一键还原（"反悔药"）E2E
 // 前置：起一个测试后端（3082），例：
-//   pwsh -File D:\99DSH\tools\dev-testhome.ps1
-//   $env:DSH_HOME='D:\99DSH\.smoke-home'; node D:\99DSH\deepseek-harness-mine\harness\apps\cli\lib\bin.js web --port 3082 --no-open
+//   pwsh -File tools\dev-testhome.ps1
+//   $env:DSH_HOME='<仓库根>\.smoke-home'; node deepseek-harness-mine\harness\apps\cli\lib\bin.js web --port 3082 --no-open
 // 用法：node tools/e2e-snapshot.mjs [base]        （默认 http://127.0.0.1:3082）
 // 全程真磁盘：建 fixture → 快照 → 改/增/删 → 差异 → 还原 → 反悔药的反悔药，逐项核对磁盘真值。
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -10,10 +11,10 @@ import { join } from 'node:path'
 
 const BASE = process.argv[2] || 'http://127.0.0.1:3082'
 const API = BASE + '/dsh-ide'
-const FIX = join('D:\\99DSH', '.snap-fix')
-// ⚠ 别读 process.env.DSH_HOME：harness 的 shell 里带着 DSH_HOME=D:\99DSH\dev-home（开发台家目录，
+const FIX = join(`${__TIANGONG_ROOT}`, '.snap-fix')
+// ⚠ 别读 process.env.DSH_HOME：harness 的 shell 里带着 DSH_HOME=<仓库根>\dev-home（开发台家目录，
 // 见 §6 31 同源坑），会把快照库算到错的地方去 —— 被测后端用的是 DSH_E2E_HOME。
-const SNAP = join(process.env.DSH_E2E_HOME || 'D:\\99DSH\\.smoke-home', 'snapshots')
+const SNAP = join(process.env.DSH_E2E_HOME || `${__TIANGONG_ROOT}\\.smoke-home`, 'snapshots')
 // 本工作空间的快照库（键算法与 host 半一致）：开头/结尾都清掉，保证可重复跑且不留残留
 const WS = join(SNAP, createHash('sha1').update(FIX.toLowerCase()).digest('hex').slice(0, 16))
 

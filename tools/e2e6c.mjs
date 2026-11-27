@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // DSH IDE ⑥ 第二刀 E2E（CDP 真浏览器 + 真实 Agent 一轮改动）
 // 用法: node tools/e2e6c.mjs   （前置：3081 后端已起；DSH_E2E_TOKEN 由调用方给）
 // 验的是：会话事件 → 本轮改动清单（按文件归组）→ 审阅（diff）→ 保留 / 撤销（编辑还原、新建删除）
@@ -11,7 +12,7 @@ const APP = 'http://127.0.0.1:3081'
 const H = 'http://127.0.0.1:' + CDP_PORT
 const TOKEN = process.env.DSH_E2E_TOKEN || ''
 const AUTH_URL = APP + '/' + (TOKEN ? '?token=' + TOKEN : '')
-const TRACE = 'D:\\99DSH\\app-home\\logs\\ide-trace.log'
+const TRACE = `${__TIANGONG_ROOT}\\app-home\\logs\\ide-trace.log`
 
 const T0 = '// e2e6c fixture\nconst a: number = 1\nconst b: string = "keep"\n'
 let ROOT = ''
@@ -35,7 +36,7 @@ function findBrowser() {
   for (const c of cands) if (existsSync(c)) return c
   throw new Error('no edge/chrome found')
 }
-const userDir = join('D:\\99DSH', '.edge6c-tmp-' + process.pid)
+const userDir = join(`${__TIANGONG_ROOT}`, '.edge6c-tmp-' + process.pid)
 rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
 const proc = spawn(findBrowser(), [
   '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',

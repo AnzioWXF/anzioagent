@@ -1,19 +1,20 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // probe-keys.mjs — 键位诊断探针：用 **CDP 真键盘事件**（Input.dispatchKeyEvent）打真机路径，
 // 而不是页内合成 KeyboardEvent（合成事件绕不过 Electron 壳的 before-input-event，也绕不过浏览器原生行为，
 // 所以老套件里"Ctrl+` 打开终端"这类断言是假绿 —— 见 00devCore §6 24）。
 //
-// 用法: node D:\99DSH\tools\probe-keys.mjs
-//   自起隔离测试后端（DSH_HOME=D:\99DSH\.smoke-home）+ 无头 Edge。
+// 用法: node tools\probe-keys.mjs
+//   自起隔离测试后端（DSH_HOME=<仓库根>\.smoke-home）+ 无头 Edge。
 //   输出每个键的：页面收到的 key/code、是否被应用消费（defaultPrevented）、以及可观察效果。
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, openSync, closeSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3082)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = process.env.DSH_E2E_HOME || 'D:\\99DSH\\.smoke-home'
-const WS = process.env.DSH_E2E_WS || 'D:\\99DSH\\.smoke-ws-keys'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_probe_keys_backend_' + PORT + '.log'
+const HOME_DIR = process.env.DSH_E2E_HOME || `${__TIANGONG_ROOT}\\.smoke-home`
+const WS = process.env.DSH_E2E_WS || `${__TIANGONG_ROOT}\\.smoke-ws-keys`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_probe_keys_backend_` + PORT + '.log'
 const CDP_PORT = 9800 + Math.floor(Math.random() * 90)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -69,13 +70,13 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
   backend.on('exit', (c) => { backendExit = c })
   let browser = null
-  const userDir = 'D:\\99DSH\\.edge-keys-tmp-' + process.pid
+  const userDir = `${__TIANGONG_ROOT}\\.edge-keys-tmp-` + process.pid
   try {
     let token = ''
     const t0 = Date.now()

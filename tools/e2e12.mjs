@@ -1,6 +1,7 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // ⑫ 地基补漏 · A1 文件树三件套 E2E（新建 / 重命名 / 删除）
-// 用法: node D:\99DSH\tools\e2e12.mjs
-//   （自起测试后端，默认 3082；DSH_HOME=D:\99DSH\app-home；fixture 自建自清）
+// 用法: node tools\e2e12.mjs
+//   （自起测试后端，默认 3082；DSH_HOME=<仓库根>\app-home；fixture 自建自清）
 // 验的是：真浏览器右键 → 菜单 → 命名对话框 → 真磁盘落盘；以及三道闸
 //   （不覆盖已有内容 · 工作空间根围栏 · 删除需确认且目录要 recursive）。
 // confirm 走 CDP 的真实弹窗处理（Page.javascriptDialogOpening → accept），**不 stub 产品逻辑**。
@@ -10,9 +11,9 @@ import { join } from 'node:path'
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3082)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = 'D:\\99DSH\\app-home'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_e2e12_backend_' + PORT + '.log'
+const HOME_DIR = `${__TIANGONG_ROOT}\\app-home`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_e2e12_backend_` + PORT + '.log'
 const FIX = '_e2e12'
 const CDP_PORT = 9800 + Math.floor(Math.random() * 200)
 
@@ -117,7 +118,7 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
@@ -135,10 +136,10 @@ async function main() {
   }
   if (!token) throw new Error('no token in backend log')
 
-  // ⑮ 起改成「专用安静工作区」：这个家目录（D:\99DSH\app-home）当前的活动工作区可能是整盘 `D:\`
+  // ⑮ 起改成「专用安静工作区」：这个家目录（<仓库根>\app-home）当前的活动工作区可能是整盘 `D:\`
   // —— 那样 /search、/tree 会撞 2 万文件上限、树被 fs.watch 每秒重列，fixture 在树里会忽隐忽现
   // （2026-09-21 实测：18 项里 12 项假 FAIL）。这里把活动根指到一个专用小目录（自建自清）。
-  const WS = process.env.DSH_E2E_WS || 'D:\\99DSH\\.smoke-ws12'
+  const WS = process.env.DSH_E2E_WS || `${__TIANGONG_ROOT}\\.smoke-ws12`
   rmSync(WS, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
   mkdirSync(WS, { recursive: true })
   const ROOT = WS
@@ -151,7 +152,7 @@ async function main() {
   writeFileSync(join(dir, 'search1.txt'), S1)
   writeFileSync(join(dir, 'search2.txt'), S2)
 
-  const userDir = join('D:\\99DSH', '.edge-e2e12-tmp-' + process.pid)
+  const userDir = join(`${__TIANGONG_ROOT}`, '.edge-e2e12-tmp-' + process.pid)
   try { rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 }) } catch (e) { /* Windows 文件锁：临时 profile 删不掉不影响结论 */ }
   const browser = spawn(findBrowser(), [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
@@ -411,8 +412,8 @@ try {
   try { if (handles && handles.browser) killTree(handles.browser.pid) } catch { /* ignore */ }
   try { if (handles && handles.backend) killTree(handles.backend.pid) } catch { /* ignore */ }
   await sleep(1500)
-  try { rmSync(join('D:\\99DSH', '.edge-e2e12-tmp-' + process.pid), { recursive: true, force: true }) } catch { /* ignore */ }
-  const root = globalThis.__ROOT || 'D:\\99DSH\\dshworkspace2'
+  try { rmSync(join(`${__TIANGONG_ROOT}`, '.edge-e2e12-tmp-' + process.pid), { recursive: true, force: true }) } catch { /* ignore */ }
+  const root = globalThis.__ROOT || `${__TIANGONG_ROOT}\\dshworkspace2`
   try { rmSync(join(root, FIX), { recursive: true, force: true }) } catch { /* ignore */ }
   try { rmSync(join(root, '..', '_e2e12_outside.txt'), { force: true }) } catch { /* ignore */ }
   if (globalThis.__E2E_WS) { try { rmSync(globalThis.__E2E_WS, { recursive: true, force: true }) } catch { /* ignore */ } }

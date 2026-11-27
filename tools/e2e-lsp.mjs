@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // e2e-lsp.mjs — 「Agent 拿到代码导航（lsp 工具）」端到端验证（2026-09-22）
 //
 // 验的是三件事，缺一不算过：
@@ -6,7 +7,7 @@
 //   ③ 查询真的答对：工具返回里出现目标文件与行号（语言服务器进程真的起来了）。
 // 判据取**会话日志**（tool/call 的 data.name、tool/result 的文本），不看界面文案。
 //
-// 用法: node D:\99DSH\tools\e2e-lsp.mjs   （自起隔离测试后端 + 无头 Edge）
+// 用法: node tools\e2e-lsp.mjs   （自起隔离测试后端 + 无头 Edge）
 //   ⚠ 测试 home 必须已 dev-testhome.ps1 -TestHome 生成过；会真调一次模型（一个很小的提示）。
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, openSync, closeSync, rmSync, mkdirSync, writeFileSync, readdirSync, statSync } from 'node:fs'
@@ -15,10 +16,10 @@ import path from 'node:path'
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3094)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = process.env.DSH_E2E_HOME || 'D:\\99DSH\\.smoke-home-composer'
-const WS = process.env.DSH_E2E_WS || 'D:\\99DSH\\.smoke-ws-lsp'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_e2elsp_backend_' + PORT + '.log'
+const HOME_DIR = process.env.DSH_E2E_HOME || `${__TIANGONG_ROOT}\\.smoke-home-composer`
+const WS = process.env.DSH_E2E_WS || `${__TIANGONG_ROOT}\\.smoke-ws-lsp`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_e2elsp_backend_` + PORT + '.log'
 const CDP_PORT = 9700 + Math.floor(Math.random() * 90)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -150,8 +151,8 @@ const NEW_CHAT = `(function(){ var bs=document.querySelectorAll('.dside-side-act
 
 async function main() {
   // ⚠ 安全闸：这个探针会清掉家目录里的会话与工作空间索引（为了拿到确定的会话 cwd），
-  //   只允许在 D:\99DSH\ 下的测试家目录上跑 —— 绝不许碰到应用真实家目录。
-  if (!/^d:\\99dsh\\/i.test(HOME_DIR)) throw new Error('拒绝在非测试家目录上运行: ' + HOME_DIR)
+  //   只允许在 <仓库根>\ 下的测试家目录上跑 —— 绝不许碰到应用真实家目录。
+  if (!HOME_DIR.toLowerCase().startsWith(__TIANGONG_ROOT.toLowerCase())) throw new Error('拒绝在非测试家目录上运行: ' + HOME_DIR)
   rmSync(path.join(HOME_DIR, 'sessions'), { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
   rmSync(path.join(HOME_DIR, 'storages', 'workspace.json'), { force: true })
   rmSync(BLOG, { force: true })
@@ -162,8 +163,8 @@ async function main() {
   // 测试 home 的装配单改成指向**测试 home 自己的** tools 目录（应用那份指向应用家目录），
   // 这样才能验"缺师傅 → 现场装 → 立刻可用"这条链，而不是吃应用家目录已有的那份。
   const patchPath = path.join(HOME_DIR, 'profiles', 'web', 'cordis.patch.yml')
-  const appPatch = readFileSync('D:\\99DSH\\app-home\\profiles\\web\\cordis.patch.yml', 'utf8')
-  writeFileSync(patchPath, appPatch.split('D:\\99DSH\\app-home\\tools\\lsp').join(path.join(HOME_DIR, 'tools', 'lsp')))
+  const appPatch = readFileSync(`${__TIANGONG_ROOT}\\app-home\\profiles\\web\\cordis.patch.yml`, 'utf8')
+  writeFileSync(patchPath, appPatch.split(`${__TIANGONG_ROOT}\\app-home\\tools\\lsp`).join(path.join(HOME_DIR, 'tools', 'lsp')))
   rmSync(path.join(HOME_DIR, 'tools'), { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
@@ -173,7 +174,7 @@ async function main() {
   let backendExit = null
   backend.on('exit', (c) => { backendExit = c })
   let browser = null
-  const userDir = 'D:\\99DSH\\.edge-e2elsp-tmp-' + process.pid
+  const userDir = `${__TIANGONG_ROOT}\\.edge-e2elsp-tmp-` + process.pid
   try {
     let token = ''
     const t0 = Date.now()
@@ -329,11 +330,11 @@ async function main() {
         const j = await (await fetch(APP + '/dsh-ide/init')).json()
         root = j && j.root
       } catch { root = null }
-      if (root && root.toLowerCase().startsWith('d:\\99dsh\\')) break
+      if (root && root.toLowerCase().startsWith((__TIANGONG_ROOT + '\\').toLowerCase())) break
     }
     check('P2 会话工作区 = 专用 fixture 目录（lsp 只查工作区内文件）',
-      !!(root && root.toLowerCase().startsWith('d:\\99dsh\\')), 'root=' + root)
-    if (!root || !root.toLowerCase().startsWith('d:\\99dsh\\')) throw new Error('workspace root not usable: ' + root)
+      !!(root && root.toLowerCase().startsWith((__TIANGONG_ROOT + '\\').toLowerCase())), 'root=' + root)
+    if (!root || !root.toLowerCase().startsWith((__TIANGONG_ROOT + '\\').toLowerCase())) throw new Error('workspace root not usable: ' + root)
     writeFileSync(path.join(root, A), A_SRC)
     writeFileSync(path.join(root, B), B_SRC)
     writeFileSync(path.join(root, 'tsconfig.json'), TS_CONFIG)

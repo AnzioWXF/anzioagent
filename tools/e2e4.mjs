@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // DSH IDE ④ E2E（CDP 真浏览器）：VS Code 主题色 + VSCode 核心键位。
 // 用法: node tools/e2e4.mjs   （前置：3081 后端已起；浏览器用系统 Edge/Chrome）
 // 自清：fixture 文件 _e2e4_*.{js,txt} 建于 dshworkspace2 根，结束即删。
@@ -6,7 +7,7 @@ import { writeFileSync, rmSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const ROOT = 'D:\\99DSH\\dshworkspace2'
+const ROOT = `${__TIANGONG_ROOT}\\dshworkspace2`
 const CDP_PORT = 9300 + Math.floor(Math.random() * 300) // 随机端口：避免与残留进程撞
 const APP = 'http://127.0.0.1:3081'
 const H = 'http://127.0.0.1:' + CDP_PORT
@@ -50,7 +51,7 @@ async function findBrowser() {
   for (const c of cands) if (existsSync(c)) return c
   throw new Error('no edge/chrome found')
 }
-const userDir = join('D:\\99DSH', '.edge4-tmp-' + process.pid) // 每跑独立 profile
+const userDir = join(`${__TIANGONG_ROOT}`, '.edge4-tmp-' + process.pid) // 每跑独立 profile
 rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
 const browser = await findBrowser()
 console.log('browser:', browser)

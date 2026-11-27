@@ -1,19 +1,22 @@
 ﻿# dev-web.ps1 — 起开发台（3080）
 #
 # 开发台 = 引擎自带的标准 Web 界面，用来打磨天工应用；跟天工应用（3081）完全隔离：
-#   开发台：家目录 D:\99DSH\dev-home，界面是引擎原装的（dsh-ide 插件在开发台是停用的）
-#   天工  ：家目录 D:\99DSH\app-home，界面由 dsh-ide 插件接管（左树/中编辑器/右 Agent）
+#   开发台：家目录 <仓库根>\dev-home，界面是引擎原装的（dsh-ide 插件在开发台是停用的）
+#   天工  ：家目录 <仓库根>\app-home，界面由 dsh-ide 插件接管（左树/中编辑器/右 Agent）
 #
 # 用法：
-#   pwsh -File D:\99DSH\tools\dev-web.ps1
+#   pwsh -File tools\dev-web.ps1
 #
 # 2026-10-12 补：在此之前开发台没有固定入口，靠手敲命令 + 记 DSH_HOME，搬家后就不认路了。
 param(
   [int]$Port = 3080,
-  [string]$Harness = 'D:\99DSH\deepseek-harness-mine\harness',
-  [string]$DevHome = 'D:\99DSH\dev-home'
+  [string]$Harness = '',
+  [string]$DevHome = ''
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '_paths.ps1')
+if (-not $Harness) { $Harness = $harnessDir }
+if (-not $DevHome) { $DevHome = $devHomeDir }
 
 if (@(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue).Count -gt 0) {
   Write-Host ("端口 {0} 已经有服务在跑 —— 直接开浏览器 http://127.0.0.1:{0}" -f $Port) -ForegroundColor Yellow

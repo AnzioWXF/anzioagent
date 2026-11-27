@@ -1,6 +1,7 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // ⑭ 长任务进度 / 中断反馈 E2E（真 Agent 一轮 + 真浏览器）
-// 用法: node D:\99DSH\tools\e2e14.mjs
-//   （自起测试后端，默认 3082；DSH_HOME=D:\99DSH\app-home）
+// 用法: node tools\e2e14.mjs
+//   （自起测试后端，默认 3082；DSH_HOME=<仓库根>\app-home）
 // 验的是：Agent 跑一轮时面板给出**可观测的进度**（第 N 步 · 已用时间 · 正在做什么），
 //   以及**中断后的明确反馈**（"已中断 · 上轮 N 步 · 用时"）—— 对应 2026-09-16 用户实测
 //   "单轮跑到第 54 步、十几分钟，界面只有'运行中'三个字，只能中断"。
@@ -11,9 +12,9 @@ import { join } from 'node:path'
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3082)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = 'D:\\99DSH\\app-home'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_e2e14_backend_' + PORT + '.log'
+const HOME_DIR = `${__TIANGONG_ROOT}\\app-home`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_e2e14_backend_` + PORT + '.log'
 const CDP_PORT = 9950 + Math.floor(Math.random() * 45)
 
 const results = []
@@ -58,7 +59,7 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
@@ -76,7 +77,7 @@ async function main() {
   }
   if (!token) throw new Error('no token in backend log')
 
-  const userDir = join('D:\\99DSH', '.edge-e2e14-tmp-' + process.pid)
+  const userDir = join(`${__TIANGONG_ROOT}`, '.edge-e2e14-tmp-' + process.pid)
   rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
   const browser = spawn(findBrowser(), [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
@@ -207,7 +208,7 @@ try {
   try { if (handles && handles.browser) killTree(handles.browser.pid) } catch { /* ignore */ }
   try { if (handles && handles.backend) killTree(handles.backend.pid) } catch { /* ignore */ }
   await sleep(1500)
-  try { rmSync(join('D:\\99DSH', '.edge-e2e14-tmp-' + process.pid), { recursive: true, force: true }) } catch { /* ignore */ }
+  try { rmSync(join(`${__TIANGONG_ROOT}`, '.edge-e2e14-tmp-' + process.pid), { recursive: true, force: true }) } catch { /* ignore */ }
   console.log('[e2e14] cleanup done')
 }
 process.exit(handles && handles.ok ? 0 : 1)

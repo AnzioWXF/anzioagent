@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // 最小页面诊断探针：node tools/probe-page.mjs [url]
 // 输出：标题、正文前 400 字、关键全局、控制台错误/异常（抓 15s）
 import { spawn } from 'node:child_process'
@@ -15,7 +16,7 @@ function findBrowser() {
   ]) if (existsSync(c)) return c
   throw new Error('no browser')
 }
-const userDir = join('D:\\99DSH', '.edge-probe-' + process.pid)
+const userDir = join(`${__TIANGONG_ROOT}`, '.edge-probe-' + process.pid)
 rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
 const proc = spawn(findBrowser(), [
   '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',

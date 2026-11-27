@@ -13,8 +13,11 @@ const fs = require('fs')
 const path = require('path')
 
 const DEFAULT_URL = 'http://127.0.0.1:3081'
-const DEFAULT_HOME = 'D:\\99DSH\\app-home'
-const DEFAULT_PROFILE_SOURCE = 'D:\\99DSH\\dev-home\\profiles\\web'
+// 只是"独立测试 / 没传参数时"的兜底：开发期从本文件位置推仓库根（shell 的上一级是 mine），打包版由壳显式传。
+const MINE_DIR = path.resolve(__dirname, '..')
+const REPO_ROOT = path.resolve(MINE_DIR, '..')
+const DEFAULT_HOME = process.env.ANZIO_DSH_HOME || path.join(REPO_ROOT, 'app-home')
+const DEFAULT_PROFILE_SOURCE = process.env.ANZIO_PROFILE_SOURCE || path.join(REPO_ROOT, 'dev-home', 'profiles', 'web')
 
 function probePort(host, port, timeoutMs = 1500) {
   return new Promise((resolve) => {

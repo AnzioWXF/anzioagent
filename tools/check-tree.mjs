@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // check-tree.mjs — 资源管理器"树形结构"探针 + 截图（折叠箭头 twistie / 缩进参考线）
 // 用法：node tools/check-tree.mjs <带 token 的 url> <out.png>
 // 流程：① 带 token 首访种 cookie → ② 干净导航 → ③ 等 IDE → ④ 展开两层目录
@@ -21,7 +22,7 @@ function findBrowser() {
   ]) if (existsSync(c)) return c
   throw new Error('no browser')
 }
-const userDir = join('D:\\99DSH', '.edge-tree-' + process.pid)
+const userDir = join(`${__TIANGONG_ROOT}`, '.edge-tree-' + process.pid)
 rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
 const proc = spawn(findBrowser(), [
   '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',

@@ -1,6 +1,7 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // ⑰ 面板拖拽改宽高 E2E（对齐 VSCode 的 sash：4px 命中区、hover 高亮、双击恢复默认、拖动实时生效）
-// 用法: node D:\99DSH\tools\e2e-resize.mjs
-//   自起隔离测试后端（DSH_HOME=D:\99DSH\.smoke-home，先跑 tools\dev-testhome.ps1 刷新插件代码）
+// 用法: node tools\e2e-resize.mjs
+//   自起隔离测试后端（DSH_HOME=<仓库根>\.smoke-home，先跑 tools\dev-testhome.ps1 刷新插件代码）
 //   + 无头 Edge/Chrome（CDP，视口显式设 1600×1000）+ **真鼠标拖拽**（Input.dispatchMouseEvent）。
 // 验的是：左栏 / 右栏 / 终端三处手柄都能拖、会被最小/最大值夹住、双击恢复默认、结果落 localStorage
 //   刷新后仍在；以及一条用户硬要求：**终端只能在中间面板里**（改右栏宽度后终端依旧只在中间列）。
@@ -9,10 +10,10 @@ import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync, openSync, c
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3082)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = process.env.DSH_E2E_HOME || 'D:\\99DSH\\.smoke-home'
-const WS = process.env.DSH_E2E_WS || 'D:\\99DSH\\.smoke-wsr'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_e2eresize_backend_' + PORT + '.log'
+const HOME_DIR = process.env.DSH_E2E_HOME || `${__TIANGONG_ROOT}\\.smoke-home`
+const WS = process.env.DSH_E2E_WS || `${__TIANGONG_ROOT}\\.smoke-wsr`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_e2eresize_backend_` + PORT + '.log'
 const CDP_PORT = 9900 + Math.floor(Math.random() * 90)
 
 const results = []
@@ -60,13 +61,13 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
   backend.on('exit', (c) => { backendExit = c })
   let browser = null
-  const userDir = 'D:\\99DSH\\.edge-e2eresize-tmp-' + process.pid
+  const userDir = `${__TIANGONG_ROOT}\\.edge-e2eresize-tmp-` + process.pid
 
   try {
     let token = ''

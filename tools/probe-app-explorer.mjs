@@ -1,6 +1,6 @@
 // probe-app-explorer.mjs — 真机（已运行的天工 + 调试端口）验证资源管理器标题栏四动作与 Ctrl+N 内联新建
 // ⚠ 不创建任何文件：只验"内联输入行出现 + 目标层级正确 + 光标聚焦"，然后一律 Esc 取消。
-// 用法: 先 `天工.exe --remote-debugging-port=9223`，再 node D:\99DSH\tools\probe-app-explorer.mjs
+// 用法: 先 `天工.exe --remote-debugging-port=9223`，再 node tools\probe-app-explorer.mjs
 const CDP_PORT = Number(process.env.DSH_APP_CDP || 9223)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const results = []

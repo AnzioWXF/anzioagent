@@ -2,9 +2,9 @@
 // 时**直接本地 grep**，不必上网搜（搜索结果可能过时/出错，见 00devCore §6 71/58）。
 //
 // 用法：
-//   node D:\99DSH\tools\fetch-vscode-src.mjs                       # 自动取最新 stable，装到 D:\04other\vscode-src
-//   node D:\99DSH\tools\fetch-vscode-src.mjs --version 1.138.0     # 指定版本
-//   node D:\99DSH\tools\fetch-vscode-src.mjs --out D:\04other\vscode-src --keep   # 保留 tar.gz
+//   node tools\fetch-vscode-src.mjs                       # 自动取最新 stable，装到 D:\04other\vscode-src
+//   node tools\fetch-vscode-src.mjs --version 1.138.0     # 指定版本
+//   node tools\fetch-vscode-src.mjs --out D:\04other\vscode-src --keep   # 保留 tar.gz
 // 装完会写 `<out>\.vscode-version.txt`（版本/提交/日期/来源），并在结尾打印关键文件自检。
 // ⚠ 网络：本机 git/curl/PS 直连 GitHub 都不通（schannel 握手失败），**只有 Node 的 fetch 通**，
 //   所以这个脚本用 Node 流式下载（这也是它存在的理由，别改成 Invoke-WebRequest）。

@@ -5,7 +5,7 @@
 //   官方更新器那套是"给我们自己的程序用的"（启动时替换、动程序目录、要重启），与这里**物理隔离**（见 00devCore §3）。
 //
 // 用法:
-//   node tools\npm-fetch.mjs typescript-language-server@5.3.0 typescript@6.0.3 --into D:\99DSH\app-home\tools\lsp
+//   node tools\npm-fetch.mjs typescript-language-server@5.3.0 typescript@6.0.3 --into <仓库根>\app-home\tools\lsp
 //   可选: --source https://registry.npmmirror.com   （默认；官方源 https://registry.npmjs.org）
 //        --force                                     （已存在同版本时重装）
 import { spawn } from 'node:child_process'

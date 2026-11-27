@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // e2e-composer.mjs — 右侧 chat 面板「对话框」控件探针（2026-09-22）
 //
 // 起因（用户报障）："对话框左上的工作区切换、创造模式切换、右下的模型切换，这三个下拉都用不了"。
@@ -8,18 +9,18 @@
 //   把整个 body 盖在自己底下 ⇒ 菜单**确实打开了、却在天工根节点后面**（点不到、看不见）。
 //   ⇒ 本探针不靠肉眼：点开下拉后，量菜单中心点 `document.elementFromPoint()` 是否落在菜单内部。
 //
-// 用法: node D:\99DSH\tools\e2e-composer.mjs   （自起隔离测试后端 + 无头 Edge，自建自清）
+// 用法: node tools\e2e-composer.mjs   （自起隔离测试后端 + 无头 Edge，自建自清）
 //   ⚠ 测试家目录必须先用 dev-testhome.ps1 -TestHome <路径> 生成过（§6 90①），否则插件不挂载。
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, openSync, closeSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3096)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = process.env.DSH_E2E_HOME || 'D:\\99DSH\\.smoke-home-composer'
-const WS = process.env.DSH_E2E_WS || 'D:\\99DSH\\.smoke-ws-composer'
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_e2ecomposer_backend_' + PORT + '.log'
-const SHOT = 'D:\\99DSH\\_e2e-logs\\composer-' + Date.now() + '.png'
+const HOME_DIR = process.env.DSH_E2E_HOME || `${__TIANGONG_ROOT}\\.smoke-home-composer`
+const WS = process.env.DSH_E2E_WS || `${__TIANGONG_ROOT}\\.smoke-ws-composer`
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_e2ecomposer_backend_` + PORT + '.log'
+const SHOT = `${__TIANGONG_ROOT}\\_e2e-logs\\composer-` + Date.now() + '.png'
 const CDP_PORT = 9700 + Math.floor(Math.random() * 90)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -85,13 +86,13 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
   backend.on('exit', (c) => { backendExit = c })
   let browser = null
-  const userDir = 'D:\\99DSH\\.edge-e2ecomposer-tmp-' + process.pid
+  const userDir = `${__TIANGONG_ROOT}\\.edge-e2ecomposer-tmp-` + process.pid
   try {
     let token = ''
     const t0 = Date.now()
@@ -268,7 +269,7 @@ async function main() {
     // 截图（人眼验收用）
     try {
       const shot = await cdp('Page.captureScreenshot', { format: 'png' })
-      if (shot && shot.data) { mkdirSync('D:\\99DSH\\_e2e-logs', { recursive: true }); writeFileSync(SHOT, Buffer.from(shot.data, 'base64')); console.log('[SHOT] ' + SHOT) }
+      if (shot && shot.data) { mkdirSync(`${__TIANGONG_ROOT}\\_e2e-logs`, { recursive: true }); writeFileSync(SHOT, Buffer.from(shot.data, 'base64')); console.log('[SHOT] ' + SHOT) }
     } catch { /* 截图失败不影响断言 */ }
 
     const pass = results.filter((r) => r.ok).length

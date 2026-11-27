@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // probe-page-text.mjs — 抓页面文本 + 关键 DOM 标志（客户端插件没挂上时用来看清落在哪）
 // 用法：node tools/probe-page-text.mjs "<带 token 的 url>"
 import { spawn } from 'node:child_process'
@@ -15,7 +16,7 @@ function findBrowser() {
   ]) if (existsSync(c)) return c
   throw new Error('no browser')
 }
-const userDir = join('D:\\99DSH', '.edge-text-' + process.pid)
+const userDir = join(`${__TIANGONG_ROOT}`, '.edge-text-' + process.pid)
 rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 })
 const proc = spawn(findBrowser(), ['--headless=new', '--disable-gpu', '--no-first-run',
   `--remote-debugging-port=${PORT}`, `--user-data-dir=${userDir}`, 'about:blank'], { stdio: 'ignore' })

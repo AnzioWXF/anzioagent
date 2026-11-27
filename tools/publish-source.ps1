@@ -1,7 +1,7 @@
 ﻿# publish-source.ps1 — 把「天工」的源码按版本发布到个人网站（每版一个新文件，永不覆盖）
 #
 # 用法：
-#   powershell -ExecutionPolicy Bypass -File D:\99DSH\tools\publish-source.ps1 -Version 1.5.12 -Notes "改了啥"
+#   powershell -ExecutionPolicy Bypass -File tools\publish-source.ps1 -Version 1.5.12 -Notes "改了啥"
 #   ... -SkipUpload        # 只在本地打包 + 生成页面（不上传）
 #   ... -Force             # 该版本已发布过时，强行重发（覆盖同版本那份 zip）
 #
@@ -13,28 +13,46 @@
 #   ⑤ scp 上传到 <服务器>:<远端目录>/（source/ 下按版本堆叠）
 #   ⑥ 公网核对：下载 HEAD 200 + 字节数一致 + 页面里能看到这一版
 #
-# 站点事实（来自 D:\00memory\reference.md，2026-09-20 实测）：
-#   · 服务器 root@106.52.222.167（fengyingyang.cn），密钥 ~/.ssh/tencent_cloud
-#   · 站点根 /var/www/html/dist/（nginx `location / { root …; try_files $uri $uri/ /index.html; }`）
-#     ⇒ 只要在站点根下新建目录就自动成为一个独立页面，**不需要改 nginx、不碰主站**
+# 上传目标是任意静态站点（自有服务器 / 对象存储都行），四个位置都靠参数给：
+#   -Server <user@host> · -KeyPath <私钥> · -RemoteDir <站点下的目录> · -PublicBase <对外地址>
+# 平时把它们写进 tools\publish-source.local.ps1（不进仓，见文件末尾说明），就不必每次传。
+# 站点根下新建目录即可成为一个独立页面（nginx `location / { root …; try_files $uri $uri/ /index.html; }` 时），
+# 不需要改 nginx、不碰主站。
 param(
   [Parameter(Mandatory = $true)][string]$Version,
   [string]$Notes = '',
-  [string]$ShellDir = 'D:\99DSH\deepseek-harness-mine\shell',
-  [string]$DevPlugin = 'D:\99DSH\dev-home\profiles\web\ide\dsh-ide',
-  [string]$ToolsDir = 'D:\99DSH\tools',
-  [string]$FeedDir = 'D:\000AnzioAgent\_updates',
-  [string]$WorkDir = 'D:\99DSH\.publish-src',
-  [string]$Server = 'root@106.52.222.167',
-  [string]$KeyPath = "$env:USERPROFILE\.ssh\tencent_cloud",
-  [string]$RemoteDir = '/var/www/html/dist/tiangong',
-  [string]$PublicBase = 'https://fengyingyang.cn/tiangong',
+  [string]$ShellDir = '',
+  [string]$DevPlugin = '',
+  [string]$ToolsDir = '',
+  [string]$FeedDir = '',
+  [string]$WorkDir = '',
+  [string]$Server = '',
+  [string]$KeyPath = '',
+  [string]$RemoteDir = '',
+  [string]$PublicBase = '',
   [switch]$SkipUpload,
   [switch]$Force,
   [switch]$DryRun
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '_paths.ps1')
+if (-not $ShellDir) { $ShellDir = $shellDirRepo }
+if (-not $DevPlugin) { $DevPlugin = Join-Path $devHomeDir 'profiles\web\ide\dsh-ide' }
+if (-not $ToolsDir) { $ToolsDir = $PSScriptRoot }
+if (-not $FeedDir) { $FeedDir = Join-Path $installDirDefault '_updates' }
+if (-not $WorkDir) { $WorkDir = Join-Path $repoRoot '.publish-src' }
+
+# 本机私有配置（不进仓，.gitignore 挡着）：服务器/密钥/远端目录/对外地址写在这里，不必每次传参
+$localCfg = Join-Path $PSScriptRoot 'publish-source.local.ps1'
+if (Test-Path -LiteralPath $localCfg) { . $localCfg }
+if (-not $SkipUpload) {
+  if (-not $Server) { throw '缺少 -Server：形如 root@<服务器地址>（或写进 tools\publish-source.local.ps1）' }
+  if (-not $KeyPath) { throw '缺少 -KeyPath：SSH 私钥路径' }
+  if (-not $RemoteDir) { throw '缺少 -RemoteDir：服务器上的目标目录' }
+  if (-not $PublicBase) { throw '缺少 -PublicBase：对外访问地址' }
+}
+
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm')
 

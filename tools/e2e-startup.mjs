@@ -1,12 +1,13 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // e2e-startup.mjs — 2026-09-22 用户三个报障的回归套件：
 //   ① 打开天工先闪一下别人的工作空间，过一会才换成真正在用的目录
 //   ② 一关软件，上次打开的文件全没了（含"没保存的改动"）
 //   ③ 设置面板下方「代码导航」那一片一直在闪
 //   （④ 编辑器易混淆字符高亮 = 【编辑器设置】页的开关，见 P12–P16）
 //
-// 用法：node D:\99DSH\tools\e2e-startup.mjs
-//   自起隔离测试后端（DSH_HOME=D:\99DSH\.smoke-home，先跑 tools\dev-testhome.ps1 刷插件代码）
-//   + 无头 Edge/Chrome（CDP）真浏览器 + 专用安静工作区（D:\99DSH\.smoke-ws）。
+// 用法：node tools\e2e-startup.mjs
+//   自起隔离测试后端（DSH_HOME=<仓库根>\.smoke-home，先跑 tools\dev-testhome.ps1 刷插件代码）
+//   + 无头 Edge/Chrome（CDP）真浏览器 + 专用安静工作区（<仓库根>\.smoke-ws）。
 //
 // 断言的"语义依据"（不是凭印象）：
 //   · 记忆恢复的判据是**页面重载后**树/标签/脏缓冲区还在（等价于"关软件再打开"），
@@ -18,11 +19,11 @@ import { existsSync, mkdirSync, writeFileSync, rmSync, readFileSync, openSync, c
 
 const PORT = Number(process.env.DSH_E2E_PORT || 3089)
 const APP = 'http://127.0.0.1:' + PORT
-const HOME_DIR = process.env.DSH_E2E_HOME || 'D:\\99DSH\\.smoke-home'
-const WS_OLD = 'D:\\99DSH\\.smoke-ws-old'      // "上次遗留的旧工作空间"（模拟用户抱怨的 00WORK）
-const WS_NEW = 'D:\\99DSH\\.smoke-ws-new'      // "我真正在用的目录"
-const CLI = 'D:\\99DSH\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js'
-const BLOG = 'D:\\99DSH\\_e2estartup_backend_' + PORT + '.log'
+const HOME_DIR = process.env.DSH_E2E_HOME || `${__TIANGONG_ROOT}\\.smoke-home`
+const WS_OLD = `${__TIANGONG_ROOT}\\.smoke-ws-old`      // "上次遗留的旧工作空间"（模拟用户抱怨的 00WORK）
+const WS_NEW = `${__TIANGONG_ROOT}\\.smoke-ws-new`      // "我真正在用的目录"
+const CLI = `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness\\apps\\cli\\lib\\bin.js`
+const BLOG = `${__TIANGONG_ROOT}\\_e2estartup_backend_` + PORT + '.log'
 const CDP_PORT = 9950 + Math.floor(Math.random() * 40)
 const F1 = WS_NEW + '\\_e2esu_one.txt'
 const F2 = WS_NEW + '\\_e2esu_two.txt'
@@ -139,7 +140,7 @@ async function main() {
   rmSync(BLOG, { force: true })
   const fd = openSync(BLOG, 'w')
   const backend = spawn(process.execPath, [CLI, 'web', '--port', String(PORT), '--no-open'], {
-    cwd: 'D:\\99DSH\\deepseek-harness-mine\\harness', env: cleanEnv(), stdio: ['ignore', fd, fd],
+    cwd: `${__TIANGONG_ROOT}\\deepseek-harness-mine\\harness`, env: cleanEnv(), stdio: ['ignore', fd, fd],
   })
   closeSync(fd)
   let backendExit = null
@@ -168,7 +169,7 @@ async function main() {
     writeFileSync(F3, 'will be deleted\n')
     writeFileSync(F4, 'never opened, then deleted\n')
 
-    const userDir = 'D:\\99DSH\\.edge-e2estartup-tmp-' + process.pid
+    const userDir = `${__TIANGONG_ROOT}\\.edge-e2estartup-tmp-` + process.pid
     try { rmSync(userDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 120 }) } catch { /* 文件锁：临时 profile 删不掉不影响结论 */ }
     browser = spawn(findBrowser(), [
       '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',

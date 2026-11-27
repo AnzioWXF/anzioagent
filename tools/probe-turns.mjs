@@ -1,3 +1,4 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // 会话「轮次」探针（只看结构不看内容）：每个事件的 type / seq / data.turn / data.step / source.kind
 // 用法: node --import tsx/esm tools/probe-turns.mjs [session.v3.jsonl.zstd] [尾部条数]
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -7,7 +8,7 @@ import { scanZstdFrames, decompressZstdFrame } from 'file:///D:/99DSH/deepseek-h
 let file = process.argv[2]
 const tail = Number(process.argv[3] || 60)
 if (!file) {
-  const base = 'D:\\99DSH\\app-home\\sessions'
+  const base = `${__TIANGONG_ROOT}\\app-home\\sessions`
   const all = []
   for (const ws of readdirSync(base)) {
     for (const s of readdirSync(join(base, ws))) {

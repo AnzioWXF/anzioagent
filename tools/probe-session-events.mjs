@@ -1,11 +1,12 @@
+import { repoRoot as __TIANGONG_ROOT, installDir as __TIANGONG_INSTALL } from './_paths.mjs'
 // 会话事件结构探针：只看结构（键名/长度），不打印文件内容 —— 用于确认 tool/result 里到底带了什么
 // 用法: node --import tsx/esm tools/probe-session-events.mjs [会话根目录] [事件类型,逗号分隔]
-// 注意：workdir 必须在检出目录 D:\99DSH\deepseek-harness-mine\harness（框架 ts 源码 import 约束）
+// 注意：workdir 必须在检出目录 deepseek-harness-mine\harness（框架 ts 源码 import 约束）
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { scanZstdFrames, decompressZstdFrame } from 'file:///D:/99DSH/deepseek-harness-mine/harness/packages/session/session-persistence-jsonl/src/zstd.ts'
 
-const base = process.argv[2] || 'D:\\99DSH\\dev-home\\sessions'
+const base = process.argv[2] || `${__TIANGONG_ROOT}\\dev-home\\sessions`
 const want = String(process.argv[3] || 'tool/result').split(',')
 
 function newest(dir) {
