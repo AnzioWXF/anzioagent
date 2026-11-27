@@ -1,4 +1,4 @@
-﻿# install-app.ps1 — 把 DSH IDE 壳"安装"到固定目录（默认 D:\000AnzioAgent）
+# install-app.ps1 — 把 DSH IDE 壳"安装"到固定目录（默认 D:\000AnzioAgent）
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File D:\99DSH\tools\install-app.ps1            # 用现有 release\win-unpacked 安装/修复
@@ -120,8 +120,9 @@ foreach ($cand in @('DSH IDE.exe', '天工.exe')) {
 if (-not (Test-Path -LiteralPath $exeTarget)) { throw "安装目录里找不到 exe（期望 $exeName）：检查打包产物的 exe 名" }
 
 # ── ③b 应用家目录里的"产品文件"（2026-09-17 起）──
-# 目前是 AGENTS.md：内置 Agent 的常驻工作指令，由框架 agent-instructions 插件自动注入
-# 应用里每一个新会话（开发台那份是 D:\99DSH\dev-home\AGENTS.md，两者互不影响）。
+# 目前只有 profiles\ 下的装配单。agent 的常驻工作指令不在这里（2026-11-27 用户定）：
+# 人定的规则必须放在人能看见、能同步的地方，统一由 D:\00memory\AGENTS.md 说了算，
+# 不许在产品安装目录里另生一份。
 # 源 = $ShellDir\home-files\**，目标 = 应用家目录下的同名相对路径。
 $appHome = 'D:\99DSH\app-home'
 $homeFilesSrc = Join-Path $ShellDir 'home-files'

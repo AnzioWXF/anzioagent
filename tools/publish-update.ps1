@@ -1,4 +1,4 @@
-﻿# publish-update.ps1 — 发布一个更新包到安装目录的更新源（默认 D:\000AnzioAgent\_updates）
+# publish-update.ps1 — 发布一个更新包到安装目录的更新源（默认 D:\000AnzioAgent\_updates）
 #
 # 用法：
 #   powershell -ExecutionPolicy Bypass -File D:\99DSH\tools\publish-update.ps1 -Notes "改了 xxx"
@@ -111,7 +111,7 @@ if ($Full) {
 }
 
 # 应用家目录里的"产品文件"（2026-09-17 起）：源 = deepseek-harness-mine\shell\home-files\**，dest 走 ${HOME}
-# 目前是 AGENTS.md —— 内置 Agent 的常驻工作指令（框架会自动注入应用里每个新会话）
+# 2026-11-27 起只剩 profiles\ 装配单 —— agent 的常驻指令统一走 D:\00memory\AGENTS.md，不从安装目录下发。
 $homeFiles = Join-Path $ShellDir 'home-files'
 if ((Test-Path -LiteralPath $homeFiles) -and (-not $SkipShell)) {
   foreach ($f in (Get-ChildItem -LiteralPath $homeFiles -Recurse -File -Force)) {

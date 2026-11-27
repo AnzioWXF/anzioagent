@@ -11,7 +11,7 @@
 deepseek-harness-origin\  官方引擎原样快照（dsh-v0.2.1-alpha.2 的提交内容，见下节）
 deepseek-harness-mine\
   shell\    Electron 壳：窗口与启动画面、后端管理、内置更新器、内置浏览器、壳桥与幻影驱动
-            home-files\ 装机模板（装配单与 AGENTS.md）
+            home-files\ 装机模板（装配单）
   plugin\   IDE 插件真源：lib\index.js（host 半，/dsh-ide API）、lib\client.js（client 半，自建外壳与各面板）
             static\ 前端运行时资源（Monaco / xterm）
 tools\      开发台启动、装机、发包、E2E 与各种探针脚本
