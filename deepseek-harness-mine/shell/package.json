@@ -23,6 +23,7 @@
                                 "updater.js",
                                 "preload.js",
                                 "browser.js",
+                                "browser-ext.js",
                                 "browser-preload.js",
                                 "driver.js",
                                 "bridge.js",

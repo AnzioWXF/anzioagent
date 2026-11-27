@@ -5043,6 +5043,10 @@ window.__ModuleLoader__.load({
       'M14 10l.01 0',
       'M10 14a3.5 3.5 0 0 0 4 0',
       ],
+      // 拼图：浏览器的扩展入口（Tabler puzzle，path 抄自官方 outline 版，2026-11-27）
+      'puzzle': [
+      'M4 7h3a1 1 0 0 0 1 -1v-1a2 2 0 0 1 4 0v1a1 1 0 0 0 1 1h3a1 1 0 0 1 1 1v3a1 1 0 0 0 1 1h1a2 2 0 0 1 0 4h-1a1 1 0 0 0 -1 1v3a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1v-1a2 2 0 0 0 -4 0v1a1 1 0 0 1 -1 1h-3a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h1a2 2 0 0 0 0 -4h-1a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1',
+      ],
       'text-size': [
       'M3 7v-2h13v2',
       'M10 5v14',
@@ -5889,6 +5893,22 @@ window.__ModuleLoader__.load({
             if (props.onStatus) props.onStatus('Agent幻影已' + (next ? '打开' : '关闭'));
           },
         }, ticon('ghost', 14)),
+        // 扩展管理（2026-11-27）：点在浏览器里**新开一页**管理页，不弹浮层。
+        // 为什么不做弹窗：原生视图永远盖在 DOM 之上，弹窗会被网页压住（见本文件头 §1），
+        // 而管理页本身是个页面，天然在视图里面 —— 也就没有"给视图让位"那套麻烦。
+        h('button', {
+          className: 'dside-browser-btn',
+          title: '扩展管理（广告拦截、站点增强）',
+          onClick: function () {
+            var open = (typeof window !== 'undefined') ? window.__dsideOpenBrowserUrl : null;
+            if (typeof open !== 'function') return;
+            // 必须用后端真实地址：浏览器视图加载不了 dsh-app://（那个协议只注册给主窗口）
+            var base = (typeof window !== 'undefined' && window.__dsideBackendOrigin) ? window.__dsideBackendOrigin : '';
+            if (!base) { if (props.onStatus) props.onStatus('扩展管理页地址还没取到，稍后再试'); return; }
+            var url = base + '/dsh-ide/ext-ui/index.html';
+            if (open(url) && props.onStatus) props.onStatus('已打开扩展管理');
+          },
+        }, ticon('puzzle', 14)),
       );
 
       var view = h('div', { className: 'dside-browser-view', ref: viewRef },
@@ -10208,6 +10228,9 @@ window.__ModuleLoader__.load({
         trace('ui', 'info', 'browser-open', { id: id, url: String(url || '') });
         return id;
       }
+      // 浏览器工具栏那颗「扩展」按钮要用（见 BrowserPane 的 bar）。它离这里隔着编辑器组件好几层，
+      // 为一个按钮把回调一层层穿下去，以后每加一层中间组件都得记得带上 —— 改走显式注册点。
+      try { window.__dsideOpenBrowserUrl = function (url) { return openBrowserTab(url) } } catch (e) { /* 忽略 */ }
       // Agent 在内置浏览器里开的标签（第二期）：视图**已经**在壳里建好了、id 由壳生成，
       // 界面这边只负责把标签开出来并激活 —— 标签路径必须**照抄**视图 id，两边全靠它一一对应，
       // 另生成一个 id 的话驱动层就认不出这块视图了。
@@ -12050,6 +12073,8 @@ window.__ModuleLoader__.load({
         if (root) syncActiveRoot();
         apiGet('/init').then(function (r) {
           if (!r) return;
+          // 后端真实地址（内置浏览器的原生视图加载不了 dsh-app://，管理页要靠它）
+          if (r.origin) { try { window.__dsideBackendOrigin = r.origin } catch (e) { /* 忽略 */ } }
           // ⚠ 开机第一件事是把**记住的**工作空间显示出来，而 host 那边此刻只来得及回退到
           //   workspaceRegistry.list()[0]（= 最早建的那个，用户看到的就是"先闪一下 00WORK"）。
           //   所以在平台会话接上来之前，别用 /init 的 root 覆盖画面（2026-09-22 修）。

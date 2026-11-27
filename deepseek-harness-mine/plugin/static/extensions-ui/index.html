@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>浏览器扩展</title>
+<style>
+  :root{
+    --bg:#0D0D0F; --layer:#141417; --layer2:#1B1B1F;
+    --line1:#242428; --line2:#2E2E33; --line3:#3A3A40;
+    --text:#D6D6D6; --text2:#9B9BA1; --text3:#6E6E76;
+    --brand:#29B6F6; --warn:#E0A030; --err:#E05A5A;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--text);
+    font:13px/1.6 "Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    display:flex; flex-direction:column;
+  }
+  header{
+    flex:none; display:flex; align-items:center; gap:10px; padding:12px 16px;
+    border-bottom:1px solid var(--line1); background:var(--layer);
+  }
+  header h1{font-size:14px; font-weight:600; margin:0}
+  .grow{flex:1}
+  .hint{color:var(--text3); font-size:11px}
+  button{
+    font:inherit; color:var(--text); background:var(--layer2);
+    border:1px solid var(--line2); border-radius:6px; padding:5px 12px; cursor:pointer;
+  }
+  button:hover{border-color:var(--line3)}
+  button.primary{background:var(--brand); border-color:var(--brand); color:#0b1a24; font-weight:600}
+  button.danger:hover{border-color:var(--err); color:var(--err)}
+  main{flex:1; display:flex; min-height:0}
+  .list{flex:1; min-width:0; overflow:auto; padding:12px 16px; display:flex; flex-direction:column; gap:8px}
+  .empty{color:var(--text3); padding:32px; text-align:center}
+  .card{
+    border:1px solid var(--line2); border-radius:8px; background:var(--layer);
+    padding:12px; display:flex; gap:12px; align-items:flex-start;
+  }
+  .card.off{opacity:.55}
+  .card .body{flex:1; min-width:0}
+  .card .name{font-weight:600; margin-bottom:2px; display:flex; align-items:center; gap:8px}
+  .card .desc{color:var(--text2); font-size:12px; margin-bottom:6px}
+  .card .meta{color:var(--text3); font-size:11px; display:flex; gap:12px; flex-wrap:wrap}
+  .card .acts{display:flex; gap:6px; flex:none}
+  .switch{
+    position:relative; width:34px; height:19px; border-radius:10px; background:var(--line2);
+    border:1px solid var(--line3); cursor:pointer; flex:none; margin-top:2px;
+  }
+  .switch::after{
+    content:''; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%;
+    background:var(--text2); transition:transform .15s ease, background .15s ease;
+  }
+  .switch.on{background:var(--brand); border-color:var(--brand)}
+  .switch.on::after{transform:translateX(15px); background:#0b1a24}
+  aside{
+    flex:none; width:min(520px,52%); border-left:1px solid var(--line1); background:var(--layer);
+    display:flex; flex-direction:column; min-height:0;
+  }
+  aside.hidden{display:none}
+  .ed-head{flex:none; padding:10px 14px; border-bottom:1px solid var(--line1); display:flex; align-items:center; gap:8px}
+  .ed-head .title{font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .files{flex:none; display:flex; gap:4px; flex-wrap:wrap; padding:8px 14px; border-bottom:1px solid var(--line1); max-height:96px; overflow:auto}
+  .file{
+    padding:3px 8px; border-radius:5px; border:1px solid var(--line2); background:var(--layer2);
+    color:var(--text2); font-size:11px; cursor:pointer; font-family:ui-monospace,Consolas,monospace;
+  }
+  .file:hover{border-color:var(--line3); color:var(--text)}
+  .file.on{border-color:var(--brand); color:var(--brand)}
+  .editor{flex:1; display:flex; flex-direction:column; min-height:0}
+  textarea{
+    flex:1; width:100%; resize:none; border:0; outline:none; padding:12px 14px;
+    background:var(--bg); color:var(--text);
+    font:12px/1.7 ui-monospace,Consolas,"Courier New",monospace; tab-size:2;
+  }
+  .bar{flex:none; padding:8px 14px; border-top:1px solid var(--line1); display:flex; align-items:center; gap:8px}
+  .note{color:var(--text3); font-size:11px}
+  .note.ok{color:#4FBF7F}
+  .note.bad{color:var(--err)}
+  dialog{
+    border:1px solid var(--line2); border-radius:10px; background:var(--layer); color:var(--text);
+    padding:16px; min-width:340px;
+  }
+  dialog::backdrop{background:rgba(0,0,0,.6)}
+  dialog h3{margin:0 0 12px; font-size:13px}
+  dialog label{display:block; color:var(--text2); font-size:12px; margin:10px 0 4px}
+  dialog input{
+    width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--line2);
+    background:var(--bg); color:var(--text); font:inherit; outline:none;
+  }
+  dialog input:focus{border-color:var(--brand)}
+  dialog .foot{display:flex; justify-content:flex-end; gap:8px; margin-top:16px}
+</style>
+</head>
+<body>
+<header>
+  <h1>浏览器扩展</h1>
+  <span class="hint" id="rootHint"></span>
+  <span class="grow"></span>
+  <button id="btnReload">刷新</button>
+  <button class="primary" id="btnNew">新建扩展</button>
+</header>
+<main>
+  <div class="list" id="list"><div class="empty">正在读取…</div></div>
+  <aside class="hidden" id="panel">
+    <div class="ed-head">
+      <span class="title" id="edTitle">—</span>
+      <span class="grow"></span>
+      <button id="btnClose">关闭</button>
+    </div>
+    <div class="files" id="files"></div>
+    <div class="editor">
+      <textarea id="editor" spellcheck="false" placeholder="选一个文件"></textarea>
+    </div>
+    <div class="bar">
+      <span class="note" id="note">保存后自动生效，刷新网页即可看到变化</span>
+      <span class="grow"></span>
+      <button id="btnSave" class="primary" disabled>保存</button>
+    </div>
+  </aside>
+</main>
+
+<dialog id="dlgNew">
+  <h3>新建扩展</h3>
+  <label>名字（同时是目录名）</label>
+  <input id="newName" placeholder="例如：知乎体验优化" autocomplete="off">
+  <label>作用网站（一行一个，支持 * 通配）</label>
+  <input id="newMatches" placeholder="*://*.zhihu.com/*" autocomplete="off">
+  <div class="foot">
+    <button id="newCancel">取消</button>
+    <button id="newOk" class="primary">创建</button>
+  </div>
+</dialog>
+
+<script>
+(function () {
+  var API = '/dsh-ide';
+  var state = { list: [], cur: null, file: null, dirty: false };
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  async function api(path, opts) {
+    var res = await fetch(API + path, Object.assign({ headers: { 'content-type': 'application/json' } }, opts || {}));
+    return res.json();
+  }
+  function note(text, kind) {
+    var n = el('note');
+    n.textContent = text;
+    n.className = 'note' + (kind ? ' ' + kind : '');
+  }
+
+  async function load() {
+    var r = await api('/ext/list');
+    if (!r.ok) {
+      el('list').innerHTML = '<div class="empty">读不到扩展目录' + (r.error ? '（' + esc(r.error) + '）' : '') + '</div>';
+      return;
+    }
+    state.list = r.extensions || [];
+    el('rootHint').textContent = r.root || '';
+    render();
+  }
+
+  function render() {
+    var list = el('list');
+    if (!state.list.length) {
+      list.innerHTML = '<div class="empty">还没有扩展。点右上角「新建扩展」开始。</div>';
+      return;
+    }
+    list.innerHTML = state.list.map(function (x) {
+      var on = x.enabled !== false;
+      return '<div class="card' + (on ? '' : ' off') + '" data-id="' + esc(x.id) + '">'
+        + '<div class="switch' + (on ? ' on' : '') + '" data-act="toggle" title="' + (on ? '已启用' : '已停用') + '"></div>'
+        + '<div class="body">'
+        + '<div class="name">' + esc(x.name) + '</div>'
+        + '<div class="desc">' + esc(x.description || '（没有说明）') + '</div>'
+        + '<div class="meta">'
+        + '<span>作用：' + esc((x.matches || []).join('  ') || '无') + '</span>'
+        + '<span>规则 ' + (x.ruleCount || 0) + ' 条</span>'
+        + (x.hasBackground ? '<span>常驻</span>' : '')
+        + (x.hasSettings ? '<span>设置页</span>' : '')
+        + '</div></div>'
+        + '<div class="acts">'
+        + (x.hasSettings ? '<button data-act="settings">设置</button>' : '')
+        + '<button data-act="edit">编辑</button>'
+        + '<button class="danger" data-act="del">删除</button>'
+        + '</div></div>';
+    }).join('');
+  }
+
+  function find(id) {
+    for (var i = 0; i < state.list.length; i++) if (state.list[i].id === id) return state.list[i];
+    return null;
+  }
+
+  async function openExt(id) {
+    var ext = find(id);
+    if (!ext) return;
+    state.cur = ext;
+    state.file = null;
+    el('panel').classList.remove('hidden');
+    el('edTitle').textContent = ext.name;
+    el('btnSave').disabled = true;
+    el('editor').value = '';
+    el('files').innerHTML = (ext.files || []).map(function (f) {
+      return '<span class="file" data-file="' + esc(f.path) + '">' + esc(f.path) + '</span>';
+    }).join('') || '<span class="note">这个扩展还没有文件</span>';
+    // 默认打开说明文件，省一次点击
+    var first = (ext.files || []).filter(function (f) { return /extension\.json$/.test(f.path) })[0]
+      || (ext.files || [])[0];
+    if (first) loadFile(first.path);
+  }
+
+  async function loadFile(rel) {
+    if (!state.cur) return;
+    if (state.dirty && !confirm('当前文件还没保存，确定切换？')) return;
+    var r = await api('/ext/file?id=' + encodeURIComponent(state.cur.id) + '&path=' + encodeURIComponent(rel));
+    if (!r.ok) { note('读不出这个文件：' + (r.error || ''), 'bad'); return; }
+    state.file = rel;
+    state.dirty = false;
+    el('editor').value = r.content || '';
+    el('btnSave').disabled = true;
+    note('已打开 ' + rel);
+    Array.prototype.forEach.call(document.querySelectorAll('.file'), function (f) {
+      f.classList.toggle('on', f.getAttribute('data-file') === rel);
+    });
+  }
+
+  async function save() {
+    if (!state.cur || !state.file) return;
+    var r = await api('/ext/file', {
+      method: 'POST',
+      body: JSON.stringify({ id: state.cur.id, path: state.file, content: el('editor').value }),
+    });
+    if (!r.ok) { note('保存失败：' + (r.error || ''), 'bad'); return; }
+    state.dirty = false;
+    el('btnSave').disabled = true;
+    note('已保存，已生效', 'ok');
+    load();
+  }
+
+  async function toggle(id, enabled) {
+    var r = await api('/ext/toggle', { method: 'POST', body: JSON.stringify({ id: id, enabled: enabled }) });
+    if (!r.ok) { note('切换失败：' + (r.error || ''), 'bad'); return; }
+    await load();
+    note(enabled ? '已启用' : '已停用', 'ok');
+  }
+
+  async function remove(id) {
+    var ext = find(id);
+    if (!ext) return;
+    if (!confirm('删除扩展「' + ext.name + '」？\n会移到扩展目录的 .trash 里，可以手动找回。')) return;
+    var r = await api('/ext/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
+    if (!r.ok) { note('删除失败：' + (r.error || ''), 'bad'); return; }
+    if (state.cur && state.cur.id === id) {
+      state.cur = null; state.file = null;
+      el('panel').classList.add('hidden');
+    }
+    await load();
+    note('已删除（在 .trash 里）', 'ok');
+  }
+
+  // ── 事件 ──────────────────────────────────────────────────────────────
+  el('list').addEventListener('click', function (e) {
+    var card = e.target.closest('.card');
+    if (!card) return;
+    var id = card.getAttribute('data-id');
+    var act = e.target.getAttribute('data-act');
+    if (act === 'toggle') {
+      var ext = find(id);
+      toggle(id, !(ext && ext.enabled !== false));
+      return;
+    }
+    if (act === 'del') { remove(id); return; }
+    if (act === 'settings') {
+      // 新开一个浏览器标签（壳会把 _blank 拦下来交给界面开标签），管理页本身不跳走
+      window.open('/dsh-ide/ext/settings?id=' + encodeURIComponent(id), '_blank');
+      return;
+    }
+    openExt(id);
+  });
+  el('files').addEventListener('click', function (e) {
+    var f = e.target.closest('.file');
+    if (f) loadFile(f.getAttribute('data-file'));
+  });
+  el('editor').addEventListener('input', function () {
+    state.dirty = true;
+    el('btnSave').disabled = false;
+  });
+  el('btnSave').addEventListener('click', save);
+  el('btnClose').addEventListener('click', function () {
+    if (state.dirty && !confirm('还没保存，确定关闭？')) return;
+    state.cur = null; state.file = null; state.dirty = false;
+    el('panel').classList.add('hidden');
+  });
+  el('btnReload').addEventListener('click', function () { load(); note('已刷新'); });
+
+  el('btnNew').addEventListener('click', function () {
+    el('newName').value = '';
+    el('newMatches').value = '';
+    el('dlgNew').showModal();
+    el('newName').focus();
+  });
+  el('newCancel').addEventListener('click', function () { el('dlgNew').close(); });
+  el('newOk').addEventListener('click', async function () {
+    var name = el('newName').value.trim();
+    if (!name) { el('newName').focus(); return; }
+    var matches = el('newMatches').value.split('\n').map(function (s) { return s.trim() }).filter(Boolean);
+    var r = await api('/ext/create', { method: 'POST', body: JSON.stringify({ name: name, matches: matches }) });
+    el('dlgNew').close();
+    if (!r.ok) { note('创建失败：' + (r.error || '') + (r.error === 'exists' ? '（同名目录已存在）' : ''), 'bad'); return; }
+    await load();
+    openExt(r.id);
+    note('已创建', 'ok');
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

@@ -17,6 +17,7 @@
 const { WebContentsView, Menu, shell, clipboard, ipcMain, app, session, safeStorage } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const { createExtRuntime } = require('./browser-ext')
 
 const PARTITION = 'persist:anzio-browser'
 const BROWSER_PRELOAD = path.join(__dirname, 'browser-preload.js')
@@ -246,6 +247,36 @@ function installBrowserHost(win, noteFn, options) {
     try { if (!win.isDestroyed()) win.webContents.send('anzio-browser:event', msg) } catch { /* 窗口正在关闭 */ }
   }
 
+  // ── 扩展运行时（2026-11-27）────────────────────────────────────────────────
+  // 见 browser-ext.js 顶部：一套自己定的扩展格式（规则 + 注入脚本 + 常驻脚本），
+  // 数据全在家目录，目录一变自己重载 —— 改扩展不用重启天工。
+  const ext = createExtRuntime({
+    note,
+    pages: () => Array.from(entries.values()).map((e) => {
+      try { return { id: e.id, url: e.view.webContents.getURL(), title: e.view.webContents.getTitle() } } catch { return { id: e.id, url: '' } }
+    }),
+  })
+
+  // 请求拦截：只拦 http/https，主文档永远放行（拦主文档等于"页面打不开"，不是拦广告）。
+  // 用 webContentsId 反查是哪个标签发的，拿走它自己的 URL 当 first-party，判第三方用。
+  try {
+    browserSession().webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*'] }, (details, callback) => {
+      let frameHost = ''
+      try {
+        const wcId = details.webContentsId
+        if (wcId) {
+          const wc = require('electron').webContents.fromId(wcId)
+          if (wc) frameHost = new URL(wc.getURL()).hostname
+        }
+      } catch { /* 拿不到就当没有 */ }
+      let hit = null
+      try { hit = ext.matchRequest(details.url, details.resourceType, frameHost) } catch { hit = null }
+      callback({ cancel: !!hit })
+    })
+  } catch (e) {
+    note('warn', 'ext-webrequest', '请求拦截挂不上，广告拦截不会生效', { error: String((e && e.message) || e) })
+  }
+
   function navState(entry) {
     const wc = entry.view.webContents
     let canBack = false, canForward = false
@@ -341,6 +372,25 @@ function installBrowserHost(win, noteFn, options) {
       emitNav(entry)
       // 驱动层那条路：文档开始时请求过一次可能太早（页面还没进 Playwright 的名单），加载完再补一次
       ensureIdentity(entry)
+    })
+    // 扩展注入 · document-idle 那一档。document-start 的脚本不在这里：
+    // 主进程收到导航事件时文档已经在解析了，那一档只能由 preload 在文档开头同步取（见 browser-preload.js）。
+    wc.on('did-finish-load', () => {
+      const url = (() => { try { return wc.getURL() } catch { return '' } })()
+      let list = []
+      try { list = ext.scriptsFor(url, 'document-idle') } catch { list = [] }
+      for (const s of list) {
+        // 先落扩展 id 再跑脚本：脚本里的 window.__tiangongExt 要用它读写自己的状态
+        try {
+          wc.executeJavaScript('window.__tiangongExtId=' + JSON.stringify(s.extId) + ';' + s.code, true)
+            .catch(() => { /* 脚本自己抛错是它的事，不能影响页面 */ })
+        } catch { /* 视图正在销毁 */ }
+      }
+      if (list.length) {
+        try {
+          ext.emitEvent('page.load', { id: key, url, title: wc.getTitle(), extensions: Array.from(new Set(list.map((x) => x.extId))) })
+        } catch { /* 常驻脚本自己兜 */ }
+      }
     })
     wc.on('did-navigate', () => emitNav(entry))
     wc.on('did-navigate-in-page', () => emitNav(entry))
@@ -544,6 +594,30 @@ function installBrowserHost(win, noteFn, options) {
   })
   handle('anzio-browser:phantom-state', () => ({ ok: true, on: phantom.on }))
 
+  // ── 扩展（管理页与浏览器页面 preload 共用）──────────────────────────────
+  handle('anzio-ext-list', () => ({ ok: true, root: ext.root, extensions: ext.list() }))
+  handle('anzio-ext-reload', () => {
+    const r = ext.reload('manual')
+    return { ok: true, count: r.count, extensions: r.extensions }
+  })
+  // preload 走同步通道：文档开始那一刻就要知道该跑哪些脚本，异步赶不上（会晚于 DOMContentLoaded）
+  ipcMain.on('anzio-ext-boot', (e, href) => {
+    try {
+      const url = String(href || '')
+      e.returnValue = { ids: ext.activeExtFor(url), scripts: ext.scriptsFor(url, 'document-start') }
+    } catch { e.returnValue = { ids: [], scripts: [] } }
+  })
+  ipcMain.on('anzio-ext-get', (e, id) => {
+    try { e.returnValue = ext.readState(String(id)) } catch { e.returnValue = {} }
+  })
+  ipcMain.on('anzio-ext-set', (_e, id, value) => {
+    try { ext.writeState(String(id), value) } catch { /* 写失败由下次读取暴露 */ }
+  })
+  // 注入脚本 → 常驻脚本的消息（常驻那边按 event 名字收）
+  ipcMain.on('anzio-ext-msg', (_e, id, msg) => {
+    try { ext.emitEvent('ext.message', { extId: String(id), message: msg }) } catch { /* 忽略 */ }
+  })
+
   handle('anzio-browser:create-id', () => ({ ok: true, id: 'browser-' + (++seq) + '-' + Date.now().toString(36) }))
   // 页面重新加载后渲染层的浏览器标签状态全没了，但原生视图还活着 → 由渲染层开局清场，避免留下无主的视图
   handle('anzio-browser:reset', () => {
@@ -574,10 +648,14 @@ function installBrowserHost(win, noteFn, options) {
     try { win.webContents.send('anzio-browser:key', Object.assign({ id: entry.id }, payload)) } catch { /* 窗口关闭中 */ }
   })
 
+  // 退出前停掉扩展目录监听与常驻定时器：不停的话进程会拖着不退出，或者退出时还去写文件
+  app.on('before-quit', () => { try { ext.dispose() } catch { /* 忽略 */ } })
+
   return {
     create, destroy, canonicalId, setBounds, setVisible, entries,
     sendToView: sendToView, sendAction: sendAction, reapplyIdentity,
     phantom: () => ({ on: phantom.on }),
+    ext,
   }
 }
 

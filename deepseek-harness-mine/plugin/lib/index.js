@@ -18,7 +18,7 @@
 import { createRequire } from 'node:module'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { spawn } from 'node:child_process'
-import { createReadStream, watch, readFileSync, readdirSync, statSync } from 'node:fs'
+import { createReadStream, watch, readFileSync, readdirSync, statSync, writeFileSync, mkdirSync, renameSync, existsSync } from 'node:fs'
 import { createHash, createHmac } from 'node:crypto'
 import { zstdDecompressSync } from 'node:zlib'
 import { appendFile, copyFile, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
@@ -247,6 +247,101 @@ function json(res, status, body) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
   res.end(JSON.stringify(body))
 }
+
+// ── 浏览器扩展（2026-11-27）──────────────────────────────────────────────────
+// 格式与执行都在壳侧（shell\browser-ext.js 顶部有完整说明）。后端只干两件事：
+// ① 给管理页提供静态文件；② 读写 <家目录>\browser-extensions 下的文件。
+// 壳那边 watch 同一份目录，写盘即生效 —— 所以这里**绝不能**顺手重启后端或壳。
+const EXT_UI_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'static', 'extensions-ui')
+
+function extensionsRootDir() {
+  const home = process.env.DSH_HOME || ''
+  return home ? path.join(home, 'browser-extensions') : ''
+}
+
+function listExtFiles(dir, base, out, depth) {
+  if (out.length > 300 || depth > 4) return
+  let items = []
+  try { items = readdirSync(dir, { withFileTypes: true }) } catch { return }
+  for (const it of items) {
+    if (it.name.startsWith('.')) continue
+    const rel = base ? base + '/' + it.name : it.name
+    if (it.isDirectory()) listExtFiles(path.join(dir, it.name), rel, out, depth + 1)
+    else {
+      let size = 0
+      try { size = statSync(path.join(dir, it.name)).size } catch { /* 忽略 */ }
+      out.push({ path: rel, size })
+    }
+  }
+}
+
+function readExtensionsForUi(root) {
+  const out = []
+  let names = []
+  try { names = readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name) } catch { return out }
+  for (const id of names) {
+    if (id.startsWith('.')) continue
+    const dir = path.join(root, id)
+    let manifest = null
+    try { manifest = JSON.parse(readFileSync(path.join(dir, 'extension.json'), 'utf8')) } catch { continue }
+    let rules = []
+    let subscriptions = []
+    try {
+      const r = manifest.rules ? JSON.parse(readFileSync(path.join(dir, String(manifest.rules)), 'utf8')) : null
+      rules = Array.isArray(r && r.rules) ? r.rules : []
+      subscriptions = Array.isArray(r && r.subscriptions) ? r.subscriptions : []
+    } catch { /* 规则文件还没建 */ }
+    const files = []
+    listExtFiles(dir, '', files, 0)
+    out.push({
+      id,
+      name: String(manifest.name || id),
+      description: String(manifest.description || ''),
+      enabled: manifest.enabled !== false,
+      matches: Array.isArray(manifest.matches) ? manifest.matches : [],
+      ruleCount: rules.length,
+      subscriptions: subscriptions.map((s) => String((s && s.name) || '')),
+      hasBackground: !!manifest.background,
+      hasSettings: !!manifest.settings,
+      files,
+    })
+  }
+  return out
+}
+
+// 扩展的状态文件：可以在扩展目录里，也可以指到外面（知乎那份数据在 Syncthing 同步盘上，
+// Chrome 扩展与天工共用同一份）。只认 .json，理由同壳侧 browser-ext.js。
+function extensionStatePath(root, id) {
+  const dir = safeExtPath(root, id)
+  if (!dir) return null
+  let manifest = null
+  try { manifest = JSON.parse(readFileSync(path.join(dir, 'extension.json'), 'utf8')) } catch { return null }
+  if (manifest && manifest.stateFile && /\.json$/i.test(String(manifest.stateFile))) return String(manifest.stateFile)
+  return path.join(dir, 'state.json')
+}
+
+// 防目录穿越：拼出来必须仍在扩展根内
+function safeExtPath(root, rel) {
+  const target = path.normalize(path.join(root, String(rel || '')))
+  if (target !== root && !target.startsWith(root + path.sep)) return null
+  return target
+}
+
+const EXT_TEMPLATE_MANIFEST = {
+  name: '未命名扩展',
+  description: '',
+  enabled: true,
+  matches: ['*://*.example.com/*'],
+  scripts: [{ file: 'scripts/main.js', runAt: 'document-idle' }],
+}
+
+const EXT_TEMPLATE_SCRIPT = `// 这个脚本在匹配的页面上跑，能操作网页（读 DOM、改样式、发请求）。
+// 碰不到天工的文件与凭证 —— 这是定死的边界。
+// 读写扩展自己的数据：
+//   const state = window.__tiangongExt.get(window.__tiangongExtId) || {}
+//   window.__tiangongExt.set(window.__tiangongExtId, { ...state, 某个开关: true })
+console.log('[扩展] 页面已注入：' + location.href)
+`
 
 function errOf(e) {
   return String((e && e.message) || e)
@@ -3216,12 +3311,163 @@ export default {
         return serveStatic(req, res, action.slice('/xterm'.length), XTERM_ROOT, 'xterm', false)
       }
 
+      // ── 浏览器扩展（2026-11-27）：管理页 + 扩展文件读写 ────────────────────
+      // 壳半（shell\browser-ext.js）watch 同一份目录，写盘即生效，这里不做任何"重载"动作。
+      if (action === '/ext-ui') {
+        res.writeHead(302, { location: ROUTE_PREFIX + '/ext-ui/index.html' })
+        return res.end()
+      }
+      if (action.startsWith('/ext-ui/')) {
+        return serveStatic(req, res, action.slice('/ext-ui'.length), EXT_UI_ROOT, 'ext-ui', false)
+      }
+      if (action === '/ext/list' && req.method === 'GET') {
+        const root = extensionsRootDir()
+        if (!root) return json(res, 200, { ok: false, error: 'no-home', extensions: [] })
+        return json(res, 200, { ok: true, root, extensions: readExtensionsForUi(root) })
+      }
+      // 扩展的设置页：直接把这个 HTML 吐出去（它跟管理页一样是网页，不外挂任何能力）
+      if (action === '/ext/settings' && req.method === 'GET') {
+        const root = extensionsRootDir()
+        const id = String(q.get('id') || '')
+        if (!root || !id) return json(res, 400, { ok: false, error: 'bad-request' })
+        const file = safeExtPath(path.join(root, id), 'settings.html')
+        if (!file) return json(res, 400, { ok: false, error: 'bad-path' })
+        try {
+          const html = readFileSync(file, 'utf8')
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' })
+          return res.end(html)
+        } catch {
+          return json(res, 404, { ok: false, error: 'no-settings' })
+        }
+      }
+      // 扩展自己的数据（设置页与注入脚本共用同一份 state.json）
+      if (action === '/ext/state' && req.method === 'GET') {
+        const root = extensionsRootDir()
+        const id = String(q.get('id') || '')
+        if (!root || !id) return json(res, 400, { ok: false, error: 'bad-request' })
+        const file = extensionStatePath(root, id)
+        if (!file) return json(res, 400, { ok: false, error: 'bad-path' })
+        try { return json(res, 200, { ok: true, state: JSON.parse(readFileSync(file, 'utf8')) }) }
+        catch { return json(res, 200, { ok: true, state: {} }) }
+      }
+      if (action === '/ext/state' && req.method === 'POST') {
+        const body = await readBody(req)
+        const root = extensionsRootDir()
+        const id = String(body.id || '')
+        if (!root || !id) return json(res, 400, { ok: false, error: 'bad-request' })
+        const file = extensionStatePath(root, id)
+        if (!file) return json(res, 400, { ok: false, error: 'bad-path' })
+        try {
+          // 合并写：外部文件里 Chrome 那边还在用的字段（version / updatedAt）不能被我们抹掉
+          let prev = {}
+          try { prev = JSON.parse(readFileSync(file, 'utf8')) } catch { prev = {} }
+          const next = Object.assign({}, prev, body.state || {})
+          if (Object.prototype.hasOwnProperty.call(next, 'updatedAt')) next.updatedAt = new Date().toISOString()
+          mkdirSync(path.dirname(file), { recursive: true })
+          const tmp = file + '.tmp'
+          writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8')
+          renameSync(tmp, file)
+          return json(res, 200, { ok: true })
+        } catch (e) {
+          return json(res, 500, { ok: false, error: errOf(e) })
+        }
+      }
+      if (action === '/ext/file' && req.method === 'GET') {
+        const root = extensionsRootDir()
+        const id = String(q.get('id') || '')
+        const rel = String(q.get('path') || '')
+        if (!root || !id || !rel) return json(res, 400, { ok: false, error: 'bad-request' })
+        const target = safeExtPath(path.join(root, id), rel)
+        if (!target) return json(res, 400, { ok: false, error: 'bad-path' })
+        try {
+          return json(res, 200, { ok: true, path: rel, content: readFileSync(target, 'utf8') })
+        } catch {
+          return json(res, 404, { ok: false, error: 'not-found' })
+        }
+      }
+      if (action === '/ext/file' && req.method === 'POST') {
+        const body = await readBody(req)
+        const root = extensionsRootDir()
+        const id = String(body.id || '')
+        const rel = String(body.path || '')
+        if (!root || !id || !rel) return json(res, 400, { ok: false, error: 'bad-request' })
+        const target = safeExtPath(path.join(root, id), rel)
+        if (!target) return json(res, 400, { ok: false, error: 'bad-path' })
+        try {
+          mkdirSync(path.dirname(target), { recursive: true })
+          writeFileSync(target, String(body.content === undefined ? '' : body.content), 'utf8')
+          return json(res, 200, { ok: true })
+        } catch (e) {
+          return json(res, 500, { ok: false, error: errOf(e) })
+        }
+      }
+      if (action === '/ext/toggle' && req.method === 'POST') {
+        const body = await readBody(req)
+        const root = extensionsRootDir()
+        const id = String(body.id || '')
+        if (!root || !id) return json(res, 400, { ok: false, error: 'bad-request' })
+        const file = safeExtPath(path.join(root, id), 'extension.json')
+        if (!file) return json(res, 400, { ok: false, error: 'bad-path' })
+        try {
+          const manifest = JSON.parse(readFileSync(file, 'utf8'))
+          manifest.enabled = body.enabled !== false
+          writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n', 'utf8')
+          return json(res, 200, { ok: true, enabled: manifest.enabled })
+        } catch (e) {
+          return json(res, 500, { ok: false, error: errOf(e) })
+        }
+      }
+      if (action === '/ext/create' && req.method === 'POST') {
+        const body = await readBody(req)
+        const root = extensionsRootDir()
+        if (!root) return json(res, 200, { ok: false, error: 'no-home' })
+        // 目录名就是扩展的 id：去掉 Windows 不允许的字符，过长截断
+        const rawName = String(body.name || '').trim() || '新扩展'
+        const id = rawName.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40)
+        const dir = id ? safeExtPath(root, id) : null
+        if (!dir) return json(res, 400, { ok: false, error: 'bad-name' })
+        if (existsSync(dir)) return json(res, 409, { ok: false, error: 'exists' })
+        try {
+          mkdirSync(path.join(dir, 'scripts'), { recursive: true })
+          const matches = Array.isArray(body.matches) && body.matches.length
+            ? body.matches.map(String)
+            : EXT_TEMPLATE_MANIFEST.matches
+          const manifest = Object.assign({}, EXT_TEMPLATE_MANIFEST, { name: rawName, matches })
+          writeFileSync(path.join(dir, 'extension.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8')
+          writeFileSync(path.join(dir, 'scripts', 'main.js'), EXT_TEMPLATE_SCRIPT, 'utf8')
+          return json(res, 200, { ok: true, id })
+        } catch (e) {
+          return json(res, 500, { ok: false, error: errOf(e) })
+        }
+      }
+      if (action === '/ext/delete' && req.method === 'POST') {
+        const body = await readBody(req)
+        const root = extensionsRootDir()
+        const id = String(body.id || '')
+        const dir = root && id ? safeExtPath(root, id) : null
+        if (!dir) return json(res, 400, { ok: false, error: 'bad-request' })
+        // 不真删：挪到 .trash（以点开头，扫描时跳过）—— 删错了还能捞回来，
+        // 也避开宿主的"批量删除"拦截（真删几百个文件可能被安全层拦下）。
+        const trash = path.join(root, '.trash')
+        try {
+          mkdirSync(trash, { recursive: true })
+          renameSync(dir, path.join(trash, id + '-' + Date.now().toString(36)))
+          return json(res, 200, { ok: true, trashed: true })
+        } catch (e) {
+          return json(res, 500, { ok: false, error: errOf(e) })
+        }
+      }
+
       try {
         // ── 概览 ────────────────────────────────────────────────
         if (action === '/init') {
           const root = await resolveRoot()
           return json(res, 200, {
             root: root || null,
+            // 后端自己的 http 地址：内置浏览器的原生视图**加载不了 dsh-app:// 协议**
+            // （那个协议只给主窗口注册），要打开管理页这类界面托管页面必须走这个真实地址。
+            // 客户端拿它拼地址，不要用 location.origin（在 dsh-app://app 下拿到的是 dsh-app://app）。
+            origin: 'http://' + (req.headers.host || ''),
             // 能力面板另外两区（2026-11-05）：技能清单靠扫目录，MCP 靠读装配单
             skills: await skillsForPanel(),
             mcp: mcpForPanel(),

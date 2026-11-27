@@ -274,3 +274,40 @@ window.addEventListener('keydown', (event) => {
     try { ipc.on('anzio-phantom', function (_e, cmd) { command(cmd) }) } catch { /* 忽略 */ }
   }
 })()
+
+// ══ 浏览器扩展（2026-11-27）═══════════════════════════════════════════════════
+// document-start 那一档的注入脚本只能在这里跑：主进程收到导航事件时文档已经在解析了，
+// 等它发指令必然晚于 DOMContentLoaded（知乎那个 link.zhihu.com 跳转就要求"页面一开头就接管"）。
+//
+// 桥只给三件事：读自己的状态、写自己的状态、给常驻脚本发消息。
+// 注入脚本能操作网页，但碰不到天工的文件、凭证、Agent —— 这是定死的边界，别往这里加能力。
+// ⚠ 前面那个 `;` 不能删（同上面幻影段：上一句以 `)` 结尾、这一句以 `(` 开头，ASI 不补分号）。
+;(function () {
+  if (!ipc) return
+  let boot = null
+  try { boot = ipc.sendSync('anzio-ext-boot', String(location.href || '')) } catch { boot = null }
+  const ids = (boot && boot.ids) || []
+  if (!ids.length) return
+  try {
+    const contextBridge = require('electron').contextBridge
+    contextBridge.exposeInMainWorld('__tiangongExt', {
+      ids: ids,
+      get: function (id) { try { return ipc.sendSync('anzio-ext-get', String(id)) } catch { return {} } },
+      set: function (id, value) { try { ipc.send('anzio-ext-set', String(id), value) } catch { /* 忽略 */ } },
+      send: function (id, message) { try { ipc.send('anzio-ext-msg', String(id), message) } catch { /* 忽略 */ } },
+    })
+  } catch { /* 暴露失败时脚本照样跑，只是读写不了状态 */ }
+  const scripts = (boot && boot.scripts) || []
+  if (!scripts.length) return
+  // 按声明顺序**串行**执行：两个脚本之间常有一前一后的依赖（前一个铺 DOM，后一个接管）
+  ;(async function () {
+    let webFrame = null
+    try { webFrame = require('electron').webFrame } catch { webFrame = null }
+    if (!webFrame) return
+    for (const s of scripts) {
+      try {
+        await webFrame.executeJavaScript('window.__tiangongExtId=' + JSON.stringify(s.extId) + ';' + s.code)
+      } catch { /* 单个脚本抛错不能挡住后面的 */ }
+    }
+  })()
+})()

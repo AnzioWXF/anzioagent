@@ -72,7 +72,7 @@ Write-Host ("发布版本: v{0}   (已安装 v{1}, 基线文件 {2} 个)" -f $Ve
 $cand = [ordered]@{}
 
 if (-not $SkipShell) {
-  $shellNames = @('browser.js', 'browser-preload.js', 'bridge.js', 'driver.js', 'updater.js')
+  $shellNames = @('browser.js', 'browser-ext.js', 'browser-preload.js', 'bridge.js', 'driver.js', 'updater.js')
   foreach ($n in $shellNames) {
     $p = Join-Path $ShellDir $n
     if (-not (Test-Path -LiteralPath $p)) { throw "找不到壳半文件: $p" }

@@ -27,7 +27,7 @@ index ff855cfd09..5d403842d5 100644
    return failures
  }
 diff --git a/apps/desktop/scripts/electron-builder-config.mjs b/apps/desktop/scripts/electron-builder-config.mjs
-index f08b783865..6c8ec99fa8 100644
+index f08b783865..286ee62b85 100644
 --- a/apps/desktop/scripts/electron-builder-config.mjs
 +++ b/apps/desktop/scripts/electron-builder-config.mjs
 @@ -65,6 +65,13 @@ export function createElectronBuilderConfig(
@@ -64,18 +64,19 @@ index f08b783865..6c8ec99fa8 100644
        await promisify(execFile)('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
          fileURLToPath(new URL('./prepare-windows-installer.ps1', import.meta.url)),
          '-OutputDirectory', join(buildPaths.root, 'installer-ui')], {
-@@ -142,9 +153,25 @@ export function createElectronBuilderConfig(
+@@ -142,9 +153,26 @@ export function createElectronBuilderConfig(
      asarUnpack: unpack,
      extraResources: [
        { from: buildPaths.runtime, to: 'runtime' },
 -      { from: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)), to: 'icon.png' },
 +      // 天工接入点⑪（补丁点清单第 11 条）：壳半源码 + 它唯一的第三方依赖。
-+      // 四个 JS 是 CJS，直接 require 加载；playwright-core 放在 tiangong-shell/node_modules 下，
++      // 五个 JS 是 CJS，直接 require 加载；playwright-core 放在 tiangong-shell/node_modules 下，
 +      // driver.js 的 require('playwright-core') 才能按相对路径解析到（asar 内的 node_modules 不在它的解析链上）。
++      // browser-ext.js 是内置浏览器的扩展运行时（2026-11-27 加），browser.js 用相对 require 引它。
 +      {
 +        from: tiangongShellDir,
 +        to: 'tiangong-shell',
-+        filter: ['browser.js', 'driver.js', 'bridge.js', 'browser-preload.js', 'updater.js'],
++        filter: ['browser.js', 'browser-ext.js', 'driver.js', 'bridge.js', 'browser-preload.js', 'updater.js'],
 +      },
 +      // 这四个 `.js` 是 CJS。产物目录若在 `type: module` 的包里（开发机就是），Node 会按 ESM 解析
 +      // 并报 "require is not defined in ES module scope" ⇒ 壳桥整个起不来。放一份无 type 的包描述锁成 CJS。
@@ -92,7 +93,7 @@ index f08b783865..6c8ec99fa8 100644
      ],
      mac: {
        icon: fileURLToPath(new URL('../resources/icon-macos.png', import.meta.url)),
-@@ -221,7 +248,8 @@ export function createElectronBuilderConfig(
+@@ -221,7 +249,8 @@ export function createElectronBuilderConfig(
        )
      },
      win: {
