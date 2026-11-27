@@ -67,19 +67,34 @@ clone 下来只有源码和一份引擎原样快照，**没有构建产物**，�
 Copy-Item -Recurse deepseek-harness-origin deepseek-harness-mine\harness
 cd deepseek-harness-mine\harness
 
-# 2. 让这棵自己当 git 根：快照不自带 .git，不 init 的话 git apply 会拿外层仓库当归宿、把补丁全部跳过
+# 2. 让它自己当 git 根并提交一次。这两件事都不能省：
+#    没有 .git 的话 git apply 会被外层仓库接走、把补丁全部静默跳过；
+#    没有提交的话后面的 desktop bundle 读不到提交哈希，直接报错。
 git init
+git add -A
+git commit -m "官方快照 dsh-v0.2.1-alpha.2"
 
 # 3. 套我们对引擎的补丁
 git apply ..\..\patches\engine-0.2.1-alpha.2-ours.patch
 
-# 4. 装依赖 + 重建产物（官方 build 脚本会被 pnpm 依赖检查拦住，按这五步走）
+# 4. 装依赖 + 重建产物（官方 build 脚本会被 pnpm 依赖检查拦住，按下面一步步走）
 pnpm install --prefer-offline --ignore-scripts
 pnpm exec tsc -b tsconfig.host.json
 #   建两个空占位 lib/types/index.js、lib/types/startup.js，内容都是 export {}
 pnpm exec tsdown --config-loader native --env.DSH_BUILD_FACE host
+pnpm --filter @deepseek-ai/dsh-desktop run bundle
 pnpm exec tsc -b tsconfig.client.json
 pnpm exec tsdown --config-loader native --env.DSH_BUILD_FACE client
+#   网页界面的静态资源是独立一份，不跑这句浏览器打开就是 404
+pnpm --filter @deepseek-ai/dsh-web-frontend run build
+```
+
+在上面这个目录直接起一个后端看效果（家目录随便给个空目录，端口别和已装的天工冲突）：
+
+```powershell
+$env:DSH_HOME = "$env:TEMP\dsh-home-try"
+node apps\cli\lib\bin.js web --port 3099 --no-open
+# 终端会打印带 token 的地址，浏览器打开即是界面（当前是引擎原装界面，不含天工的 IDE 外壳）
 ```
 
 然后打包装机（首次要下载 Electron 二进制，直连不通就设镜像，见 [DEVELOPING.md](DEVELOPING.md)）：

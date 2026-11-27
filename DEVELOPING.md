@@ -42,9 +42,12 @@ patches\    引擎补丁（我们对官方 checkout 的改动）
 ```powershell
 # 1. 把仓里的快照变成应用要跑的那棵
 Copy-Item -Recurse deepseek-harness-origin deepseek-harness-mine\harness
-# 2. 让这棵自己当 git 根：快照不自带 .git，不 init 的话 git apply 会拿外层仓库当归宿、把补丁全部跳过
+# 2. 让它自己当 git 根并提交一次：没 .git 时 git apply 会被外层仓库接走、把补丁全部跳过；
+#    没提交过时 desktop bundle 读不到提交哈希、直接报错。
 cd deepseek-harness-mine\harness
 git init
+git add -A
+git commit -m "官方快照 dsh-v0.2.1-alpha.2"
 # 3. 套补丁（补丁里的改动：会话与对话节点契约、ui-settings-general 挂主区、快捷键表、host 布局、审批四按钮等）
 git apply ..\..\patches\engine-0.2.1-alpha.2-ours.patch
 # 4. 装依赖 + 重建产物（见下）
@@ -66,14 +69,19 @@ pnpm exec tsc -b tsconfig.host.json
 
 # 根包缺入口，官方构建会在这里挂：手建两个占位（内容就是 export {}）
 New-Item -ItemType Directory -Force lib\types | Out-Null
-Set-Content lib\types\index.js 'export {}'
-Set-Content lib\types\startup.js 'export {}'
+Set-Content lib\types\index.js 'export {}' -Encoding utf8
+Set-Content lib\types\startup.js 'export {}' -Encoding utf8
 
 pnpm exec tsdown --config-loader native --env.DSH_BUILD_FACE host
+# 桌面端自己的 bundle（官方 build:lib:host 的第三步，漏了它 electron-builder 打不出壳）
+pnpm --filter @deepseek-ai/dsh-desktop run bundle
 
 # 前端面同理
 pnpm exec tsc -b tsconfig.client.json
 pnpm exec tsdown --config-loader native --env.DSH_BUILD_FACE client
+
+# 网页界面的静态资源是另一份产物：不跑这句，浏览器打开只有 404
+pnpm --filter @deepseek-ai/dsh-web-frontend run build
 ```
 
 ## 跑起来
